@@ -1,5 +1,5 @@
 # ===================================================================
-# OOPTI SUITE V8 - VERSION PURE ET LIGHT (ANTI-FREEZE)
+# OOPTI SUITE V8 - VERSION ULTRA-STABLE ET NETTOYÉE
 # ===================================================================
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -8,20 +8,12 @@ Add-Type -AssemblyName System.Drawing
 # --- FENÊTRE PRINCIPALE ---
 $Form = New-Object System.Windows.Forms.Form
 $Form.Text = "OOPTI SUITE // CORE ENGINE V8"
-$Form.Size = New-Object System.Drawing.Size(1000, 750)
+$Form.Size = New-Object System.Drawing.Size(1020, 760)
 $Form.StartPosition = "CenterScreen"
 $Form.FormBorderStyle = "FixedSingle"
+$Form.MaximizeBox = $false
 
-# --- ZONE D'AFFICHAGE UNIQUE DES OPTIONS ---
-$DisplayPanel = New-Object System.Windows.Forms.Panel
-$DisplayPanel.Size = New-Object System.Drawing.Size(700, 480)
-$DisplayPanel.Location = New-Object System.Drawing.Point(260, 20)
-$Form.Controls.Add($DisplayPanel)
-
-# --- STOCKAGE INDÉPENDANT DES 70 CHECKBOXES ---
-$Global:Boxes = @()
-
-# Données brutes des options par catégorie (Texte, Risque)
+# --- DONNÉES BRUTES DES OPTIONS ---
 $Global:RawData = @{
     1 = @(
         @("Activer TCP No Delay (Algorithme de Nagle)", "SAFE"),
@@ -109,67 +101,79 @@ $Global:RawData = @{
     )
 }
 
-# --- GENERATION EN MEMOIRE DES CHK (SANS AFFICHAGE AVANT CLIC) ---
+# --- CRÉATION DIRECTE ET CACHÉE DES 70 COMPOSANTS ---
+$Global:Boxes = @()
 for ($cat = 1; $cat -le 7; $cat++) {
     $subList = @()
     $items = $Global:RawData[$cat]
     for ($i=0; $i -lt 10; $i++) {
         $CB = New-Object System.Windows.Forms.CheckBox
         $CB.Text = $items[$i][0]
-        $CB.Size = New-Object System.Drawing.Size(330, 30)
+        $CB.Size = New-Object System.Drawing.Size(340, 30)
+        $CB.Visible = $false
         
-        # Application simple de la légende couleur
+        # Attribution des couleurs de la légende
         if ($items[$i][1] -eq "SAFE") { $CB.ForeColor = [System.Drawing.Color]::Blue; $CB.Checked = $true }
-        elseif ($items[$i][1] -eq "MEDIUM") { $CB.ForeColor = [System.Drawing.Color]::DarkOrange }
+        elif ($items[$i][1] -eq "MEDIUM") { $CB.ForeColor = [System.Drawing.Color]::DarkOrange }
         else { $CB.ForeColor = [System.Drawing.Color]::Red }
         
+        # Positionnement géométrique fixe
+        if ($i -lt 5) {
+            $CB.Location = New-Object System.Drawing.Point(270, 30 + ($i * 45))
+        } else {
+            $CB.Location = New-Object System.Drawing.Point(630, 30 + (($i - 5) * 45))
+        }
+        
+        $Form.Controls.Add($CB)
         $subList += $CB
     }
     $Global:Boxes += ,$subList
 }
 
-# --- CORRESPONDANCE ET FONCTION D'ONGLET DIRECTE ---
+# --- LOGIQUE D'AFFICHAGE PAR VISIBILITÉ DIRECTE ---
 function Show-Cat($id) {
-    $DisplayPanel.Controls.Clear()
-    $list = $Global:Boxes[$id - 1]
-    
-    for ($i = 0; $i -lt 10; $i++) {
-        if ($i -lt 5) {
-            $list[$i].Location = New-Object System.Drawing.Point(10, 20 + ($i * 45))
-        } else {
-            $list[$i].Location = New-Object System.Drawing.Point(360, 20 + (($i - 5) * 45))
+    # Masquer l'intégralité des 70 cases à cocher
+    for ($c = 0; $c -lt 7; $c++) {
+        for ($i = 0; $i -lt 10; $i++) {
+            $Global:Boxes[$c][$i].Visible = $false
         }
-        $DisplayPanel.Controls.Add($list[$i])
+    }
+    # Afficher uniquement les 10 de l'onglet actif
+    $activeList = $Global:Boxes[$id - 1]
+    for ($i = 0; $i -lt 10; $i++) {
+        $activeList[$i].Visible = $true
     }
 }
 
-# --- BARRE LATÉRALE ET BOUTONS STANDARDS ---
+# --- BARRE LATÉRALE ---
 $Sidebar = New-Object System.Windows.Forms.Panel
-$Sidebar.Size = New-Object System.Drawing.Size(240, 750)
+$Sidebar.Size = New-Object System.Drawing.Size(240, 760)
 $Sidebar.Dock = "Left"
-$Sidebar.BackColor = [System.Drawing.Color]::LightGray
+$Sidebar.BackColor = [System.Drawing.Color]::Gainsboro
 $Form.Controls.Add($Sidebar)
 
+# Légende fixe (Toujours au premier plan)
 $MenuTitle = New-Object System.Windows.Forms.Label
-$MenuTitle.Text = "📌 LEGENDE COULEURS :`r`n🔵 Bleu = Safe`r`n🟠 Orange = Modere`r`n🔴 Rouge = Hardcore"
+$MenuTitle.Text = "📌 LEGENDE COULEURS :`r`n🔵 Bleu = Sans Risque (Safe)`r`n🟠 Orange = Modere`r`n🔴 Rouge = Avance (Hardcore)"
 $MenuTitle.Location = New-Object System.Drawing.Point(10, 15)
-$MenuTitle.Size = New-Object System.Drawing.Size(220, 60)
+$MenuTitle.Size = New-Object System.Drawing.Size(220, 65)
 $Sidebar.Controls.Add($MenuTitle)
 
+# Boutons de catégories
 $BtnNames = @("1. Network", "2. Privacy", "3. Gaming", "4. Power", "5. RAM", "6. Diag", "7. Apps (Winget)")
 for ($i = 0; $i -lt 7; $i++) {
     $B = New-Object System.Windows.Forms.Button
     $B.Text = $BtnNames[$i]
     $B.Size = New-Object System.Drawing.Size(220, 40)
-    $B.Location = New-Object System.Drawing.Point(10, 90 + ($i * 48))
+    $B.Location = New-Object System.Drawing.Point(10, 95 + ($i * 46))
     $B.Tag = $i + 1
     $B.Add_Click({ Show-Cat $this.Tag })
     $Sidebar.Controls.Add($B)
 }
 
-# --- SÉLECTEUR DE LANGUE SIMPLE ---
+# Sélecteur de langue standard
 $LangCombo = New-Object System.Windows.Forms.ComboBox
-$LangCombo.Location = New-Object System.Drawing.Point(10, 450)
+$LangCombo.Location = New-Object System.Drawing.Point(10, 430)
 $LangCombo.Size = New-Object System.Drawing.Size(220, 30)
 $LangCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 [void]$LangCombo.Items.Add("Français (FR)")
@@ -178,21 +182,17 @@ $LangCombo.SelectedIndex = 0
 $Sidebar.Controls.Add($LangCombo)
 
 $LangCombo.Add_SelectedIndexChanged({
-    if ($LangCombo.SelectedIndex -eq 0) {
-        $BtnApply.Text = "INJECTER LA CONFIGURATION"
-    } else {
-        $BtnApply.Text = "INJECT TARGETED CONFIG"
-    }
+    if ($LangCombo.SelectedIndex -eq 0) { $BtnApply.Text = "INJECTER LA CONFIGURATION" } else { $BtnApply.Text = "INJECT TARGETED CONFIG" }
 })
 
-# --- RECONSTRUCTION CONSOLE LOGS ---
+# --- CONSOLE DE LOGS HISTORIQUE ---
 $LogBox = New-Object System.Windows.Forms.TextBox
 $LogBox.Multiline = $true
 $LogBox.ScrollBars = "Vertical"
-$LogBox.Size = New-Object System.Drawing.Size(700, 100)
+$LogBox.Size = New-Object System.Drawing.Size(730, 100)
 $LogBox.Location = New-Object System.Drawing.Point(260, 520)
 $LogBox.ReadOnly = $true
-$LogBox.Text = ">> [SYSTEM] Moteur pret...`r`n"
+$LogBox.Text = ">> [SYSTEM] Prêt. En attente.`r`n"
 $Form.Controls.Add($LogBox)
 
 function Log($txt) {
@@ -200,19 +200,18 @@ function Log($txt) {
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-# --- BOUTON APPLIQUER ---
+# --- BOUTON MAÎTRE D'INJECTION ---
 $BtnApply = New-Object System.Windows.Forms.Button
 $BtnApply.Text = "INJECTER LA CONFIGURATION"
-$BtnApply.Size = New-Object System.Drawing.Size(700, 45)
+$BtnApply.Size = New-Object System.Drawing.Size(730, 45)
 $BtnApply.Location = New-Object System.Drawing.Point(260, 640)
 $Form.Controls.Add($BtnApply)
 
-# --- BLOC D'EXÉCUTION TECHNIQUE NATIVE ---
+# --- SCRIPT BLOC MOTEUR (EXÉCUTION NATIVE INDÉPENDANTE) ---
 $BtnApply.Add_Click({
     $BtnApply.Enabled = $false
-    Log "Execution lancee..."
+    Log "Lancement des processus d'optimisation..."
 
-    # Execution par ID direct via l'etat des Checkboxes générées
     if ($Global:Boxes[0][0].Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue ; Log "TCPNoDelay OK" }
     if ($Global:Boxes[0][1].Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue ; Log "TcpAckFrequency OK" }
     if ($Global:Boxes[0][2].Checked) { Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value 0xffffffff -ErrorAction SilentlyContinue ; Log "Multimedia Unthrottle OK" }
@@ -290,13 +289,13 @@ $BtnApply.Add_Click({
     if ($Global:Boxes[6][8].Checked) { Log "Installing Git..." ; Start-Process "winget" -ArgumentList "install --id Git.Git --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
     if ($Global:Boxes[6][9].Checked) { Log "Installing Epic Games..." ; Start-Process "winget" -ArgumentList "install --id EpicGames.EpicGamesLauncher --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
 
-    Log "[SUCCESS] Toutes les operations demandees sont terminees."
-    [System.Windows.Forms.MessageBox]::Show("Configuration appliquee !", "Oopti Engine")
+    Log "[SUCCESS] Execution complete."
+    [System.Windows.Forms.MessageBox]::Show("Changements appliqués avec succès !", "Oopti Engine")
     $BtnApply.Enabled = $true
 })
 
-# Lancer d'office l'affichage de l'onglet 1
+# Forcer le rendu du premier onglet à l'ouverture
 Show-Cat 1
 
-# --- AFFICHAGE DE LA FENÊTRE ---
+# --- INSTANCIATION FENÊTRE ---
 $Form.ShowDialog() | Out-Null
