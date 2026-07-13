@@ -12,7 +12,7 @@ $Form = New-Object System.Windows.Forms.Form
 $Form.Text = "Oopti | Windows Performance Suite"
 $Form.Size = New-Object System.Drawing.Size(580, 520)
 $Form.StartPosition = "CenterScreen"
-$Form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 26) # Fond très sombre
+$Form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 26) # Fond sombre chic
 $Form.FormBorderStyle = "FixedDialog"
 $Form.MaximizeBox = $false
 
@@ -118,7 +118,7 @@ Add-ModernButton "⚡ TOUT OPTIMISER POUR LE JEU ⚡" 370 {
         Stop-Service -Name $Svc -Force -ErrorAction SilentlyContinue
         Set-Service -Name $Svc -StartupType Disabled -ErrorAction SilentlyContinue
     }
-    [System.Windows.Forms.MessageBox]::Show("Optimisation globale effectuée avec succès ! Redémarre ton PC pour appliquer tous les changements.", "Full Boost OK")
+    [System.Windows.Forms.MessageBox]::Show("Optimisation globale effectuée ! Redémarre ton PC pour appliquer tous les changements.", "Full Boost OK")
 } -IsMain $true
 
 # --- AFFICHAGE DE LA FENÊTRE ---
