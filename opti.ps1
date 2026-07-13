@@ -1,104 +1,86 @@
 <#
     ===================================================================
-    APPLICATION D'OPTIMISATION AVEC INTERFACE GRAPHIQUE DÉDIÉE (WPF)
+    APPLICATION D'OPTIMISATION PRESTIGE (INTERFACE MODERNE WPF / XAML)
     ===================================================================
 #>
 
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName PresentationFramework, System.Windows.Forms, WindowsBase
 
-# --- CRÉATION DE LA FENÊTRE PRINCIPALE ---
-$Form = New-Object System.Windows.Forms.Form
-$Form.Text = "Oopti | Windows Performance Suite"
-$Form.Size = New-Object System.Drawing.Size(550,500)
-$Form.StartPosition = "CenterScreen"
-$Form.BackColor = [System.Drawing.Color]::FromArgb(25, 25, 35)
-$Form.FormBorderStyle = "FixedDialog"
-$Form.MaximizeBox = $false
-
-# Font globale
-$FontTitre = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
-$FontTexte = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
-
-# --- TITRE DE L'APPLICATION ---
-$TitleLabel = New-Object System.Windows.Forms.Label
-$TitleLabel.Text = "MENU D'OPTIMISATION HARDCORE"
-$TitleLabel.Font = $FontTitre
-$TitleLabel.ForeColor = [System.Drawing.Color]::Cyan
-$TitleLabel.Size = New-Object System.Drawing.Size(500, 40)
-$TitleLabel.Location = New-Object System.Drawing.Point(20, 20)
-$TitleLabel.TextAlign = "MiddleCenter"
-$Form.Controls.Add($TitleLabel)
-
-# --- FONCTION POUR CRÉER DES BOUTONS DISIGN ---
-function Create-OptiButton($Text, $TopLocation, $ScriptBlock) {
-    $Btn = New-Object System.Windows.Forms.Button
-    $Btn.Text = $Text
-    $Btn.Size = New-Object System.Drawing.Size(460, 45)
-    $Btn.Location = New-Object System.Drawing.Point(40, $TopLocation)
-    $Btn.Font = $FontTexte
-    $Btn.ForeColor = [System.Drawing.Color]::White
-    $Btn.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 65)
-    $Btn.FlatStyle = "Flat"
-    $Btn.FlatAppearance.BorderSize = 0
-    $Btn.Cursor = [System.Windows.Forms.Cursors]::Hand
+# --- STRUCTURE XAML (DESIGN DE L'APPLICATION CHIC) ---
+[xml]$XAML = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2000/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2000/xaml"
+        Title="Oopti | Windows Performance Suite" Height="500" Width="600" 
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize" Background="#141419">
     
-    # Effets de survol
-    $Btn.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(65, 65, 90) })
-    $Btn.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(45, 45, 65) })
-    
-    # Action au clic
-    $Btn.Add_Click($ScriptBlock)
-    
-    $Form.Controls.Add($Btn)
-}
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
 
-# --- LOGIQUE DES TWEAKS ---
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="Oopti Performance Suite" FontSize="24" FontWeight="Bold" Foreground="#00FFFF" HorizontalAlignment="Center"/>
+            <TextBlock Text="Optimisation Kernel &amp; Processus pour Ryzen" FontSize="12" Foreground="#8A8A93" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+        </StackPanel>
 
-# Bouton 1 : Processus Svchost
-Create-OptiButton "1. Réduction des processus (Fusion Svchost)" 90 {
+        <StackPanel Grid.Row="1" VerticalAlignment="Center">
+            
+            <Button Name="BtnSvchost" Content="1. Réduction Hardcore des Processus (Fusion Svchost)" Height="45" Margin="0,5,0,5" Background="#202026" Foreground="White" BorderBrush="#2D2D37" BorderThickness="1" FontSize="13" FontWeight="SemiBold"/>
+            <Button Name="BtnTelemetry" Content="2. Purge de la Télémétrie et Services Tracking" Height="45" Margin="0,5,0,5" Background="#202026" Foreground="White" BorderBrush="#2D2D37" BorderThickness="1" FontSize="13" FontWeight="SemiBold"/>
+            <Button Name="BtnLatency" Content="3. Zéro Latence (HPET Désactivé + TCP No Delay)" Height="45" Margin="0,5,0,5" Background="#202026" Foreground="White" BorderBrush="#2D2D37" BorderThickness="1" FontSize="13" FontWeight="SemiBold"/>
+            <Button Name="BtnFPS" Content="4. Boost FPS (Désactivation protections CPU)" Height="45" Margin="0,5,0,5" Background="#202026" Foreground="White" BorderBrush="#2D2D37" BorderThickness="1" FontSize="13" FontWeight="SemiBold"/>
+            
+            <Button Name="BtnAll" Content="⚡ TOUT OPTIMISER POUR LE JEU ⚡" Height="50" Margin="0,25,0,0" Background="#00FFFF" Foreground="Black" BorderThickness="0" FontSize="14" FontWeight="Bold"/>
+        </StackPanel>
+    </Grid>
+</Window>
+"@
+
+# Chargement de la fenêtre WPF
+$Reader = (New-Object System.Xml.XmlNodeReader $XAML)
+$Form = [Windows.Markup.XamlReader]::Load($Reader)
+
+# --- RECONNAISSANCE DES BOUTONS DE L'INTERFACE ---
+$BtnSvchost   = $Form.FindName("BtnSvchost")
+$BtnTelemetry = $Form.FindName("BtnTelemetry")
+$BtnLatency   = $Form.FindName("BtnLatency")
+$BtnFPS       = $Form.FindName("BtnFPS")
+$BtnAll       = $Form.FindName("BtnAll")
+
+# --- ACTIONS DES BOUTONS ---
+
+$BtnSvchost.Add_Click({
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control" -Name "SvcHostSplitThresholdInKB" -Value 10000000 -ErrorAction SilentlyContinue
-    [System.Windows.Forms.MessageBox]::Show("Tweak Svchost appliqué avec succès !", "Oopti Optimizer")
-}
+    [System.Windows.Forms.MessageBox]::Show("Tweak Svchost appliqué !", "Oopti Suite")
+})
 
-# Bouton 2 : Télémétrie
-Create-OptiButton "2. Purge de la Télémétrie & Services espions" 150 {
+$BtnTelemetry.Add_Click({
     $Services = @("DiagTrack", "dmwappushservice", "WerSvc", "PcaSvc")
     foreach ($Svc in $Services) {
         Stop-Service -Name $Svc -Force -ErrorAction SilentlyContinue
         Set-Service -Name $Svc -StartupType Disabled -ErrorAction SilentlyContinue
     }
-    [System.Windows.Forms.MessageBox]::Show("Services inutiles désactivés !", "Oopti Optimizer")
-}
+    [System.Windows.Forms.MessageBox]::Show("Télémétrie purgée !", "Oopti Suite")
+})
 
-# Bouton 3 : Latence et Timers
-Create-OptiButton "3. Zéro Latence (HPET Désactivé + TCP No Delay)" 210 {
+$BtnLatency.Add_Click({
     bcdedit /set useplatformclock false -ErrorAction SilentlyContinue
     bcdedit /set disabledynamictick yes -ErrorAction SilentlyContinue
     $NetworkPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
     Set-ItemProperty -Path $NetworkPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue
     Set-ItemProperty -Path $NetworkPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue
-    [System.Windows.Forms.MessageBox]::Show("Optimisation Kernel et Ping réseau injectée !", "Oopti Optimizer")
-}
+    [System.Windows.Forms.MessageBox]::Show("Timers et réseau optimisés !", "Oopti Suite")
+})
 
-# Bouton 4 : Mitigations CPU
-Create-OptiButton "4. Boost FPS (Désactivation protections CPU)" 270 {
+$BtnFPS.Add_Click({
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "FeatureSettingsOverride" -Value 3 -ErrorAction SilentlyContinue
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "FeatureSettingsOverrideMask" -Value 3 -ErrorAction SilentlyContinue
-    [System.Windows.Forms.MessageBox]::Show("Atténuations Spectre/Meltdown désactivées ! FPS libérés.", "Oopti Optimizer")
-}
+    [System.Windows.Forms.MessageBox]::Show("Protections CPU désactivées ! FPS libérés.", "Oopti Suite")
+})
 
-# Bouton 5 : Tout Appliquer d'un coup
-$BtnAll = New-Object System.Windows.Forms.Button
-$BtnAll.Text = "⚡ TOUT OPTIMISER (MAX PERFORMANCE) ⚡"
-$BtnAll.Size = New-Object System.Drawing.Size(460, 50)
-$BtnAll.Location = New-Object System.Drawing.Point(40, 350)
-$BtnAll.Font = $FontTexte
-$BtnAll.ForeColor = [System.Drawing.Color]::Black
-$BtnAll.BackColor = [System.Drawing.Color]::Cyan
-$BtnAll.FlatStyle = "Flat"
 $BtnAll.Add_Click({
-    # Exécution en chaîne
+    # Execution globale
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control" -Name "SvcHostSplitThresholdInKB" -Value 10000000 -ErrorAction SilentlyContinue
     bcdedit /set useplatformclock false -ErrorAction SilentlyContinue
     bcdedit /set disabledynamictick yes -ErrorAction SilentlyContinue
@@ -109,9 +91,8 @@ $BtnAll.Add_Click({
         Stop-Service -Name $Svc -Force -ErrorAction SilentlyContinue
         Set-Service -Name $Svc -StartupType Disabled -ErrorAction SilentlyContinue
     }
-    [System.Windows.Forms.MessageBox]::Show("Le PC est entièrement optimisé ! Veuillez redémarrer pour appliquer tous les changements.", "Full Boost OK")
+    [System.Windows.Forms.MessageBox]::Show("PC optimisé au maximum ! Pensez à redémarrer.", "Full Boost")
 })
-$Form.Controls.Add($BtnAll)
 
-# --- AFFICHAGE DE L'APPLICATION ---
-$Form.ShowDialog()
+# Lancement de l'application dédiée
+$Form.ShowDialog() | Out-Null
