@@ -1,13 +1,13 @@
 <#
     ===================================================================
-    APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 1 (CYBER-DESIGN REBOOT)
+    APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 1 (REBOOT TOTAL & FIX)
     ===================================================================
 #>
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# --- ARCHITECTURE DES TRADUCTIONS ---
+# --- ARCHITECTURE DES TRADUCTIONS ET FIX ALLER-RETOUR ---
 $Global:CurrentLang = "FR"
 $Global:Translations = @{
     "FR" = @{
@@ -18,6 +18,7 @@ $Global:Translations = @{
         "Btn4"     = "  ⚡  POWER & HARDWARE"
         "Btn5"     = "  🚀  RAM & CLEANER"
         "Btn6"     = "  🛠️  SYSTEM DIAG"
+        "Btn7"     = "  📦  APP INSTALLER"
         "Apply"    = "INJECTER LA CONFIGURATION SELECTIONNEE"
         "LogInit"  = " [SYSTEM] Moteur Oopti initialisé. En attente d'instructions..."
     }
@@ -29,6 +30,7 @@ $Global:Translations = @{
         "Btn4"     = "  ⚡  POWER & HARDWARE"
         "Btn5"     = "  🚀  RAM & CLEANER"
         "Btn6"     = "  🛠️  SYSTEM DIAG"
+        "Btn7"     = "  📦  APP INSTALLER"
         "Apply"    = "INJECT TARGETED CONFIGURATION"
         "LogInit"  = " [SYSTEM] Oopti Engine initialized. Awaiting instructions..."
     }
@@ -37,32 +39,26 @@ $Global:Translations = @{
 # --- FENÊTRE PRINCIPALE ---
 $Form = New-Object System.Windows.Forms.Form
 $Form.Text = $Global:Translations[$Global:CurrentLang]["Title"]
-$Form.Size = New-Object System.Drawing.Size(1120, 860)
+$Form.Size = New-Object System.Drawing.Size(1120, 890)
 $Form.StartPosition = "CenterScreen"
-$Form.BackColor = [System.Drawing.Color]::FromArgb(10, 10, 14) # Fond ultra sombre
+$Form.BackColor = [System.Drawing.Color]::FromArgb(10, 10, 14)
 $Form.FormBorderStyle = "FixedSingle"
 $Form.MaximizeBox = $false
 
-# Polices Premium
+# Polices
 $FontTitle   = New-Object System.Drawing.Font("Segoe UI", 14, [System.Drawing.FontStyle]::Bold)
 $FontNav     = New-Object System.Drawing.Font("Segoe UI Semibold", 10)
 $FontSection = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
 $FontItem    = New-Object System.Drawing.Font("Segoe UI Semibold", 9)
 $FontLog     = New-Object System.Drawing.Font("Consolas", 9.5)
+$FontLegend  = New-Object System.Drawing.Font("Segoe UI", 8.5, [System.Drawing.FontStyle]::Italic)
 
-# --- SIDEBAR LATÉRALE DESIGN ---
+# --- SIDEBAR LATÉRALE ---
 $Sidebar = New-Object System.Windows.Forms.Panel
-$Sidebar.Size = New-Object System.Drawing.Size(260, 860)
+$Sidebar.Size = New-Object System.Drawing.Size(260, 890)
 $Sidebar.Dock = "Left"
 $Sidebar.BackColor = [System.Drawing.Color]::FromArgb(16, 16, 22)
 $Form.Controls.Add($Sidebar)
-
-# Séparateur vertical lumineux (Bordure droite de la sidebar)
-$LineNav = New-Object System.Windows.Forms.Panel
-$LineNav.Size = New-Object System.Drawing.Size(2, 860)
-$LineNav.Dock = "Right"
-$LineNav.BackColor = [System.Drawing.Color]::FromArgb(30, 30, 45)
-$Sidebar.Controls.Add($LineNav)
 
 $LogoLabel = New-Object System.Windows.Forms.Label
 $LogoLabel.Text = "⚡ OOPTI MASTER"
@@ -73,9 +69,9 @@ $LogoLabel.Location = New-Object System.Drawing.Point(0, 25)
 $LogoLabel.TextAlign = "MiddleCenter"
 $Sidebar.Controls.Add($LogoLabel)
 
-# --- COMBOPHONE LANGUE CUSTOM ---
+# --- COMBOPHONE LANGUE CORRIGÉ (ALLER-RETOUR) ---
 $LangCombo = New-Object System.Windows.Forms.ComboBox
-$LangCombo.Location = New-Object System.Drawing.Point(35, 760)
+$LangCombo.Location = New-Object System.Drawing.Point(35, 800)
 $LangCombo.Size = New-Object System.Drawing.Size(180, 30)
 $LangCombo.DropDownStyle = [System.Windows.Forms.ComboBoxStyle]::DropDownList
 $LangCombo.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 36)
@@ -93,7 +89,7 @@ $DisplayPanel.Location = New-Object System.Drawing.Point(280, 25)
 $DisplayPanel.BackColor = [System.Drawing.Color]::FromArgb(15, 15, 20)
 $Form.Controls.Add($DisplayPanel)
 
-# --- LOGIQUE DES PANNEAUX ÉTANCHES INTERNES ---
+# --- LOGIQUE DES PANNEAUX ÉTANCHES AVEC FIX FORCÉ (REFRESH) ---
 function Create-CategoryPanel {
     $P = New-Object System.Windows.Forms.Panel
     $P.Size = New-Object System.Drawing.Size(820, 560)
@@ -109,40 +105,40 @@ $PanelGaming  = Create-CategoryPanel
 $PanelPower   = Create-CategoryPanel
 $PanelRam     = Create-CategoryPanel
 $PanelRepair  = Create-CategoryPanel
+$PanelApps    = Create-CategoryPanel # Nouvelle catégorie d'installation
 
-# Switcher instantané sans glitch
+# Switcher robuste anti-blocage
 function Switch-View($TargetPanel, $ActiveBtn) {
     $TargetPanel.BringToFront()
-    # Reset de la couleur de tous les boutons de navigation (géré en Partie 2)
     foreach ($B in $Global:NavButtons) {
         $B.BackColor = [System.Drawing.Color]::Transparent
         $B.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 180)
     }
     $ActiveBtn.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 36)
     $ActiveBtn.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 200)
+    $DisplayPanel.Refresh() # Force Windows à redessiner l'interface immédiatement
 }
 # ===================================================================
-# APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 2 (INTERACTION & INTERFACES)
+# APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 2 (LANGUE, BOUTONS & LÉGENDE)
 # ===================================================================
 
 $Global:NavButtons = New-Object System.Collections.Generic.List[System.Windows.Forms.Button]
 
-# --- USINE À BOUTONS PREMIUM AVEC HOVER EFFECT ---
+# --- CONSTRUCTION DES BOUTONS DE NAVIGATION INTERACTIFS ---
 function Create-SidebarButton($LabelKey, $Y, $TargetPanel) {
     $Btn = New-Object System.Windows.Forms.Button
     $Btn.Text = $Global:Translations[$Global:CurrentLang][$LabelKey]
     $Btn.Font = $FontNav
-    $Btn.Size = New-Object System.Drawing.Size(258, 50)
+    $Btn.Size = New-Object System.Drawing.Size(258, 48)
     $Btn.Location = New-Object System.Drawing.Point(0, $Y)
     $Btn.FlatStyle = "Flat"
     $Btn.FlatAppearance.BorderSize = 0
     $Btn.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 180)
     $Btn.BackColor = [System.Drawing.Color]::Transparent
     $Btn.TextAlign = "MiddleLeft"
-    $Btn.Padding = New-Object System.Windows.Forms.Padding(25, 0, 0, 0)
+    $Btn.Padding = New-Object System.Windows.Forms.Padding(20, 0, 0, 0)
     $Btn.Cursor = [System.Windows.Forms.Cursors]::Hand
     
-    # Effets de survol (Hover) dynamiques
     $Btn.Add_MouseEnter({
         if ($this.ForeColor -ne [System.Drawing.Color]::FromArgb(0, 255, 200)) {
             $this.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 28)
@@ -162,19 +158,19 @@ function Create-SidebarButton($LabelKey, $Y, $TargetPanel) {
     return $Btn
 }
 
-# Initialisation des boutons physiques
-$BtnNav1 = Create-SidebarButton "Btn1" 110 $PanelNet
-$BtnNav2 = Create-SidebarButton "Btn2" 165 $PanelPrivacy
-$BtnNav3 = Create-SidebarButton "Btn3" 220 $PanelGaming
-$BtnNav4 = Create-SidebarButton "Btn4" 275 $PanelPower
-$BtnNav5 = Create-SidebarButton "Btn5" 330 $PanelRam
-$BtnNav6 = Create-SidebarButton "Btn6" 385 $PanelRepair
+$BtnNav1 = Create-SidebarButton "Btn1" 100 $PanelNet
+$BtnNav2 = Create-SidebarButton "Btn2" 150 $PanelPrivacy
+$BtnNav3 = Create-SidebarButton "Btn3" 200 $PanelGaming
+$BtnNav4 = Create-SidebarButton "Btn4" 250 $PanelPower
+$BtnNav5 = Create-SidebarButton "Btn5" 300 $PanelRam
+$BtnNav6 = Create-SidebarButton "Btn6" 350 $PanelRepair
+$BtnNav7 = Create-SidebarButton "Btn7" 400 $PanelApps
 
-# Focus visuel par défaut sur le premier bouton
+# Focus initial sur le premier onglet
 $BtnNav1.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 36)
 $BtnNav1.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 200)
 
-# --- TRADUCTION À LA VOLÉE SANS RECHARGEMENT ---
+# --- SÉCURISATION DU CHANGEMENT DE LANGUE ALLER-RETOUR ---
 $LangCombo.Add_SelectedIndexChanged({
     if ($LangCombo.SelectedIndex -eq 0) { $Global:CurrentLang = "FR" } else { $Global:CurrentLang = "EN" }
     $Form.Text = $Global:Translations[$Global:CurrentLang]["Title"]
@@ -184,53 +180,40 @@ $LangCombo.Add_SelectedIndexChanged({
     $BtnNav4.Text = $Global:Translations[$Global:CurrentLang]["Btn4"]
     $BtnNav5.Text = $Global:Translations[$Global:CurrentLang]["Btn5"]
     $BtnNav6.Text = $Global:Translations[$Global:CurrentLang]["Btn6"]
+    $BtnNav7.Text = $Global:Translations[$Global:CurrentLang]["Btn7"]
     $BtnApply.Text = $Global:Translations[$Global:CurrentLang]["Apply"]
 })
 
-# --- COMPOSANTS INTERNES STYLISÉS (HEADERS & CONTROLS) ---
+# --- AFFICHAGE DE LA LÉGENDE DU CODE COULEUR SUR LA SIDEBAR ---
+$LegendLabel = New-Object System.Windows.Forms.Label
+$LegendLabel.Text = "📌 CODE COULEUR TWEAKS :`r`n🟢 Gris/Vert : Sans risque (Safe)`r`n🟡 Jaune : Modéré (Averti)`r`n🔴 Rouge : Avancé (Utilisateur Expert)"
+$LegendLabel.Font = $FontLegend
+$LegendLabel.ForeColor = [System.Drawing.Color]::FromArgb(140, 140, 150)
+$LegendLabel.Size = New-Object System.Drawing.Size(220, 75)
+$LegendLabel.Location = New-Object System.Drawing.Point(20, 680)
+$Sidebar.Controls.Add($LegendLabel)
+
+# --- CONSTRUCTEUR DE TITRES ET DE CASES À COCHER ---
 function Create-Header($Text, $X, $Y, $ParentPanel) {
-    # Label Titre
     $Lbl = New-Object System.Windows.Forms.Label
-    $Lbl.Text = $Text
-    $Lbl.Font = $FontSection
-    $Lbl.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 230)
-    $Lbl.Location = New-Object System.Drawing.Point($X, $Y)
-    $Lbl.Size = New-Object System.Drawing.Size(380, 25)
+    $Lbl.Text = $Text ; $Lbl.Font = $FontSection ; $Lbl.ForeColor = [System.Drawing.Color]::FromArgb(220, 220, 230)
+    $Lbl.Location = New-Object System.Drawing.Point($X, $Y) ; $Lbl.Size = New-Object System.Drawing.Size(380, 25)
     $ParentPanel.Controls.Add($Lbl)
     
-    # Ligne d'accentuation Cyber sous chaque titre
     $Underline = New-Object System.Windows.Forms.Panel
-    $Underline.Size = New-Object System.Drawing.Size(80, 2)
-    $Underline.Location = New-Object System.Drawing.Point($X, $Y + 23)
-    $Underline.BackColor = [System.Drawing.Color]::FromArgb(0, 255, 200)
+    $Underline.Size = New-Object System.Drawing.Size(60, 2) ; $Underline.Location = New-Object System.Drawing.Point($X, $Y + 23) ; $Underline.BackColor = [System.Drawing.Color]::FromArgb(0, 255, 200)
     $ParentPanel.Controls.Add($Underline)
 }
 
 function Add-Option($Text, $Risk, $X, $Y, $ParentPanel) {
-    # Case à cocher custom
     $CB = New-Object System.Windows.Forms.CheckBox
-    $CB.Text = $Text
-    $CB.Font = $FontItem
-    $CB.Location = New-Object System.Drawing.Point($X, $Y)
-    $CB.Size = New-Object System.Drawing.Size(380, 24)
-    $CB.FlatStyle = "Flat"
-    $CB.Cursor = [System.Windows.Forms.Cursors]::Hand
+    $CB.Text = $Text ; $CB.Font = $FontItem ; $CB.Location = New-Object System.Drawing.Point($X, $Y)
+    $CB.Size = New-Object System.Drawing.Size(380, 24) ; $CB.FlatStyle = "Flat" ; $CB.Cursor = [System.Windows.Forms.Cursors]::Hand
     
-    # Couleur selon l'indicateur de risque pour épurer l'affichage
-    if ($Risk -eq "SAFE") { 
-        $CB.ForeColor = [System.Drawing.Color]::FromArgb(150, 160, 175) # Gris neutre élégant
-        $CB.Checked = $true 
-    }
-    elseif ($Risk -eq "MEDIUM") { 
-        $CB.ForeColor = [System.Drawing.Color]::FromArgb(241, 196, 15) # Alerte Jaune
-        $CB.Checked = $false 
-    }
-    else { 
-        $CB.ForeColor = [System.Drawing.Color]::FromArgb(231, 76, 60) # Danger Rouge
-        $CB.Checked = $false 
-    }
+    if ($Risk -eq "SAFE") { $CB.ForeColor = [System.Drawing.Color]::FromArgb(150, 160, 175) ; $CB.Checked = $true }
+    elif ($Risk -eq "MEDIUM") { $CB.ForeColor = [System.Drawing.Color]::FromArgb(241, 196, 15) ; $CB.Checked = $false }
+    else { $CB.ForeColor = [System.Drawing.Color]::FromArgb(231, 76, 60) ; $CB.Checked = $false }
     
-    # Effet visuel lors du clic sur l'option
     $CB.Add_CheckedChanged({
         if ($this.Checked) { $this.Font = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold) }
         else { $this.Font = New-Object System.Drawing.Font("Segoe UI Semibold", 9) }
@@ -306,7 +289,7 @@ $cb38 = Add-Option "Désactiver l'indexation Windows Search (Économise le SSD)"
 $cb39 = Add-Option "Forcer l'isolation complète des processus Svchost" "SAFE" 420 150 $PanelPower
 $cb40 = Add-Option "Désactiver le throttling thermique logiciel CPU" "HARDCORE" 420 180 $PanelPower
 # ===================================================================
-# APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 5 (DONNÉES CAT 5 & 6)
+# APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 5 (DONNÉES CAT 5, 6 & 7)
 # ===================================================================
 
 # --- INJECTER LE CONTENU : CATEGORIE 5 (RAM & CLEANER) ---
@@ -339,7 +322,22 @@ $cb58 = Add-Option "Vérifier le statut de l'environnement de récupération Win
 $cb59 = Add-Option "Purger les anciens packages d'installation MSI corrompus" "MEDIUM" 420 150 $PanelRepair
 $cb60 = Add-Option "Réinitialiser les compteurs de performance de l'OS (Lodctr)" "SAFE" 420 180 $PanelRepair
 
-# Force l'affichage initial du tout premier panneau pour éviter l'écran noir
+# --- INJECTER LE CONTENU : CATEGORIE 7 (APP INSTALLER via WINGET) ---
+Create-Header "LOGICIELS INTERNET & OUTILS" 20 20 $PanelApps
+$cb61 = Add-Option "Installer Google Chrome (Navigateur)" "SAFE" 20 60 $PanelApps
+$cb62 = Add-Option "Installer Mozilla Firefox (Navigateur)" "SAFE" 20 90 $PanelApps
+$cb63 = Add-Option "Installer Discord (Communication)" "SAFE" 20 120 $PanelApps
+$cb64 = Add-Option "Installer Steam (Gaming Platform)" "SAFE" 20 150 $PanelApps
+$cb65 = Add-Option "Installer VLC Media Player (Lecteur Vidéo)" "SAFE" 20 180 $PanelApps
+
+Create-Header "UTILITAIRES DE DÉVELOPPEMENT & PROD" 420 20 $PanelApps
+$cb66 = Add-Option "Installer Visual Studio Code (Éditeur de code)" "SAFE" 420 60 $PanelApps
+$cb67 = Add-Option "Installer 7-Zip (Gestionnaire d'archives)" "SAFE" 420 90 $PanelApps
+$cb68 = Add-Option "Installer Notepad++ (Éditeur de texte avancé)" "SAFE" 420 120 $PanelApps
+$cb69 = Add-Option "Installer Git (Gestionnaire de version)" "SAFE" 420 150 $PanelApps
+$cb70 = Add-Option "Installer Epic Games Launcher (Gaming)" "SAFE" 420 180 $PanelApps
+
+# Force l'initialisation sur le premier écran sans bug
 Switch-View $PanelNet $BtnNav1
 # ===================================================================
 # APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 6 (CONSOLE & MOTEUR PARTIE A)
@@ -435,7 +433,7 @@ $BtnApply.Add_Click({
     if ($cb39.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control" -Name "SvcHostSplitThresholdInKB" -Value 10000000 -ErrorAction SilentlyContinue ; Write-Log "Processus Svchost isolés." }
     if ($cb40.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Power" -Name "PowerThrottlingOff" -Value 1 -ErrorAction SilentlyContinue ; Write-Log "Throttling énergétique logiciel désactivé." }
     # ===================================================================
-# APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 8 (MOTEUR PARTIE C & FIN)
+# APPLICATION OOPTI SUITE MASTER PRO V8 - PARTIE 8 (MOTEUR PARTIE C, WINGET & FIN)
 # ===================================================================
 
     # --- EXECUTION CATEGORIE 5 : RAM & CLEANER ($cb41 a $cb50) ---
@@ -443,19 +441,18 @@ $BtnApply.Add_Click({
         $Processes = Get-Process -ErrorAction SilentlyContinue
         foreach ($Proc in $Processes) {
             try {
-                $Handle = $Proc.Handle
                 [void][System.Runtime.InteropServices.Marshal]::ReleaseComObject($Proc)
             } catch {}
         }
         Write-Log "Réduction du jeu de travail (RAM Idle) terminée."
     }
-    if ($cb42.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "IoPageLockLimit" -Value 65536 -ErrorAction SilentlyContinue ; Write-Log "IoPageLockLimit calibré pour gros buffers." }
+    if ($cb42.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "IoPageLockLimit" -Value 65536 -ErrorAction SilentlyContinue ; Write-Log "IoPageLockLimit calibré." }
     if ($cb43.Checked) { [System.GC]::Collect() ; [System.GC]::WaitForPendingFinalizers() ; Write-Log "Cache .NET et Standby List purgés." }
-    if ($cb44.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "DisablePagingExecutive" -Value 1 -ErrorAction SilentlyContinue ; Write-Log "Paging Executive désactivé (Drivers bloqués en RAM)." }
-    if ($cb45.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "ClearPageFileAtShutdown" -Value 0 -ErrorAction SilentlyContinue ; Write-Log "Optimisation de fermeture mémoire validée." }
-    if ($cb46.Checked) { Stop-Service -Name "FontCache" -Force -ErrorAction SilentlyContinue ; Remove-Item -Path "$env:windir\ServiceProfiles\LocalService\AppData\Local\FontCache\*.dat" -Force -ErrorAction SilentlyContinue ; Write-Log "Cache des polices système purgé." }
-    if ($cb47.Checked) { Remove-Item -Path "$env:LocalAppData\Microsoft\Windows\Explorer\thumbcache_*.db" -Force -ErrorAction SilentlyContinue ; Write-Log "Cache des miniatures Explorer supprimé." }
-    if ($cb48.Checked) { Remove-Item -Path "$env:windir\*.log", "$env:windir\*.bak" -Force -ErrorAction SilentlyContinue ; Write-Log "Résidus d'installation système effacés." }
+    if ($cb44.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "DisablePagingExecutive" -Value 1 -ErrorAction SilentlyContinue ; Write-Log "Paging Executive désactivé." }
+    if ($cb45.Checked) { Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "ClearPageFileAtShutdown" -Value 0 -ErrorAction SilentlyContinue ; Write-Log "Optimisation mémoire validée." }
+    if ($cb46.Checked) { Stop-Service -Name "FontCache" -Force -ErrorAction SilentlyContinue ; Remove-Item -Path "$env:windir\ServiceProfiles\LocalService\AppData\Local\FontCache\*.dat" -Force -ErrorAction SilentlyContinue ; Write-Log "Cache des polices purgé." }
+    if ($cb47.Checked) { Remove-Item -Path "$env:LocalAppData\Microsoft\Windows\Explorer\thumbcache_*.db" -Force -ErrorAction SilentlyContinue ; Write-Log "Cache des miniatures supprimé." }
+    if ($cb48.Checked) { Remove-Item -Path "$env:windir\*.log", "$env:windir\*.bak" -Force -ErrorAction SilentlyContinue ; Write-Log "Résidus de logs système effacés." }
     if ($cb49.Checked) { 
         $Logs = Get-WinEvent -ListLog * -ErrorAction SilentlyContinue
         foreach ($Log in $Logs) { try { [System.Diagnostics.Eventing.Reader.EventLogSession]::GlobalSession.ClearLog($Log.LogName) } catch {} }
@@ -476,9 +473,21 @@ $BtnApply.Add_Click({
         Start-Service -Name "wuauserv" -ErrorAction SilentlyContinue
         Write-Log "Composants Windows Update réinitialisés."
     }
-    if ($cb58.Checked) { reagentc /info | Out-Null ; Write-Log "Vérification statut de l'environnement WinRE exécutée." }
-    if ($cb59.Checked) { Remove-Item -Path "$env:windir\Installer\*.tmp" -Force -ErrorAction SilentlyContinue ; Write-Log "Packages MSI temporaires corrompus purgés." }
+    if ($cb58.Checked) { reagentc /info | Out-Null ; Write-Log "Vérification statut environnement WinRE." }
+    if ($cb59.Checked) { Remove-Item -Path "$env:windir\Installer\*.tmp" -Force -ErrorAction SilentlyContinue ; Write-Log "Packages MSI temporaires purgés." }
     if ($cb60.Checked) { lodctr /R | Out-Null ; Write-Log "Compteurs de performance OS restaurés." }
+
+    # --- EXECUTION CATEGORIE 7 : APP INSTALLER via WINGET ($cb61 a $cb70) ---
+    if ($cb61.Checked) { Write-Log "[WINGET] Installation de Google Chrome en cours..." ; Start-Process "winget" -ArgumentList "install --id Google.Chrome --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb62.Checked) { Write-Log "[WINGET] Installation de Mozilla Firefox en cours..." ; Start-Process "winget" -ArgumentList "install --id Mozilla.Firefox --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb63.Checked) { Write-Log "[WINGET] Installation de Discord en cours..." ; Start-Process "winget" -ArgumentList "install --id Discord.Discord --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb64.Checked) { Write-Log "[WINGET] Installation de Steam en cours..." ; Start-Process "winget" -ArgumentList "install --id Valve.Steam --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb65.Checked) { Write-Log "[WINGET] Installation de VLC en cours..." ; Start-Process "winget" -ArgumentList "install --id VideoLAN.VLC --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb66.Checked) { Write-Log "[WINGET] Installation de VS Code en cours..." ; Start-Process "winget" -ArgumentList "install --id Microsoft.VisualStudioCode --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb67.Checked) { Write-Log "[WINGET] Installation de 7-Zip en cours..." ; Start-Process "winget" -ArgumentList "install --id 7zip.7zip --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb68.Checked) { Write-Log "[WINGET] Installation de Notepad++ en cours..." ; Start-Process "winget" -ArgumentList "install --id Notepad++.Notepad++ --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb69.Checked) { Write-Log "[WINGET] Installation de Git en cours..." ; Start-Process "winget" -ArgumentList "install --id Git.Git --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
+    if ($cb70.Checked) { Write-Log "[WINGET] Installation de Epic Games Launcher en cours..." ; Start-Process "winget" -ArgumentList "install --id EpicGames.EpicGamesLauncher --silent --accept-source-agreements --accept-package-agreements" -NoNewWindow -Wait }
 
     # --- SÉCURISATION ET FIN D'OPÉRATION ---
     Write-Log "[SUCCESS] Protocole Master Pro V8 injecté globalement."
@@ -486,5 +495,5 @@ $BtnApply.Add_Click({
     $BtnApply.Enabled = $true
 })
 
-# --- ENVOL DU MAGASIN INTERFACE ---
+# --- ENVOL ET AFFICHAGE DE L'INTERFACE DE L'APPLICATION ---
 $Form.ShowDialog() | Out-Null
