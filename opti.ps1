@@ -1,22 +1,22 @@
 <#
     ===================================================================
-    APPLICATION OOPTI SUITE SUBLIME EDITION V7 - PARTIE 1
+    APPLICATION OOPTI SUITE SUBLIME EDITION V7 - PARTIE 1 (CORRIGÉE)
     ===================================================================
 #>
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# --- FENÊTRE PRINCIPALE PREMIUM (SANS BORDS CLASSIQUES) ---
+# --- FENÊTRE PRINCIPALE PREMIUM (DESIGN SOMBRE ÉPURÉ) ---
 $Form = New-Object System.Windows.Forms.Form
-$Form.Text = "Oopti Suite // Sublime Performance"
+$Form.Text = "Oopti Suite // Sublime Performance V7"
 $Form.Size = New-Object System.Drawing.Size(1050, 850)
 $Form.StartPosition = "CenterScreen"
-$Form.BackColor = [System.Drawing.Color]::FromArgb(11, 11, 16) # Fond ultra sombre
+$Form.BackColor = [System.Drawing.Color]::FromArgb(11, 11, 16)
 $Form.FormBorderStyle = "FixedSingle"
 $Form.MaximizeBox = $false
 
-# --- POLICES INTERFACES ÉPURÉES ---
+# --- POLICES INTERFACES ---
 $FontTitle = New-Object System.Drawing.Font("Segoe UI", 13, [System.Drawing.FontStyle]::Bold)
 $FontNav = New-Object System.Drawing.Font("Segoe UI", 10, [System.Drawing.FontStyle]::Bold)
 $FontSection = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
@@ -27,7 +27,7 @@ $FontLog = New-Object System.Drawing.Font("Consolas", 9)
 $Sidebar = New-Object System.Windows.Forms.Panel
 $Sidebar.Size = New-Object System.Drawing.Size(220, 850)
 $Sidebar.Dock = "Left"
-$Sidebar.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 26) # Teinte légèrement plus claire
+$Sidebar.BackColor = [System.Drawing.Color]::FromArgb(18, 18, 26)
 $Form.Controls.Add($Sidebar)
 
 # Logo / Titre dans la Sidebar
@@ -40,22 +40,17 @@ $LogoLabel.Location = New-Object System.Drawing.Point(0, 20)
 $LogoLabel.TextAlign = "MiddleCenter"
 $Sidebar.Controls.Add($LogoLabel)
 
-# --- PANELS DE CONTENU (LES "ONGLETS" APPLATIS) ---
-$MainContainer = New-Object System.Windows.Forms.Panel
-$MainContainer.Size = New-Object System.Drawing.Size(810, 540)
-$MainContainer.Location = New-Object System.Drawing.Point(230, 20)
-$Form.Controls.Add($MainContainer)
+# --- PANELS DE CONTENU (CORRECTION DES CONTENEURS) ---
+# Au lieu d'un container intermédiaire qui bloquait l'affichage, on aligne directement les zones sur le Formulaire
+$PanelTweaks = New-Object System.Windows.Forms.Panel ; $PanelTweaks.Size = New-Object System.Drawing.Size(800, 550) ; $PanelTweaks.Location = New-Object System.Drawing.Point(230, 20) ; $PanelTweaks.Visible = $true
+$PanelApps   = New-Object System.Windows.Forms.Panel ; $PanelApps.Size = New-Object System.Drawing.Size(800, 550) ; $PanelApps.Location = New-Object System.Drawing.Point(230, 20) ; $PanelApps.Visible = $false
+$PanelBloat  = New-Object System.Windows.Forms.Panel ; $PanelBloat.Size = New-Object System.Drawing.Size(800, 550) ; $PanelBloat.Location = New-Object System.Drawing.Point(230, 20) ; $PanelBloat.Visible = $false
 
-# Création des 3 conteneurs invisibles de base
-$PanelTweaks = New-Object System.Windows.Forms.Panel ; $PanelTweaks.Size = $MainContainer.Size ; $PanelTweaks.Visible = $true
-$PanelApps   = New-Object System.Windows.Forms.Panel ; $PanelApps.Size = $MainContainer.Size ; $PanelApps.Visible = $false
-$PanelBloat  = New-Object System.Windows.Forms.Panel ; $PanelBloat.Size = $MainContainer.Size ; $PanelBloat.Visible = $false
+$Form.Controls.Add($PanelTweaks)
+$Form.Controls.Add($PanelApps)
+$Form.Controls.Add($PanelBloat)
 
-$MainContainer.Controls.Add($PanelTweaks)
-$MainContainer.Controls.Add($PanelApps)
-$MainContainer.Controls.Add($PanelBloat)
-
-# --- BOUTONS DE LA SIDEBAR ---
+# --- NAVIGATION DE LA SIDEBAR ---
 function Create-NavButton($Text, $Y, $TargetPanel) {
     $Btn = New-Object System.Windows.Forms.Button
     $Btn.Text = $Text
@@ -71,7 +66,10 @@ function Create-NavButton($Text, $Y, $TargetPanel) {
     $Btn.Cursor = [System.Windows.Forms.Cursors]::Hand
     
     $Btn.Add_Click({
-        $PanelTweaks.Visible = $false ; $PanelApps.Visible = $false ; $PanelBloat.Visible = $false
+        # Cache tous les panneaux avant d'afficher le bon
+        $PanelTweaks.Visible = $false
+        $PanelApps.Visible = $false
+        $PanelBloat.Visible = $false
         $TargetPanel.Visible = $true
     })
     $Sidebar.Controls.Add($Btn)
@@ -82,7 +80,7 @@ $BtnNav1 = Create-NavButton "⚙️ SYSTEM TWEAKS" 120 $PanelTweaks
 $BtnNav2 = Create-NavButton "📦 PACK APPLICATIONS" 170 $PanelApps
 $BtnNav3 = Create-NavButton "🗑️ DEBLOATER NATIF" 220 $PanelBloat
 
-# Style d'en-tête pour les options
+# Fonctions d'outils d'affichage
 function Create-Header($Text, $X, $Y, $Parent) {
     $Lbl = New-Object System.Windows.Forms.Label
     $Lbl.Text = $Text
