@@ -99,17 +99,23 @@ $PanelApps    = Create-CategoryPanel
 
 # Switcher ultra-robuste par visibilité explicite
 function Switch-View($TargetPanel, $ActiveBtn) {
-    foreach ($P in $Global:AllPanels) {
-        $P.Visible = $false
-    }
-    $TargetPanel.Visible = $true
+    # Nettoie complètement le panneau d'affichage principal
+    $DisplayPanel.Controls.Clear()
     
+    # Injecte uniquement le panneau sélectionné
+    $TargetPanel.Visible = $true
+    $DisplayPanel.Controls.Add($TargetPanel)
+    
+    # Réinitialise le style des boutons
     foreach ($B in $Global:NavButtons) {
         $B.BackColor = [System.Drawing.Color]::Transparent
         $B.ForeColor = [System.Drawing.Color]::FromArgb(160, 160, 180)
     }
     $ActiveBtn.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 36)
     $ActiveBtn.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 200)
+    
+    # Force la mise à jour graphique du système
+    $DisplayPanel.Refresh()
 }
 
 # --- CONSTRUCTION DES BOUTONS DE NAVIGATION ---
@@ -160,7 +166,7 @@ $LegendLabel.Text = "📌 CORRESPONDANCE COULEURS :`n🟢 Gris : Sans Risque (Sa
 $LegendLabel.Font = $FontLegend
 $LegendLabel.ForeColor = [System.Drawing.Color]::FromArgb(140, 140, 150)
 $LegendLabel.Size = New-Object System.Drawing.Size(230, 80)
-$LegendLabel.Location = New-Object System.Drawing.Point(15, 680)
+$LegendLabel.Location = New-Object System.Drawing.Point(15, 75)
 $Sidebar.Controls.Add($LegendLabel)
 
 # --- COMBOPHONE SELECTION DE LANGUE ---
