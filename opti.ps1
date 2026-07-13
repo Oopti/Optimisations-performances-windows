@@ -1,351 +1,363 @@
 <#
     ===================================================================
-    APPLICATION OOPTI SUITE PRO V3 (PANEL AVANCÉ & TWEAKS D'ÉLITE)
+    APPLICATION OOPTI SUITE ULTRA PRO V4 (GAMING INTERFACE & TWEAKS HARDCORE)
     ===================================================================
 #>
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-# --- CONFIGURATION DE LA FENÊTRE PRINCIPALE ---
+# --- INITIALISATION ET THEME GRAPHIQUE ---
 $Form = New-Object System.Windows.Forms.Form
-$Form.Text = "Oopti | Advanced Performance Suite PRO"
-$Form.Size = New-Object System.Drawing.Size(780, 750)
+$Form.Text = "Oopti | Ultra Performance Suite 2026"
+$Form.Size = New-Object System.Drawing.Size(900, 800)
 $Form.StartPosition = "CenterScreen"
-$Form.BackColor = [System.Drawing.Color]::FromArgb(20, 20, 26)
-$Form.FormBorderStyle = "FixedDialog"
+$Form.BackColor = [System.Drawing.Color]::FromArgb(15, 15, 20) # Deep Dark Space
+$Form.FormBorderStyle = "FixedSingle"
 $Form.MaximizeBox = $false
 
-# Polices globales
-$FontTitre = New-Object System.Drawing.Font("Segoe UI", 16, [System.Drawing.FontStyle]::Bold)
-$FontSection = New-Object System.Drawing.Font("Segoe UI", 11, [System.Drawing.FontStyle]::Bold)
-$FontItem = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Bold)
-$FontLog = New-Object System.Drawing.Font("Consolas", 9)
+# Polices Premium
+$FontTitle = New-Object System.Drawing.Font("Segoe UI", 18, [System.Drawing.FontStyle]::Bold)
+$FontSection = New-Object System.Drawing.Font("Segoe UI", 12, [System.Drawing.FontStyle]::Bold)
+$FontItem = New-Object System.Drawing.Font("Segoe UI", 9.5, [System.Drawing.FontStyle]::Regular)
+$FontLog = New-Object System.Drawing.Font("Consolas", 9.5)
 
-# En-tête principal
+# --- COULEURS DE SÉCURITÉ ---
+$ColorSafe = [System.Drawing.Color]::FromArgb(0, 255, 128)      # Vert Émeraude (Sûr)
+$ColorMedium = [System.Drawing.Color]::FromArgb(255, 165, 0)    # Orange Électrique (Avancé)
+$ColorHardcore = New-Object System.Drawing.Color                # Rouge/Rose Flash (Risqué)
+$ColorHardcore = [System.Drawing.Color]::FromArgb(255, 45, 85)
+
+# --- BANNIÈRE DE TITRE CYBERPUNK ---
+$HeaderPanel = New-Object System.Windows.Forms.Panel
+$HeaderPanel.Size = New-Object System.Drawing.Size(900, 60)
+$HeaderPanel.Dock = "Top"
+$HeaderPanel.BackColor = [System.Drawing.Color]::FromArgb(22, 22, 30)
+
 $TitleLabel = New-Object System.Windows.Forms.Label
-$TitleLabel.Text = "Oopti Suite Advanced Optimizer"
-$TitleLabel.Font = $FontTitre
+$TitleLabel.Text = "⚡ OOPTI SUITE ENGINE // ULTRA PERFORMANCE EDITION"
+$TitleLabel.Font = $FontTitle
 $TitleLabel.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 255)
-$TitleLabel.Size = New-Object System.Drawing.Size(740, 35)
-$TitleLabel.Location = New-Object System.Drawing.Point(10, 15)
+$TitleLabel.Dock = "Fill"
 $TitleLabel.TextAlign = "MiddleCenter"
-$Form.Controls.Add($TitleLabel)
+$HeaderPanel.Controls.Add($TitleLabel)
+$Form.Controls.Add($HeaderPanel)
 
-# --- CRÉATION DU SYSTEME D'ONGLETS (TAB CONTROL) ---
+# --- STRUCTURE DE NAVIGATION (TABS MODÉRNISÉS) ---
 $TabControl = New-Object System.Windows.Forms.TabControl
-$TabControl.Size = New-Object System.Drawing.Size(720, 480)
-$TabControl.Location = New-Object System.Drawing.Point(20, 65)
+$TabControl.Size = New-Object System.Drawing.Size(845, 500)
+$TabControl.Location = New-Object System.Drawing.Point(20, 80)
+$TabControl.DrawMode = "OwnerDrawFixed"
+$TabControl.ItemSize = New-Object System.Drawing.Size(278, 30)
+$TabControl.SizeMode = "Fixed"
 $Form.Controls.Add($TabControl)
 
-# Onglet 1 : Tweaks
-$TabTweaks = New-Object System.Windows.Forms.TabPage
-$TabTweaks.Text = "⚡ Optimisations Performance"
-$TabTweaks.BackColor = [System.Drawing.Color]::FromArgb(28, 28, 36)
-$TabControl.TabPages.Add($TabTweaks)
+# Style personnalisé pour effacer le look "gris Windows" des onglets
+$TabControl.add_DrawItem({
+    param($sender, $e)
+    $TabPage = $sender.TabPages[$e.Index]
+    $TabBounds = $sender.GetTabRect($e.Index)
+    $BackBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(28, 28, 38))
+    $ForeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::White)
+    
+    if ($e.State -eq [System.Windows.Forms.DrawItemState]::Selected) {
+        $BackBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(0, 255, 255))
+        $ForeBrush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::Black)
+    }
+    
+    $e.Graphics.FillRectangle($BackBrush, $TabBounds)
+    $StringFormat = New-Object System.Drawing.StringFormat
+    $StringFormat.Alignment = "Center"
+    $StringFormat.LineAlignment = "Center"
+    $e.Graphics.DrawString($TabPage.Text, $sender.Font, $ForeBrush, [System.Drawing.RectangleF]::$TabBounds, $StringFormat)
+})
 
-# Onglet 2 : Debloat
-$TabDebloat = New-Object System.Windows.Forms.TabPage
-$TabDebloat.Text = "🗑️ Désinstallation Appliquée"
-$TabDebloat.BackColor = [System.Drawing.Color]::FromArgb(28, 28, 36)
+# Onglets
+$TabTweaks = New-Object System.Windows.Forms.TabPage ; $TabTweaks.Text = "⚡ TWEAKS SYSTÈME" ; $TabTweaks.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 32)
+$TabApps   = New-Object System.Windows.Forms.TabPage ; $TabApps.Text = "📦 APPLICATIONS" ; $TabApps.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 32)
+$TabDebloat = New-Object System.Windows.Forms.TabPage ; $TabDebloat.Text = "🗑️ DEBLOATER NATIF" ; $TabDebloat.BackColor = [System.Drawing.Color]::FromArgb(24, 24, 32)
+
+$TabControl.TabPages.Add($TabTweaks)
+$TabControl.TabPages.Add($TabApps)
 $TabControl.TabPages.Add($TabDebloat)
 
-
-# ===================================================================
-# CONTENU DE L'ONGLET 1 : OPTIMISATIONS SYSTÈME (4 CATÉGORIES)
-# ===================================================================
-
-# Fonction pour structurer les colonnes/sections dans l'onglet
-function Create-SectionLabel($Text, $X, $Y, $Parent) {
+# --- FACTORY POUR COMPOSANTS ÉPURÉS ---
+function Create-Section($Title, $X, $Y, $Parent) {
     $Lbl = New-Object System.Windows.Forms.Label
-    $Lbl.Text = $Text
+    $Lbl.Text = $Title
     $Lbl.Font = $FontSection
-    $Lbl.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 255)
+    $Lbl.ForeColor = [System.Drawing.Color]::White
     $Lbl.Location = New-Object System.Drawing.Point($X, $Y)
-    $Lbl.Size = New-Object System.Drawing.Size(320, 22)
+    $Lbl.Size = New-Object System.Drawing.Size(380, 25)
     $Parent.Controls.Add($Lbl)
 }
 
-function Create-TweakCheckBox($Text, $X, $Y, $Parent) {
+function Add-Tweak($Text, $Level, $X, $Y, $Parent) {
     $CB = New-Object System.Windows.Forms.CheckBox
     $CB.Text = $Text
     $CB.Font = $FontItem
-    $CB.ForeColor = [System.Drawing.Color]::White
     $CB.Location = New-Object System.Drawing.Point($X, $Y)
-    $CB.Size = New-Object System.Drawing.Size(310, 22)
-    $CB.Checked = $true # Activé par défaut pour guider l'utilisateur
+    $CB.Size = New-Object System.Drawing.Size(370, 24)
+    $CB.Checked = if ($Level -eq "SAFE") { $true } else { $false }
+    
+    # Association de la couleur de niveau de danger
+    if ($Level -eq "SAFE") { $CB.ForeColor = $ColorSafe }
+    elseif ($Level -eq "MEDIUM") { $CB.ForeColor = $ColorMedium }
+    else { $CB.ForeColor = $ColorHardcore }
+    
     $Parent.Controls.Add($CB)
     return $CB
 }
 
-# --- COLONNE GAUCHE ---
-Create-SectionLabel "1. KERNEL, PROCESSEUR & RAM" 20 15 $TabTweaks
-$cbSvchost    = Create-TweakCheckBox "Regroupement Svchost (Optimise la RAM)" 20 45 $TabTweaks
-$cbPower      = Create-TweakCheckBox "Activer le profil Performances Maximales" 20 70 $TabTweaks
-$cbPriority   = Create-TweakCheckBox "Priorité CPU accrue pour les jeux" 20 95 $TabTweaks
-$cbIndex      = Create-TweakCheckBox "Désactiver l'indexation Windows Search" 20 120 $TabTweaks
-$cbSysMain    = Create-TweakCheckBox "Désactiver SysMain (Superfetch)" 20 145 $TabTweaks
+# ===================================================================
+# CONTENU DE L'ONGLET 1 : TWEAKS SYSTÈME (PLUS DE 20 INTEGRATIONS)
+# ===================================================================
 
-Create-SectionLabel "2. RÉSEAU & LATENCE INTERNET" 20 190 $TabTweaks
-$cbTcpNoDelay = Create-TweakCheckBox "Désactiver l'algorithme Nagle (TCPNoDelay)" 20 220 $TabTweaks
-$cbAckFreq    = Create-TweakCheckBox "Optimiser la fréquence réseau (TcpAckFrequency)" 20 245 $TabTweaks
-$cbThrottling = Create-TweakCheckBox "Supprimer le bridage réseau multimédia" 20 270 $TabTweaks
-$cbDnsCache   = Create-TweakCheckBox "Purger et réinitialiser le cache DNS" 20 295 $TabTweaks
-$cbLSO        = Create-TweakCheckBox "Désactiver Large Send Offload (LSO)" 20 320 $TabTweaks
+# Colonne Gauche
+Create-Section "🚀 CPU, KERNEL & MÉMOIRE" 20 15 $TabTweaks
+$cbSvchost    = Add-Tweak "Optimisation Svchost (Regroupement RAM)" "SAFE" 20 45 $TabTweaks
+$cbPower      = Add-Tweak "Forcer le Plan d'Alimentation 'Ultimate Performance'" "SAFE" 20 70 $TabTweaks
+$cbSysMain    = Add-Tweak "Désactiver SysMain / Superfecth (Évite les pics disques)" "SAFE" 20 95 $TabTweaks
+$cbPriority   = Add-Tweak "Ajuster les priorités Win32 au profit du jeu actif" "MEDIUM" 20 120 $TabTweaks
+$cbLargePage  = Add-Tweak "Activer les Large Pages système (Baisse latence RAM)" "HARDCORE" 20 145 $TabTweaks
 
-# --- COLONNE DROITE ---
-Create-SectionLabel "3. PRIVACITÉ, TÉLÉMÉTRIE & SERVICES" 370 15 $TabTweaks
-$cbDiagTrack  = Create-TweakCheckBox "Désactiver Connected User Experiences" 370 45 $TabTweaks
-$cbWerSvc     = Create-TweakCheckBox "Couper les rapports d'erreurs (WerSvc)" 370 70 $TabTweaks
-$cbWappush    = Create-TweakCheckBox "Supprimer le tracking dmwappushservice" 370 95 $TabTweaks
-$cbTelemetry  = Create-TweakCheckBox "Bloquer la télémétrie via le Registre" 370 120 $TabTweaks
-$cbLogger     = Create-TweakCheckBox "Désactiver les logs de traçage superflus" 370 145 $TabTweaks
+Create-Section "🌐 FLUIDITÉ RÉSEAU & ONLINE" 20 200 $TabTweaks
+$cbTcpNoDelay = Add-Tweak "Activer TCP No Delay (Supprime le lag Nagle)" "SAFE" 20 230 $TabTweaks
+$cbAckFreq    = Add-Tweak "Forcer TcpAckFrequency à 1 (Paquets directs)" "SAFE" 20 255 $TabTweaks
+$cbThrottling = Add-Tweak "Supprimer l'index de bridage réseau multimédia" "MEDIUM" 20 280 $TabTweaks
+$cbLso        = Add-Tweak "Désactiver Large Send Offload (Évite les drops de paquets)" "MEDIUM" 20 305 $TabTweaks
+$cbDns        = Add-Tweak "Vider les caches résiduels et forcer le Flush DNS" "SAFE" 20 330 $TabTweaks
 
-Create-SectionLabel "4. AFFICHAGE, JEUX & BOOST GPU" 370 190 $TabTweaks
-$cbHags        = Create-TweakCheckBox "Forcer la planification GPU matérielle (HAGS)" 370 220 $TabTweaks
-$cbMitigations = Create-TweakCheckBox "Désactiver les mitigations CPU (Gain FPS)" 370 245 $TabTweaks
-$cbGameBar     = Create-TweakCheckBox "Désactiver la Xbox Game Bar en fond" 370 270 $TabTweaks
-$cbFSO         = Create-TweakCheckBox "Désactiver les optimisations plein écran globales" 370 295 $TabTweaks
-$cbVisuals     = Create-TweakCheckBox "Ajuster les effets visuels pour les performances" 370 320 $TabTweaks
+# Colonne Droite
+Create-Section "🛡️ TÉLÉMÉTRIE & PROCESSUS FOND" 430 15 $TabTweaks
+$cbDiagTrack  = Add-Tweak "Couper DiagTrack (Suivi d'expérience Microsoft)" "SAFE" 430 45 $TabTweaks
+$cbWerSvc     = Add-Tweak "Désactiver WerSvc (Création de rapports de crash)" "SAFE" 430 70 $TabTweaks
+$cbWappush    = Add-Tweak "Désactiver le service de routage Wappush" "SAFE" 430 95 $TabTweaks
+$cbSpectre    = Add-Tweak "Désactiver les atténuations Spectre/Meltdown (+ FPS)" "HARDCORE" 430 120 $TabTweaks
+$cbVbs        = Add-Tweak "Désactiver la sécurité basée sur la virtualisation VBS" "HARDCORE" 430 145 $TabTweaks
+
+Create-Section "🎮 RENDU GRAPHIQUE & AFFICHAGE" 430 200 $TabTweaks
+$cbHags        = Add-Tweak "Activer le support HAGS (Planification GPU)" "SAFE" 430 230 $TabTweaks
+$cbGameBar     = Add-Tweak "Désactiver les overlays et captures Xbox Game Bar" "SAFE" 430 255 $TabTweaks
+$cbVisuals     = Add-Tweak "Brider les animations Windows au profit des perfs" "SAFE" 430 280 $TabTweaks
+$cbFso         = Add-Tweak "Désactiver les optimisations plein écran globales" "MEDIUM" 430 305 $TabTweaks
+$cbGameMode    = Add-Tweak "Forcer l'allocation Windows Game Mode" "SAFE" 430 330 $TabTweaks
+
+# Légende
+$Legend = New-Object System.Windows.Forms.Label
+$Legend.Text = "LÉGENDE DANGER :  ■ SÛR (SAFE)   ■ AVANCÉ (MEDIUM)   ■ RISQUÉ / REQUIS REBOOT (HARDCORE)"
+$Legend.ForeColor = [System.Drawing.Color]::White
+$Legend.Font = $FontItem
+$Legend.Size = New-Object System.Drawing.Size(800, 20)
+$Legend.Location = New-Object System.Drawing.Point(20, 420)
+$TabTweaks.Controls.Add($Legend)
 
 
 # ===================================================================
-# CONTENU DE L'ONGLET 2 : DÉBLOATEUR APPLICATION (À LA CARTE)
+# CONTENU DE L'ONGLET 2 : NOUVELLE CATÉGORIE APPLICATIONS UTILES
 # ===================================================================
-$AppLabel = New-Object System.Windows.Forms.Label
-$AppLabel.Text = "Sélectionnez les applications Windows natives à désinstaller :"
-$AppLabel.Font = $FontSection
-$AppLabel.ForeColor = [System.Drawing.Color]::White
-$AppLabel.Location = New-Object System.Drawing.Point(20, 15)
-$AppLabel.Size = New-Object System.Drawing.Size(650, 25)
-$TabDebloat.Controls.Add($AppLabel)
+Create-Section "📦 INSTALLATION D'APPLICATIONS RECOMMANDÉES (VIA WINGET)" 20 15 $TabApps
 
-# Master boutons de sélection pour l'onglet de désinstallation
-$BtnSelectAll = New-Object System.Windows.Forms.Button
-$BtnSelectAll.Text = "Tout Sélectionner"
-$BtnSelectAll.Size = New-Object System.Drawing.Size(150, 25)
-$BtnSelectAll.Location = New-Object System.Drawing.Point(20, 45)
-$BtnSelectAll.FlatStyle = "Flat"
-$BtnSelectAll.ForeColor = [System.Drawing.Color]::Cyan
-$TabDebloat.Controls.Add($BtnSelectAll)
-
-$BtnUnselectAll = New-Object System.Windows.Forms.Button
-$BtnUnselectAll.Text = "Tout Désélectionner"
-$BtnUnselectAll.Size = New-Object System.Drawing.Size(150, 25)
-$BtnUnselectAll.Location = New-Object System.Drawing.Point(180, 45)
-$BtnUnselectAll.FlatStyle = "Flat"
-$BtnUnselectAll.ForeColor = [System.Drawing.Color]::White
-$TabDebloat.Controls.Add($BtnUnselectAll)
-
-# Dictionnaire complet des applications inutiles
-$AppsList = [ordered]@{
-    "Microsoft OneDrive"              = "OneDrive"
-    "Lien avec un mobile (Phone Link)" = "Microsoft.YourPhone"
-    "Xbox App & Services Captures"    = "Microsoft.Xbox"
-    "Cortana Assist"                  = "Microsoft.549981C3F5F10"
-    "Météo MSN & Actualités"          = "Microsoft.BingNews"
-    "Microsoft Solitaire Collection"  = "Microsoft.MicrosoftSolitaireCollection"
-    "Skype App"                       = "Microsoft.SkypeApp"
-    "Hub de commentaires Windows"     = "Microsoft.WindowsFeedbackHub"
-    "Cartes Microsoft (Maps)"         = "Microsoft.WindowsMaps"
-    "Microsoft Zune Video (Films TV)" = "Microsoft.ZuneVideo"
-    "Microsoft Zune Music (Groove)"   = "Microsoft.ZuneMusic"
-    "Enregistreur vocal"              = "Microsoft.WindowsSoundRecorder"
-    "Application Get Help (Aide)"     = "Microsoft.GetHelp"
-    "Microsoft Sticky Notes"          = "Microsoft.MicrosoftStickyNotes"
+$AppsToInstall = @{
+    "GeForce Experience (Drivers Nvidia)" = "Nvidia.GeForceExperience"
+    "AMD Software (Drivers Graphics AMD)" = "AMD.Software"
+    "Discord (Communication Gaming)"     = "Discord.Discord"
+    "Steam (Plateforme de jeux)"          = "Valve.Steam"
+    "Epic Games Launcher"                = "EpicGames.EpicGamesLauncher"
+    "7-Zip (Archivage ultra rapide)"      = "7zip.7zip"
+    "Visual C++ Runtimes (Tous en un)"    = "Microsoft.VCRedist.2015+.x64"
+    "DirectX End-User Runtime"            = "Microsoft.DirectX"
 }
 
-$AppCheckboxes = @{}
-$CurrentX = 20
-$CurrentY = 85
-$Counter = 0
-
-foreach ($AppName in $AppsList.Keys) {
+$AppInstallCheckboxes = @{}
+$AppY = 55
+foreach ($Name in $AppsToInstall.Keys) {
     $CB = New-Object System.Windows.Forms.CheckBox
-    $CB.Text = $AppName
+    $CB.Text = $Name
     $CB.Font = $FontItem
     $CB.ForeColor = [System.Drawing.Color]::LightGray
-    $CB.Location = New-Object System.Drawing.Point($CurrentX, $CurrentY)
-    $CB.Size = New-Object System.Drawing.Size(320, 25)
-    $TabDebloat.Controls.Add($CB)
-    
-    $AppCheckboxes[$AppName] = $CB
-    
-    # Rangement sur deux colonnes propres
-    $Counter++
-    if ($Counter -eq 7) {
-        $CurrentX = 370
-        $CurrentY = 85
-    } else {
-        $CurrentY += 30
-    }
+    $CB.Location = New-Object System.Drawing.Point(30, $AppY)
+    $CB.Size = New-Object System.Drawing.Size(400, 25)
+    $TabApps.Controls.Add($CB)
+    $AppInstallCheckboxes[$Name] = $CB
+    $AppY += 35
 }
 
-# Actions des boutons de sélection générale
-$BtnSelectAll.Add_Click({    foreach ($cb in $AppCheckboxes.Values) { $cb.Checked = $true } })
-$BtnUnselectAll.Add_Click({  foreach ($cb in $AppCheckboxes.Values) { $cb.Checked = $false } })
+
+# ===================================================================
+# CONTENU DE L'ONGLET 3 : DEBLOATER AUTOMATIQUE ET À LA CARTE
+# ===================================================================
+Create-Section "🗑️ SÉLECTION DES LOGICIELS INTEGRÉS À SUPPRIMER" 20 15 $TabDebloat
+
+$BtnAll = New-Object System.Windows.Forms.Button ; $BtnAll.Text = "TOUT COCHER" ; $BtnAll.Size = New-Object System.Drawing.Size(140, 25) ; $BtnAll.Location = New-Object System.Drawing.Point(20, 50) ; $BtnAll.FlatStyle = "Flat" ; $BtnAll.ForeColor = [System.Drawing.Color]::Cyan ; $TabDebloat.Controls.Add($BtnAll)
+$BtnNone = New-Object System.Windows.Forms.Button ; $BtnNone.Text = "TOUT DÉCOCHER" ; $BtnNone.Size = New-Object System.Drawing.Size(140, 25) ; $BtnNone.Location = New-Object System.Drawing.Point(170, 50) ; $BtnNone.FlatStyle = "Flat" ; $BtnNone.ForeColor = [System.Drawing.Color]::White ; $TabDebloat.Controls.Add($BtnNone)
+
+$BloatList = [ordered]@{
+    "Microsoft OneDrive (Purge complète)" = "OneDrive"
+    "Lien avec un mobile (Phone Link)"    = "Microsoft.YourPhone"
+    "Xbox App & Services additionnels"    = "Microsoft.Xbox"
+    "Cortana Voice Assistant"             = "Microsoft.549981C3F5F10"
+    "MSN Météo & Actualités"              = "Microsoft.BingNews"
+    "Solitaire & Zone de jeux"            = "Microsoft.MicrosoftSolitaireCollection"
+    "Skype Windows Client"                = "Microsoft.SkypeApp"
+    "Feedback Hub (Rapports forcés)"       = "Microsoft.WindowsFeedbackHub"
+    "Cartes Intégrées (Maps)"             = "Microsoft.WindowsMaps"
+    "Films et TV (Zune Video)"            = "Microsoft.ZuneVideo"
+}
+
+$DebloatCheckboxes = @{}
+$DebX = 20 ; $DebY = 95 ; $Count = 0
+foreach ($Key in $BloatList.Keys) {
+    $CB = New-Object System.Windows.Forms.CheckBox ; $CB.Text = $Key ; $CB.Font = $FontItem ; $CB.ForeColor = [System.Drawing.Color]::LightGray ; $CB.Location = New-Object System.Drawing.Point($DebX, $DebY) ; $CB.Size = New-Object System.Drawing.Size(350, 25)
+    $TabDebloat.Controls.Add($CB)
+    $DebloatCheckboxes[$Key] = $CB
+    $Count++
+    if ($Count -eq 5) { $DebX = 420 ; $DebY = 95 } else { $DebY += 35 }
+}
+
+$BtnAll.Add_Click({ foreach($c in $DebloatCheckboxes.Values){$c.Checked = $true} })
+$BtnNone.Add_Click({ foreach($c in $DebloatCheckboxes.Values){$c.Checked = $false} })
 
 
 # ===================================================================
-# CONSOLE DE LOGS ET BOUTON D'ACTION PRINCIPAL
+# CONSOLE DE LOGS AVANCÉE
 # ===================================================================
-
-# Console de statut en temps réel
 $LogBox = New-Object System.Windows.Forms.TextBox
 $LogBox.Multiline = $true
 $LogBox.ScrollBars = "Vertical"
-$LogBox.Size = New-Object System.Drawing.Size(720, 80)
-$LogBox.Location = New-Object System.Drawing.Point(20, 560)
-$LogBox.BackColor = [System.Drawing.Color]::Black
-$LogBox.ForeColor = [System.Drawing.Color]::Lime
+$LogBox.Size = New-Object System.Drawing.Size(845, 100)
+$LogBox.Location = New-Object System.Drawing.Point(20, 595)
+$LogBox.BackColor = [System.Drawing.Color]::FromArgb(10, 10, 12)
+$LogBox.ForeColor = [System.Drawing.Color]::FromArgb(0, 255, 255)
 $LogBox.Font = $FontLog
 $LogBox.ReadOnly = $true
-$LogBox.Text = "[*] Prêt à l'optimisation. Cochez vos tweaks et vos applications à supprimer.`r`n"
+$LogBox.Text = "[*] Oopti Suite V4 initialisée. Sélectionnez vos réglages par onglet.`r`n"
 $Form.Controls.Add($LogBox)
 
-function Write-Log($Text) {
-    $LogBox.AppendText("[-] $Text`r`n")
+function Log($Msg) {
+    $LogBox.AppendText(">> $Msg`r`n")
     $LogBox.SelectionStart = $LogBox.Text.Length
     $LogBox.ScrollToCaret()
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-# Grand bouton d'action global
-$BtnLaunch = New-Object System.Windows.Forms.Button
-$BtnLaunch.Text = "⚡ EXÉCUTER TOUS LES CHANGEMENTS SÉLECTIONNÉS ⚡"
-$BtnLaunch.Size = New-Object System.Drawing.Size(720, 45)
-$BtnLaunch.Location = New-Object System.Drawing.Point(20, 655)
-$BtnLaunch.Font = $FontSection
-$BtnLaunch.ForeColor = [System.Drawing.Color]::Black
-$BtnLaunch.BackColor = [System.Drawing.Color]::FromArgb(0, 255, 255)
-$BtnLaunch.FlatStyle = "Flat"
-$BtnLaunch.Cursor = [System.Windows.Forms.Cursors]::Hand
-$BtnLaunch.Add_MouseEnter({ $this.BackColor = [System.Drawing.Color]::FromArgb(128, 255, 255) })
-$BtnLaunch.Add_MouseLeave({ $this.BackColor = [System.Drawing.Color]::FromArgb(0, 255, 255) })
 
-$BtnLaunch.Add_Click({
-    $BtnLaunch.Enabled = $false
-    Write-Log "Lancement de la phase d'optimisation..."
+# ===================================================================
+# BOUTON D'INJECTION MAÎTRE
+# ===================================================================
+$BtnRun = New-Object System.Windows.Forms.Button
+$BtnRun.Text = "⚡ EXÉCUTER LE SCRIPT D'OPTIMISATION AVANCÉ ⚡"
+$BtnRun.Size = New-Object System.Drawing.Size(845, 45)
+$BtnRun.Location = New-Object System.Drawing.Point(20, 705)
+$BtnRun.Font = $FontSection
+$BtnRun.ForeColor = [System.Drawing.Color]::Black
+$BtnRun.BackColor = [System.Drawing.Color]::FromArgb(0, 255, 255)
+$BtnRun.FlatStyle = "Flat"
+$BtnRun.FlatAppearance.BorderSize = 0
+$BtnRun.Cursor = [System.Windows.Forms.Cursors]::Hand
 
-    # --- CATÉGORIE 1 ---
+$BtnRun.Add_Click({
+    $BtnRun.Enabled = $false
+    Log "--- DEBUT DE LA SUITE D'INJECTION ---"
+
+    # --- EXECUTION TWEAKS ---
     if ($cbSvchost.Checked) {
         Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control" -Name "SvcHostSplitThresholdInKB" -Value 10000000 -ErrorAction SilentlyContinue
-        Write-Log "Tweak Svchost appliqué."
+        Log "[TWEAK] Svchost configuré pour optimiser l'usage mémoire."
     }
     if ($cbPower.Checked) {
-        powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c -ErrorAction SilentlyContinue
-        Write-Log "Profil d'alimentation Performances Maximales forcé."
-    }
-    if ($cbPriority.Checked) {
-        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value 0 -ErrorAction SilentlyContinue
-        Write-Log "Priorité CPU ajustée pour le Gaming."
-    }
-    if ($cbIndex.Checked) {
-        Stop-Service -Name "WSearch" -Force -ErrorAction SilentlyContinue
-        Set-Service -Name "WSearch" -StartupType Disabled -ErrorAction SilentlyContinue
-        Write-Log "Indexation des fichiers Windows Search désactivée."
+        # Tente d'activer les performances ultimes
+        powercfg /duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 -ErrorAction SilentlyContinue | Out-Null
+        powercfg /setactive e9a42b02-d5df-448d-aa00-03f14749eb61 -ErrorAction SilentlyContinue
+        Log "[TWEAK] Profil Alimentation Performance Ultime forcé."
     }
     if ($cbSysMain.Checked) {
         Stop-Service -Name "SysMain" -Force -ErrorAction SilentlyContinue
         Set-Service -Name "SysMain" -StartupType Disabled -ErrorAction SilentlyContinue
-        Write-Log "Service SysMain stoppé."
+        Log "[TWEAK] SysMain arrêté (Évite la saturation disque)."
     }
-
-    # --- CATÉGORIE 2 ---
-    $NetworkPath = "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters"
+    if ($cbPriority.Checked) {
+        Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -Value 0 -ErrorAction SilentlyContinue
+        Log "[TWEAK] Priorités d'horloge CPU modifiées (Focus Gaming)."
+    }
+    if ($cbLargePage.Checked) {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "LargePageMinimum" -Value 1 -ErrorAction SilentlyContinue
+        Log "[TWEAK HARDCORE] Allocation Large Pages activée."
+    }
     if ($cbTcpNoDelay.Checked) {
-        Set-ItemProperty -Path $NetworkPath -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue
-        Write-Log "TCP NoDelay forcé."
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "TCPNoDelay" -Value 1 -ErrorAction SilentlyContinue
+        Log "[RÉSEAU] Nagle TCP débloqué."
     }
     if ($cbAckFreq.Checked) {
-        Set-ItemProperty -Path $NetworkPath -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue
-        Write-Log "TcpAckFrequency réglé au minimum (0 latence)."
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" -Name "TcpAckFrequency" -Value 1 -ErrorAction SilentlyContinue
+        Log "[RÉSEAU] Fréquence d'acquittement paquets à zéro latence."
     }
     if ($cbThrottling.Checked) {
         Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "NetworkThrottlingIndex" -Value 0xffffffff -ErrorAction SilentlyContinue
-        Write-Log "Bridage réseau multimédia retiré."
+        Log "[RÉSEAU] Limitation de bande passante multimédia supprimée."
     }
-    if ($cbDnsCache.Checked) {
-        Clear-DnsClientCache -ErrorAction SilentlyContinue
-        Write-Log "Cache DNS purgé."
-    }
-    if ($cbLSO.Checked) {
+    if ($cbLso.Checked) {
         Disable-NetAdapterLso -Name "*" -IPv4 -ErrorAction SilentlyContinue
-        Write-Log "Large Send Offload (LSO) désactivé."
+        Log "[RÉSEAU] Large Send Offload désactivé pour la stabilité ping."
     }
-
-    # --- CATÉGORIE 3 ---
+    if ($cbDns.Checked) {
+        Clear-DnsClientCache -ErrorAction SilentlyContinue
+        Log "[RÉSEAU] Cache DNS purgé."
+    }
     if ($cbDiagTrack.Checked) {
         Stop-Service -Name "DiagTrack" -Force -ErrorAction SilentlyContinue
         Set-Service -Name "DiagTrack" -StartupType Disabled -ErrorAction SilentlyContinue
-        Write-Log "Service de télémétrie DiagTrack coupé."
+        Log "[SÉCURITÉ] Service de mouchard DiagTrack coupé."
     }
     if ($cbWerSvc.Checked) {
-        Stop-Service -Name "WerSvc" -Force -ErrorAction SilentlyContinue
         Set-Service -Name "WerSvc" -StartupType Disabled -ErrorAction SilentlyContinue
-        Write-Log "Rapports d'erreurs d'applications désactivés."
+        Log "[SÉCURITÉ] Rapports Windows Error Reporting coupés."
     }
-    if ($cbWappush.Checked) {
-        Set-Service -Name "dmwappushservice" -StartupType Disabled -ErrorAction SilentlyContinue
-        Write-Log "dmwappushservice verrouillé."
-    }
-    if ($cbTelemetry.Checked) {
-        Set-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -Value 0 -ErrorAction SilentlyContinue
-        Write-Log "Clés de Registre de télémétrie globale bloquées."
-    }
-    if ($cbLogger.Checked) {
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\AutoLogger-Diagtrack-Listener" -Name "Start" -Value 0 -ErrorAction SilentlyContinue
-        Write-Log "Autologgers système coupés."
-    }
-
-    # --- CATÉGORIE 4 ---
-    if ($cbHags.Checked) {
-        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 2 -ErrorAction SilentlyContinue
-        Write-Log "HAGS activé dans le noyau graphique Windows."
-    }
-    if ($cbMitigations.Checked) {
+    if ($cbSpectre.Checked) {
         Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "FeatureSettingsOverride" -Value 3 -ErrorAction SilentlyContinue
         Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" -Name "FeatureSettingsOverrideMask" -Value 3 -ErrorAction SilentlyContinue
-        Write-Log "Atténuations CPU Spectre/Meltdown désactivées."
+        Log "[TWEAK HARDCORE] Atténuations Spectre/Meltdown désactivées."
+    }
+    if ($cbVbs.Checked) {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\DeviceGuard" -Name "EnableVirtualizationBasedSecurity" -Value 0 -ErrorAction SilentlyContinue
+        Log "[TWEAK HARDCORE] Sécurité VBS désactivée (Gain FPS brut)."
+    }
+    if ($cbHags.Checked) {
+        Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -Value 2 -ErrorAction SilentlyContinue
+        Log "[GRAPHISMES] HAGS activé."
     }
     if ($cbGameBar.Checked) {
         Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" -Name "AppCaptureEnabled" -Value 0 -ErrorAction SilentlyContinue
-        Write-Log "Xbox Game Bar arrière-plan désactivée."
-    }
-    if ($cbFSO.Checked) {
-        Set-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_FSEBehavior" -Value 2 -ErrorAction SilentlyContinue
-        Write-Log "Optimisation plein écran ajustée globalement."
-    }
-    if ($cbVisuals.Checked) {
-        Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" -Name "VisualFXSetting" -Value 2 -ErrorAction SilentlyContinue
-        Write-Log "Paramètres d'effets visuels réglés sur Performances."
+        Log "[GRAPHISMES] Capture Xbox en arrière-plan coupée."
     }
 
-    # --- DÉBLOAT DES APPS WINDOWS SÉLECTIONNÉES ---
-    Write-Log "Lancement de la purge des applications sélectionnées..."
-    foreach ($AppName in $AppsList.Keys) {
-        if ($AppCheckboxes[$AppName].Checked) {
-            $PackageName = $AppsList[$AppName]
-            Write-Log "Désinstallation en cours : $AppName..."
-            
-            if ($PackageName -eq "OneDrive") {
+    # --- APPLICATION INSTALLATION (WINGET) ---
+    foreach ($AppName in $AppsToInstall.Keys) {
+        if ($AppInstallCheckboxes[$AppName].Checked) {
+            $Id = $AppsToInstall[$AppName]
+            Log "[INSTALL] Téléchargement et installation automatique de : $AppName..."
+            Start-Process "winget" -ArgumentList "install --id $Id --silent --accept-source-agreements --accept-package-agreements" -WindowStyle Hidden -Wait
+        }
+    }
+
+    # --- DEBLOATEUR ---
+    foreach ($Name in $BloatList.Keys) {
+        if ($DebloatCheckboxes[$Name].Checked) {
+            $Package = $BloatList[$Name]
+            Log "[DEBLOAT] Retrait forcé du paquet : $Name"
+            if ($Package -eq "OneDrive") {
                 Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue
-                Start-Process "taskkill" -ArgumentList "/f /im OneDrive.exe" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
                 if (Test-Path "$env:SystemRoot\System32\OneDriveSetup.exe") { Start-Process "$env:SystemRoot\System32\OneDriveSetup.exe" -ArgumentList "/uninstall" -WindowStyle Hidden -Wait }
-                if (Test-Path "$env:SystemRoot\SysWOW64\OneDriveSetup.exe") { Start-Process "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -WindowStyle Hidden -Wait }
             } else {
-                Get-AppxPackage -Name $PackageName -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
-                Get-AppxProvisionedPackage -Online | Where-Object {$_.DisplayName -match $PackageName} | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+                Get-AppxPackage -Name $Package -AllUsers | Remove-AppxPackage -ErrorAction SilentlyContinue
             }
         }
     }
 
-    Write-Log "[OK] Toutes les opérations cochées ont été appliquées avec succès !"
-    [System.Windows.Forms.MessageBox]::Show("Optimisation et suppression terminées avec succès ! Un redémarrage est recommandé.", "Oopti Suite PRO")
-    $BtnLaunch.Enabled = $true
+    Log "--- OPÉRATION TERMINÉE AVEC SUCCÈS ---"
+    [System.Windows.Forms.MessageBox]::Show("Toutes les optimisations, installations et suppressions demandées ont été traitées ! Redémarrez le PC.", "Oopti Engine Pro")
+    $BtnRun.Enabled = $true
 })
 
-$Form.Controls.Add($BtnLaunch)
-
-# --- LANCEMENT DE L'INTERFACE ---
+$Form.Controls.Add($BtnRun)
 $Form.ShowDialog() | Out-Null
