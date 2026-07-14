@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V12.4 - PROCESS EXCLUSIVITY UPDATE
+    OPTI-DYLAN TOOLKIT PRO V13.0 - ULTIMATE INNOVATION UPDATE
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -50,10 +50,22 @@ $Global:LangDict = @{
         "BtnSelectMod" = "Cocher Tout (Modéré)"
         "BtnSelectAdv" = "Cocher Tout (Avancé)"
         "BtnClearAll" = "Tout Décocher"
+        "SearchPlaceholder" = "Rechercher un tweak dans cette catégorie..."
+        "Cpu" = "Processeur"
+        "Gpu" = "Graphismes"
+        "Ram" = "Mémoire RAM"
+        "RamCleanerTitle" = "NETTOYAGE RAM TEMPS RÉEL"
+        "RamUsed" = "Utilisé"
+        "BtnCleanRam" = "Optimiser la RAM"
+        "BtnSaveProfile" = "Sauvegarder Profil"
+        "BtnLoadProfile" = "Charger Profil"
+        "ProfileSaved" = "[OK] Profil sauvegardé avec succès dans 'opti_profile.json'."
+        "ProfileLoaded" = "[OK] Profil 'opti_profile.json' chargé avec succès !"
+        "ProfileErr" = "[ERR] Aucun profil sauvegardé trouvé."
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.4 En Ligne. Profils exclusifs actifs."
-        "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés. Modéré/Avancé décochés."
-        "LogCheckMod" = "[UI] Sélection Auto : Uniquement 'Sans Risque' & 'Modéré' cochés. Avancé décochés."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V13.0 En Ligne. Innovations prêtes."
+        "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés."
+        "LogCheckMod" = "[UI] Sélection Auto : 'Sans Risque' & 'Modéré' cochés."
         "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
         "LogClearAll" = "[UI] Réinitialisation : Toutes les cases décochées."
         "LogRestoreStart" = "[SYSTEM] Création du point de restauration Windows..."
@@ -83,10 +95,22 @@ $Global:LangDict = @{
         "BtnSelectMod" = "Check All (Moderate)"
         "BtnSelectAdv" = "Check All (Advanced)"
         "BtnClearAll" = "Clear All Checkboxes"
+        "SearchPlaceholder" = "Search tweaks in this category..."
+        "Cpu" = "Processor"
+        "Gpu" = "Graphics"
+        "Ram" = "Memory RAM"
+        "RamCleanerTitle" = "REAL-TIME RAM CLEANER"
+        "RamUsed" = "Used"
+        "BtnCleanRam" = "Optimize RAM"
+        "BtnSaveProfile" = "Save Profile"
+        "BtnLoadProfile" = "Load Profile"
+        "ProfileSaved" = "[OK] Profile saved successfully to 'opti_profile.json'."
+        "ProfileLoaded" = "[OK] Profile 'opti_profile.json' loaded successfully!"
+        "ProfileErr" = "[ERR] No saved profile found."
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.4 Online. Exclusive profiles active."
-        "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked. Moderate/Advanced cleared."
-        "LogCheckMod" = "[UI] Auto-Check: Only 'Safe' & 'Moderate' checked. Advanced cleared."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V13.0 Online. Innovations active."
+        "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked."
+        "LogCheckMod" = "[UI] Auto-Check: 'Safe' & 'Moderate' checked."
         "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks."
         "LogClearAll" = "[UI] Reset: Unchecked all boxes."
         "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
@@ -94,6 +118,13 @@ $Global:LangDict = @{
     }
 }
 $Global:CurrentLang = "FR"
+
+# ============================================================
+# RÉCUPÉRATION INFOS PC (DIAGNOSTIC AUTOMATIQUE)
+# ============================================================
+$CpuName = (Get-CimInstance Win32_Processor).Name.Trim()
+$GpuName = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
+$TotalRamGB = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1GB, 0)
 
 # ============================================================
 # FONCTIONS UTILITAIRES
@@ -198,12 +229,12 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorit
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; LabelFR="Forcer l'affinité CPU max sur le thread d'affichage"; LabelEN="Force maximum core hardware alignment for display layout"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# --- 4. PROCESSUS WINDOWS (MIS À JOUR : PROFILS EXCLUSIFS) ---
+# --- 4. PROCESSUS WINDOWS (PROFIL EXCLUSIF) ---
 $Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE ALLEGE] Tuer les processus de tracking basiques & bloatwares"; LabelEN="[LIGHT MODE] Terminate basic tracking background processes"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0 }}
 $Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE AVANCE] Aligner l'arborescence des services hôtes (Splitting & Isolation RAM)"; LabelEN="[ADVANCED MODE] Split & isolate host processes tree structure"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
 $Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTREME] Clôturer agressivement les processus de maintenance et d'indexation système"; LabelEN="[EXTREME MODE] Aggressively terminate indexing and maintenance background tasks"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
 
-# --- 5. TIMER RESOLUTION DÉDIÉ ---
+# --- 5. TIMER RESOLUTION ---
 $Options += [PSCustomObject]@{Id=115; Cat="Timer"; LabelFR="0.45 ms - Latence Expérimentale (Forçage limite bas)"; LabelEN="0.45 ms - Experimental Latency (Force strict hardware floor)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
 $Options += [PSCustomObject]@{Id=116; Cat="Timer"; LabelFR="0.50 ms - Latence Minimale Absolue (Gaming Compétitif)"; LabelEN="0.50 ms - Minimum Latency standard (Competitive Gaming)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.50 }}
 $Options += [PSCustomObject]@{Id=117; Cat="Timer"; LabelFR="0.60 ms - Latence Très Basse (Ultra stable)"; LabelEN="0.60 ms - Ultra Stable Low Latency profile"; Risk="safe"; Action={ Set-SystemTimerResolution 0.60 }}
@@ -225,7 +256,7 @@ $Options += [PSCustomObject]@{Id=54; Cat="Power"; LabelFR="Désactiver l'hiberna
 $Options += [PSCustomObject]@{Id=55; Cat="Power"; LabelFR="Ajuster la veille du disque dur sur Jamais"; LabelEN="Set hard drive sleep idle timeout limit to Never"; Risk="safe"; Action={ powercfg /change disk-timeout-ac 0 }}
 $Options += [PSCustomObject]@{Id=56; Cat="Power"; LabelFR="Désactiver la veille automatique du PC"; LabelEN="Disable automatic system sleep standby triggers on AC"; Risk="safe"; Action={ powercfg /change standby-timeout-ac 0 }}
 $Options += [PSCustomObject]@{Id=57; Cat="Power"; LabelFR="Désactiver le Link State Power Management (PCIe max)"; LabelEN="Turn off PCIe Link State Power Management (Max bandwidth)"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_pciexpress ee12f20e-c558-4753-b6d2-85978a506a59 0 }}
-$Options += [PSCustomObject]@{Id=58; Cat="Power"; LabelFR="Désactiver la mise en veille des cartes NVMe"; LabelEN="Disable structural device low-power states on NVMe SSDs"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\0012ee47-9041-4b5d-9b77-535fba8b1442\0b2d54ee-2196-4ca6-a93c-7a3120540d0d" "Attributes" 2 }}
+$Options += [PSCustomObject]@{Id=58; Cat="Power"; LabelFR="Désactiver la veille automatique des cartes NVMe"; LabelEN="Disable structural device low-power states on NVMe SSDs"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\0012ee47-9041-4b5d-9b77-535fba8b1442\0b2d54ee-2196-4ca6-a93c-7a3120540d0d" "Attributes" 2 }}
 $Options += [PSCustomObject]@{Id=59; Cat="Power"; LabelFR="Optimiser le refroidissement système sur Actif"; LabelEN="Set System Cooling Policy to Active profile rules"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 94d3a615-a899-4ac5-ae2b-e4d8f634367f 1 }}
 $Options += [PSCustomObject]@{Id=60; Cat="Power"; LabelFR="Forcer le plan d'alimentation actif après injection"; LabelEN="Force apply currently adjusted custom power configuration"; Risk="safe"; Action={ powercfg /setactive scheme_current }}
 
@@ -290,12 +321,12 @@ $Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="O
 $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - DESIGN V12.4
+# INTERFACE GRAPHIQUE (WPF) - DESIGN V13.0
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="860" Width="1060"
+        Title="OPTI-DYLAN TOOLKIT" Height="920" Width="1120"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
         <Style TargetType="CheckBox">
@@ -325,7 +356,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
     </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="245"/>
+            <ColumnDefinition Width="260"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         
@@ -359,8 +390,23 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
                         </StackPanel>
                     </Border>
 
+                    <UniformGrid Columns="2" Margin="0,0,0,8">
+                        <Button Name="BtnSaveProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="0,0,2,0"/>
+                        <Button Name="BtnLoadProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="2,0,0,0"/>
+                    </UniformGrid>
                     <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,12"/>
                     
+                    <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,0,0,12" Padding="8" Background="#0C0C12">
+                        <StackPanel>
+                            <TextBlock Name="TxtRamCleanerTitle" FontSize="9" FontWeight="Bold" Foreground="#00FFC8" HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                <TextBlock Name="TxtRamPercent" Text="-- %" FontSize="18" FontWeight="Bold" Foreground="#F5F5FA"/>
+                                <TextBlock Name="TxtRamUsedLabel" Text=" utilisé" FontSize="10" Foreground="#707080" VerticalAlignment="Bottom" Margin="3,0,0,2"/>
+                            </StackPanel>
+                            <Button Name="BtnCleanRam" Height="25" Background="#161622" Foreground="#00FFC8" FontSize="11" BorderThickness="0"/>
+                        </StackPanel>
+                    </Border>
+
                     <TextBlock Text="LANGUAGE / LANGUE" FontSize="9" Foreground="#505060" Margin="5,0,0,2" HorizontalAlignment="Left"/>
                     <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black">
                         <ComboBoxItem Content="Français (FR)" IsSelected="True"/>
@@ -372,18 +418,45 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
         
         <Grid Grid.Column="1" Margin="20">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="150"/>
-                <RowDefinition Height="55"/>
-            </Grid.RowDefinitions>
-            <TextBlock Name="TxtTitle" Grid.Row="0" FontSize="16" FontWeight="Bold" Foreground="#DCDCE6" Margin="5,0,0,15"/>
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                <StackPanel Name="OptionsPanel" Margin="15,0"/>
+                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="55"/>   </Grid.RowDefinitions>
+            
+            <Border Grid.Row="0" Background="#101016" CornerRadius="5" Padding="12" Margin="0,0,0,15" BorderBrush="#1C1C28" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="1*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                        <TextBlock Name="DiagCpuLabel" FontSize="10" Foreground="#707080" FontWeight="Bold"/>
+                        <TextBlock Name="DiagCpuVal" FontSize="11" Foreground="#00FFC8" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="0,0,10,0">
+                        <TextBlock Name="DiagGpuLabel" FontSize="10" Foreground="#707080" FontWeight="Bold"/>
+                        <TextBlock Name="DiagGpuVal" FontSize="11" Foreground="#00FFC8" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Name="DiagRamLabel" FontSize="10" Foreground="#707080" FontWeight="Bold"/>
+                        <TextBlock Name="DiagRamVal" FontSize="11" Foreground="#00FFC8"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            
+            <Grid Grid.Row="1" Margin="0,0,0,10">
+                <TextBox Name="TxtSearch" Height="28" Background="#161622" Foreground="#DCDCE6" BorderBrush="#2A2A3A" BorderThickness="1" Padding="25,4,5,4" FontSize="12"/>
+                <TextBlock Text="🔍" Foreground="#505060" FontSize="11" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0" IsHitTestVisible="False"/>
+            </Grid>
+
+            <TextBlock Name="TxtTitle" Grid.Row="1" FontSize="16" FontWeight="Bold" Foreground="#DCDCE6" Margin="5,0,0,15" Visibility="Collapsed"/>
+            
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                <StackPanel Name="OptionsPanel" Margin="10,0"/>
             </ScrollViewer>
-            <TextBox Name="LogBox" Grid.Row="2" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
+            
+            <TextBox Name="LogBox" Grid.Row="3" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
                      FontFamily="Consolas" FontSize="11" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
-            <Button Name="BtnApply" Grid.Row="3" Margin="0,15,0,0"
+            
+            <Button Name="BtnApply" Grid.Row="4" Margin="0,15,0,0"
                     Background="#00FFC8" Foreground="#0A0A0E" FontWeight="Bold" FontSize="13" BorderThickness="0"/>
         </Grid>
     </Grid>
@@ -393,6 +466,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
 $Reader = New-Object System.Xml.XmlNodeReader $XAML
 $Form = [Windows.Markup.XamlReader]::Load($Reader)
 
+# Récupération des contrôles WPF
 $Panel = $Form.FindName("OptionsPanel")
 $TxtTitle = $Form.FindName("TxtTitle")
 $TxtMainTitle = $Form.FindName("TxtMainTitle")
@@ -408,6 +482,26 @@ $BtnSelectSafe = $Form.FindName("BtnSelectSafe")
 $BtnSelectMod = $Form.FindName("BtnSelectMod")
 $BtnSelectAdv = $Form.FindName("BtnSelectAdv")
 $BtnClearAll = $Form.FindName("BtnClearAll")
+
+$BtnSaveProfile = $Form.FindName("BtnSaveProfile")
+$BtnLoadProfile = $Form.FindName("BtnLoadProfile")
+$TxtRamCleanerTitle = $Form.FindName("TxtRamCleanerTitle")
+$TxtRamPercent = $Form.FindName("TxtRamPercent")
+$TxtRamUsedLabel = $Form.FindName("TxtRamUsedLabel")
+$BtnCleanRam = $Form.FindName("BtnCleanRam")
+$TxtSearch = $Form.FindName("TxtSearch")
+
+$DiagCpuLabel = $Form.FindName("DiagCpuLabel")
+$DiagCpuVal = $Form.FindName("DiagCpuVal")
+$DiagGpuLabel = $Form.FindName("DiagGpuLabel")
+$DiagGpuVal = $Form.FindName("DiagGpuVal")
+$DiagRamLabel = $Form.FindName("DiagRamLabel")
+$DiagRamVal = $Form.FindName("DiagRamVal")
+
+# Injection du diagnostic matériel
+$DiagCpuVal.Text = $CpuName
+$DiagGpuVal.Text = $GpuName
+$DiagRamVal.Text = "$TotalRamGB Go"
 
 $NavButtons = @{
     "Reseau"=$Form.FindName("BtnReseau")
@@ -426,6 +520,65 @@ $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
 
+# ============================================================
+# LOGIQUE DE NETTOYAGE ET MISE À JOUR DE LA RAM
+# ============================================================
+$RamTimer = New-Object System.Windows.Threading.DispatcherTimer
+$RamTimer.Interval = [TimeSpan]::FromSeconds(2)
+$RamTimer.Add_Tick({
+    $os = Get-CimInstance Win32_OperatingSystem
+    $pct = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
+    $TxtRamPercent.Text = "$pct %"
+})
+$RamTimer.Start()
+
+$BtnCleanRam.Add_Click({
+    [System.GC]::Collect()
+    [System.GC]::WaitForPendingFinalizers()
+    # Nettoyage additionnel mémoire de cache
+    $os = Get-CimInstance Win32_OperatingSystem
+    $pct = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
+    $TxtRamPercent.Text = "$pct %"
+    Write-Log "RAM optimisée et cache libéré." $false
+})
+
+# ============================================================
+# GESTION DES PROFILS DE SAUVEGARDE
+# ============================================================
+$ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
+
+$BtnSaveProfile.Add_Click({
+    try {
+        $Json = $Global:CheckStates | ConvertTo-Json
+        [System.IO.File]::WriteAllText($ProfilePath, $Json)
+        Write-Log "ProfileSaved"
+    } catch {
+        Write-Log "[ERR] $($_.Exception.Message)" $false
+    }
+})
+
+$BtnLoadProfile.Add_Click({
+    if (Test-Path $ProfilePath) {
+        try {
+            $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json -AsHashtable
+            foreach ($k in $Loaded.Keys) {
+                # Force conversion string key to integer ID
+                $id = [int]$k
+                $Global:CheckStates[$id] = [bool]$Loaded[$k]
+            }
+            Render-Category $Global:LastCategory
+            Write-Log "ProfileLoaded"
+        } catch {
+            Write-Log "[ERR] $($_.Exception.Message)" $false
+        }
+    } else {
+        Write-Log "ProfileErr"
+    }
+})
+
+# ============================================================
+# GESTION DE L'INTERFACE ET DE L'ÉVOLUTION DE LA LANGUE
+# ============================================================
 function Write-Log([string]$KeyOrText, [bool]$IsStaticKey = $true) {
     if ($IsStaticKey) {
         if (-not $Global:LogHistory.Contains($KeyOrText)) { $Global:LogHistory.Add($KeyOrText) }
@@ -463,6 +616,19 @@ function Update-InterfaceLanguage {
     $BtnSelectAdv.Content = $L["BtnSelectAdv"]
     $BtnClearAll.Content = $L["BtnClearAll"]
     
+    $BtnSaveProfile.Content = $L["BtnSaveProfile"]
+    $BtnLoadProfile.Content = $L["BtnLoadProfile"]
+    $TxtRamCleanerTitle.Text = $L["RamCleanerTitle"]
+    $TxtRamUsedLabel.Text = $L["RamUsed"]
+    $BtnCleanRam.Content = $L["BtnCleanRam"]
+    
+    $DiagCpuLabel.Text = $L["Cpu"].ToUpper()
+    $DiagGpuLabel.Text = $L["Gpu"].ToUpper()
+    $DiagRamLabel.Text = $L["Ram"].ToUpper()
+    
+    # Placeholder pour la barre de recherche
+    $TxtSearch.Text = ""
+    
     $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
     $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConfidentialite"]
     $NavButtons["Gaming"].Content = "🎮  " + $L["CatGaming"]
@@ -481,11 +647,18 @@ function Render-Category([string]$Cat) {
     try {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
-        $L = $Global:LangDict[$Global:CurrentLang]
         
-        $TxtTitle.Text = $L["Cat" + $Cat].ToUpper()
+        $filter = $TxtSearch.Text.Trim()
         
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
+        
+        # Filtre de recherche dynamique
+        if (-not [string]::IsNullOrEmpty($filter)) {
+            $Items = $Items | Where-Object {
+                $_.LabelFR -match $filter -or $_.LabelEN -match $filter
+            }
+        }
+        
         foreach ($item in $Items) {
             $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
             $Brush = Get-Brush $color
@@ -515,7 +688,7 @@ function Render-Category([string]$Cat) {
                     Render-Category $Global:LastCategory
                 }
                 
-                # NOUVEAU: Exclusivité pour la catégorie "Processus" (IDs 122, 123 et 124)
+                # Exclusivité pour la catégorie "Processus" (IDs 122, 123 et 124)
                 if ($id -ge 122 -and $id -le 124) {
                     for ($i = 122; $i -le 124; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -541,7 +714,12 @@ function Render-Category([string]$Cat) {
     }
 }
 
-# --- LOGIQUE INTELLIGENTE DES BOUTONS DE SÉLECTION RAPIDE ---
+# --- RECHERCHE INSTANTANÉE EN TEMPS RÉEL ---
+$TxtSearch.Add_TextChanged({
+    Render-Category $Global:LastCategory
+})
+
+# --- LOGIQUE DES BOUTONS DE SÉLECTION RAPIDE ---
 $BtnSelectSafe.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
