@@ -352,44 +352,59 @@ function Write-Log([string]$Text) {
 }
 
 function Render-Category([string]$Cat) {
-    $Panel.Children.Clear()
-    $TxtTitle.Text = $Cat.ToUpper()
-    $Items = $Options | Where-Object { $_.Cat -eq $Cat }
-    foreach ($item in $Items) {
-        $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} }
-        $Brush = [System.Windows.Media.ColorConverter]::ConvertFromString($color)
+    try {
+        $Panel.Children.Clear()
+        $TxtTitle.Text = $Cat.ToUpper()
+        $Items = $Options | Where-Object { $_.Cat -eq $Cat }
+        foreach ($item in $Items) {
+            $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
+            $Brush = [System.Windows.Media.ColorConverter]::ConvertFromString($color)
 
-        $Lbl = New-Object System.Windows.Controls.TextBlock
-        $Lbl.Text = $item.Label
-        $Lbl.Foreground = $Brush
-        $Lbl.FontSize = 13
-        $Lbl.TextWrapping = "Wrap"
-        $Lbl.VerticalAlignment = "Center"
+            $Lbl = New-Object System.Windows.Controls.TextBlock
+            $Lbl.Text = $item.Label
+            $Lbl.Foreground = $Brush
+            $Lbl.FontSize = 13
+            $Lbl.TextWrapping = "Wrap"
+            $Lbl.VerticalAlignment = "Center"
 
-        $Chk = New-Object System.Windows.Controls.CheckBox
-        $Chk.Content = $Lbl
-        $Chk.Margin = "0,7,0,7"
-        $Chk.Tag = $item.Id
-        $Chk.IsChecked = $Global:CheckStates[$item.Id]
-        $Chk.Add_Checked({ $Global:CheckStates[$this.Tag] = $true })
-        $Chk.Add_Unchecked({ $Global:CheckStates[$this.Tag] = $false })
-        [void]$Panel.Children.Add($Chk)
-    }
-    foreach ($key in $NavButtons.Keys) {
-        if ($key -eq $Cat) {
-            $NavButtons[$key].Background = [System.Windows.Media.ColorConverter]::ConvertFromString("#181824")
-            $NavButtons[$key].Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString("#00FFC8")
-        } else {
-            $NavButtons[$key].Background = [System.Windows.Media.Brushes]::Transparent
-            $NavButtons[$key].Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString("#A0A0B4")
+            $Chk = New-Object System.Windows.Controls.CheckBox
+            $Chk.Content = $Lbl
+            $Chk.Margin = "0,7,0,7"
+            $Chk.Tag = $item.Id
+            $Chk.IsChecked = $Global:CheckStates[$item.Id]
+            $Chk.Add_Checked({ $Global:CheckStates[$this.Tag] = $true })
+            $Chk.Add_Unchecked({ $Global:CheckStates[$this.Tag] = $false })
+            [void]$Panel.Children.Add($Chk)
         }
+        foreach ($key in $NavButtons.Keys) {
+            if ($key -eq $Cat) {
+                $NavButtons[$key].Background = [System.Windows.Media.ColorConverter]::ConvertFromString("#181824")
+                $NavButtons[$key].Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString("#00FFC8")
+            } else {
+                $NavButtons[$key].Background = [System.Windows.Media.Brushes]::Transparent
+                $NavButtons[$key].Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString("#A0A0B4")
+            }
+        }
+    } catch {
+        Write-Log "[ERREUR AFFICHAGE] $($_.Exception.Message)"
     }
 }
 
-foreach ($key in $NavButtons.Keys) {
-    $catCapture = $key
-    $NavButtons[$key].Add_Click({ Render-Category $catCapture }.GetNewClosure())
-}
+$BtnReseau = $NavButtons["Reseau"]
+$BtnConfidentialite = $NavButtons["Confidentialite"]
+$BtnGaming = $NavButtons["Gaming"]
+$BtnPower = $NavButtons["Power"]
+$BtnServices = $NavButtons["Services"]
+$BtnNettoyage = $NavButtons["Nettoyage"]
+$BtnApps = $NavButtons["Apps"]
+
+$BtnReseau.Add_Click({ Render-Category "Reseau" })
+$BtnConfidentialite.Add_Click({ Render-Category "Confidentialite" })
+$BtnGaming.Add_Click({ Render-Category "Gaming" })
+$BtnPower.Add_Click({ Render-Category "Power" })
+$BtnServices.Add_Click({ Render-Category "Services" })
+$BtnNettoyage.Add_Click({ Render-Category "Nettoyage" })
+$BtnApps.Add_Click({ Render-Category "Apps" })
 
 $BtnRestore.Add_Click({
     Write-Log "[SYSTEM] Creation du point de restauration..."
