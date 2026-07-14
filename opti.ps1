@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V11.2 - FULL FULL TRANSLATION FIX (100% BILINGUAL)
+    OPTI-DYLAN TOOLKIT PRO V11.3 - QUICK SMART SELECTION PASS (SAFE / MODERATE)
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -44,6 +44,10 @@ $Global:LangDict = @{
         "CatNettoyage" = "Nettoyage & Ram"
         "CatTimer" = "Timer Resolution"
         "CatApps" = "Apps (Winget)"
+        "QuickSelect" = "SELECTION RAPIDE"
+        "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
+        "BtnSelectMod" = "Cocher Tout (Modéré)"
+        "BtnClearAll" = "Tout Décocher"
     }
     "EN" = @{
         "Title" = "OPTI-DYLAN TOOLKIT"
@@ -63,6 +67,10 @@ $Global:LangDict = @{
         "CatNettoyage" = "Cleanup & Ram"
         "CatTimer" = "Timer Resolution"
         "CatApps" = "Apps (Winget)"
+        "QuickSelect" = "QUICK SELECTION"
+        "BtnSelectSafe" = "Check All (Safe Only)"
+        "BtnSelectMod" = "Check All (Moderate)"
+        "BtnClearAll" = "Clear All Checkboxes"
     }
 }
 $Global:CurrentLang = "FR"
@@ -184,7 +192,7 @@ $Options += [PSCustomObject]@{Id=46; Cat="Power"; LabelFR="Activer le plan d'ali
 $Options += [PSCustomObject]@{Id=47; Cat="Power"; LabelFR="Désactiver le Core Parking (C-States bloqués)"; LabelEN="Disable CPU Core Parking (Locks minimum active logical cores)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
 $Options += [PSCustomObject]@{Id=48; Cat="Power"; LabelFR="Désactiver le Power Throttling"; LabelEN="Disable Global Windows Power Throttling engines"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling" "PowerThrottlingOff" 1 }}
 $Options += [PSCustomObject]@{Id=49; Cat="Power"; LabelFR="Forcer l'état minimal du processeur à 100%"; LabelEN="Force Minimum Processor State to 100% on AC power"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_processor 893dee8e-2bef-41e0-89c6-b55d0929964c 100 }}
-$Options += [PSCustomObject]@{Id=50; Cat="Power"; LabelFR="Désactiver la suspension sélective USB"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 }}
+$Options += [PSCustomObject]@{Id=50; Cat="Power"; LabelFR="Désactiver la suspension sélective USB"; LabelEN="Disable USB selective suspend settings tasks profiling"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 }}
 $Options += [PSCustomObject]@{Id=51; Cat="Power"; LabelFR="Désactiver HPET (High Precision Event Timer)"; LabelEN="Disable High Precision Event Timer (HPET) ticks"; Risk="advanced"; Action={ bcdedit /deletevalue useplatformclock; bcdedit /set disabledynamictick yes }}
 $Options += [PSCustomObject]@{Id=52; Cat="Power"; LabelFR="Désactiver les mitigations Spectre/Meltdown (gain FPS)"; LabelEN="Disable Spectre/Meltdown hardware mitigations (FPS Boost)"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3; Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3 }}
 $Options += [PSCustomObject]@{Id=53; Cat="Power"; LabelFR="Désactiver le démarrage rapide (Fast Startup)"; LabelEN="Disable Windows Fast Startup (Prevents random kernel bugs)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" 0 }}
@@ -257,12 +265,12 @@ $Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="O
 $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) CORRIGÉE ENTIÈREMENT TRADUITE
+# INTERFACE GRAPHIQUE (WPF) AVEC BLOC SELECTION
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="780" Width="1040"
+        Title="OPTI-DYLAN TOOLKIT" Height="820" Width="1060"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
         <Style TargetType="CheckBox">
@@ -292,36 +300,47 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
     </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="230"/>
+            <ColumnDefinition Width="240"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         
         <Grid Grid.Column="0" Background="#101016">
-            <StackPanel Margin="10,15,10,10">
-                <TextBlock Name="TxtMainTitle" Text="OPTI-DYLAN" FontSize="20" FontWeight="Bold" Foreground="#00FFC8" HorizontalAlignment="Center" Margin="0,0,0,4"/>
-                <TextBlock Name="TxtSubtitle" Text="Chaque case = une vraie action" FontSize="10" Foreground="#707080" HorizontalAlignment="Center" Margin="0,0,0,15"/>
-                
-                <Border Background="#161622" CornerRadius="5" Padding="10" Margin="0,0,0,15">
-                    <TextBlock Name="TxtLegend" Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap"/>
-                </Border>
-                
-                <Button Name="BtnReseau" Tag="Reseau" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnGaming" Tag="Gaming" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnTimer" Tag="Timer" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnPower" Tag="Power" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnServices" Tag="Services" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnNettoyage" Tag="Nettoyage" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnApps" Tag="Apps" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                
-                <Button Name="BtnRestore" Height="35" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,15,0,15"/>
-                
-                <TextBlock Text="LANGUAGE / LANGUE" FontSize="9" Foreground="#505060" Margin="5,10,0,2" HorizontalAlignment="Left"/>
-                <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black">
-                    <ComboBoxItem Content="Français (FR)" IsSelected="True"/>
-                    <ComboBoxItem Content="English (EN)"/>
-                </ComboBox>
-            </StackPanel>
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="10,15,10,10">
+                    <TextBlock Name="TxtMainTitle" Text="OPTI-DYLAN" FontSize="20" FontWeight="Bold" Foreground="#00FFC8" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                    <TextBlock Name="TxtSubtitle" Text="Chaque case = une vraie action" FontSize="10" Foreground="#707080" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                    
+                    <Border Background="#161622" CornerRadius="5" Padding="10" Margin="0,0,0,12">
+                        <TextBlock Name="TxtLegend" Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap"/>
+                    </Border>
+                    
+                    <Button Name="BtnReseau" Tag="Reseau" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnGaming" Tag="Gaming" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnTimer" Tag="Timer" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnPower" Tag="Power" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnServices" Tag="Services" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnNettoyage" Tag="Nettoyage" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnApps" Tag="Apps" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    
+                    <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,10,0,10" Padding="8">
+                        <StackPanel>
+                            <TextBlock Name="TxtQuickSelect" FontSize="10" FontWeight="Bold" Foreground="#00FFC8" Margin="0,0,0,6" HorizontalAlignment="Center"/>
+                            <Button Name="BtnSelectSafe" Height="25" Background="#161622" Foreground="#F5F5FA" FontSize="11" BorderThickness="0" Margin="0,2"/>
+                            <Button Name="BtnSelectMod" Height="25" Background="#161622" Foreground="#F1C40F" FontSize="11" BorderThickness="0" Margin="0,2"/>
+                            <Button Name="BtnClearAll" Height="25" Background="#221616" Foreground="#E74C3C" FontSize="11" BorderThickness="0" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,2,0,10"/>
+                    
+                    <TextBlock Text="LANGUAGE / LANGUE" FontSize="9" Foreground="#505060" Margin="5,0,0,2" HorizontalAlignment="Left"/>
+                    <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black">
+                        <ComboBoxItem Content="Français (FR)" IsSelected="True"/>
+                        <ComboBoxItem Content="English (EN)"/>
+                    </ComboBox>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
         
         <Grid Grid.Column="1" Margin="20">
@@ -357,6 +376,12 @@ $BtnApply = $Form.FindName("BtnApply")
 $BtnRestore = $Form.FindName("BtnRestore")
 $ComboLang = $Form.FindName("ComboLang")
 
+# Éléments Sélection Rapide
+$TxtQuickSelect = $Form.FindName("TxtQuickSelect")
+$BtnSelectSafe = $Form.FindName("BtnSelectSafe")
+$BtnSelectMod = $Form.FindName("BtnSelectMod")
+$BtnClearAll = $Form.FindName("BtnClearAll")
+
 $NavButtons = @{
     "Reseau"=$Form.FindName("BtnReseau")
     "Confidentialite"=$Form.FindName("BtnConfidentialite")
@@ -387,6 +412,12 @@ function Update-InterfaceLanguage {
     $BtnApply.Content = $L["BtnApply"]
     $BtnRestore.Content = $L["BtnRestore"]
     
+    # Textes de sélection rapide
+    $TxtQuickSelect.Text = $L["QuickSelect"]
+    $BtnSelectSafe.Content = $L["BtnSelectSafe"]
+    $BtnSelectMod.Content = $L["BtnSelectMod"]
+    $BtnClearAll.Content = $L["BtnClearAll"]
+    
     $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
     $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConfidentialite"]
     $NavButtons["Gaming"].Content = "🎮  " + $L["CatGaming"]
@@ -413,7 +444,6 @@ function Render-Category([string]$Cat) {
             $Brush = Get-Brush $color
 
             $Lbl = New-Object System.Windows.Controls.TextBlock
-            # Correction ici : Choix dynamique de la langue du tweak selon le mode actif
             if ($Global:CurrentLang -eq "FR") { $Lbl.Text = $item.LabelFR } else { $Lbl.Text = $item.LabelEN }
             $Lbl.Foreground = $Brush
             $Lbl.FontSize = 13
@@ -422,7 +452,7 @@ function Render-Category([string]$Cat) {
 
             $Chk = New-Object System.Windows.Controls.CheckBox
             $Chk.Content = $Lbl
-            $Chk.Margin = "0,7,0,7"
+            $Chk.Margin = "0,6,0,6"
             $Chk.Tag = $item.Id
             $Chk.IsChecked = $Global:CheckStates[$item.Id]
             
@@ -430,7 +460,6 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Exclusion mutuelle des options Timer Resolution
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -456,11 +485,42 @@ function Render-Category([string]$Cat) {
     }
 }
 
+# LOGIQUE DES BOUTONS DE SÉLECTION AUTOMATIQUE
+$BtnSelectSafe.Add_Click({
+    foreach ($item in $Options) {
+        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
+            $Global:CheckStates[$item.Id] = $true
+        }
+    }
+    # On force par défaut le Timer standard (1.00ms) s'il n'y en a pas d'autre pour éviter de laisser vide
+    $Global:CheckStates[119] = $true
+    Render-Category $Global:LastCategory
+    Write-Log "[UI] Dynamic Auto-Check: Checked all 'Safe' tweaks."
+})
+
+$BtnSelectMod.Add_Click({
+    foreach ($item in $Options) {
+        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
+            $Global:CheckStates[$item.Id] = $true
+        }
+    }
+    # On force le Timer compétitif (0.50ms) pour le profil modéré/gaming
+    $Global:CheckStates[116] = $true
+    Render-Category $Global:LastCategory
+    Write-Log "[UI] Dynamic Auto-Check: Checked all 'Safe' & 'Moderate' tweaks."
+})
+
+$BtnClearAll.Add_Click({
+    foreach ($id in $Global:CheckStates.Keys) {
+        $Global:CheckStates[$id] = $false
+    }
+    Render-Category $Global:LastCategory
+    Write-Log "[UI] Reset: Unchecked all boxes."
+})
+
 foreach ($key in $NavButtons.Keys) {
     $b = $NavButtons[$key]
-    if ($null -ne $b) {
-        $b.Add_Click({ Render-Category $this.Tag })
-    }
+    if ($null -ne $b) { $b.Add_Click({ Render-Category $this.Tag }) }
 }
 
 $ComboLang.Add_SelectionChanged({
@@ -506,5 +566,5 @@ $BtnApply.Add_Click({
 
 # Démarrage
 Update-InterfaceLanguage
-Write-Log "[SYSTEM] Toolkit Engine V11.2 initialized. Full 100% Bilingual localization complete."
+Write-Log "[SYSTEM] Toolkit Engine V11.3 Online. Quick select integration complete."
 [void]$Form.ShowDialog()
