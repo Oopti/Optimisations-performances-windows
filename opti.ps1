@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V12.0 - PROCESSUS SELECTION & KERNEL OPTIMIZATION
+    OPTI-DYLAN TOOLKIT PRO V12.1 - LIVE DEBUG TRANSLATION & PROCESS ADDON
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -39,11 +39,10 @@ $Global:LangDict = @{
         "CatReseau" = "Réseau & Ping"
         "CatConfidentialite" = "Confidentialité"
         "CatGaming" = "Gaming & Latence"
+        "CatProcessus" = "Processus Windows"
         "CatPower" = "Énergie & CPU"
         "CatServices" = "Services Windows"
         "CatNettoyage" = "Nettoyage & Ram"
-        "CatTimer" = "Timer Resolution"
-        "CatProcessus" = "Processus Windows"
         "CatApps" = "Apps (Winget)"
         "QuickSelect" = "SELECTION RAPIDE"
         "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
@@ -51,7 +50,7 @@ $Global:LangDict = @{
         "BtnSelectAdv" = "Cocher Tout (Avancé)"
         "BtnClearAll" = "Tout Décocher"
         # Logs traduits
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.0 En Ligne. Nettoyage des erreurs de thread WPF ok."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.1 En Ligne. Traduction Live du Debug active."
         "LogCheckSafe" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' cochés (Apps ignorées)."
         "LogCheckMod" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' & 'Modéré' cochés (Apps ignorées)."
         "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés (Apps ignorées)."
@@ -72,11 +71,10 @@ $Global:LangDict = @{
         "CatReseau" = "Network & Ping"
         "CatConfidentialite" = "Privacy"
         "CatGaming" = "Gaming & Latency"
+        "CatProcessus" = "Windows Processes"
         "CatPower" = "Power & CPU"
         "CatServices" = "Windows Services"
         "CatNettoyage" = "Cleanup & Ram"
-        "CatTimer" = "Timer Resolution"
-        "CatProcessus" = "Windows Processes"
         "CatApps" = "Apps (Winget)"
         "QuickSelect" = "QUICK SELECTION"
         "BtnSelectSafe" = "Check All (Safe Only)"
@@ -84,7 +82,7 @@ $Global:LangDict = @{
         "BtnSelectAdv" = "Check All (Advanced)"
         "BtnClearAll" = "Clear All Checkboxes"
         # Logs traduits
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.0 Online. WPF UI thread issues resolved."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.1 Online. Live Debug translation active."
         "LogCheckSafe" = "[UI] Auto-Check: Checked all 'Safe' tweaks (Apps ignored)."
         "LogCheckMod" = "[UI] Auto-Check: Checked all 'Safe' & 'Moderate' tweaks (Apps ignored)."
         "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks (Apps ignored)."
@@ -117,14 +115,10 @@ function Disable-Svc {
     }
 }
 
-function Disable-Task {
-    param([string]$Path, [string]$Name)
-    Disable-ScheduledTask -TaskPath $Path -TaskName $Name -ErrorAction SilentlyContinue | Out-Null
-}
-
 function Install-WingetApp {
     param([string]$Id, [string]$AppName)
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "winget introuvable." }
+    Write-Log "[WINGET] Download & Install : $AppName ($Id)..."
     $p = Start-Process -FilePath "winget" -ArgumentList "install --id $Id -e --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -ne 0) { throw "winget failed with code $($p.ExitCode)" }
 }
@@ -138,11 +132,16 @@ function Set-SystemTimerResolution {
     param([double]$Milliseconds)
     $val = [uint32]($Milliseconds * 10000)
     $current = [uint32]0
-    [void][TimerResolution]::NtSetTimerResolution($val, $true, [ref]$current)
+    $res = [TimerResolution]::NtSetTimerResolution($val, $true, [ref]$current)
+    if ($res -eq 0) {
+        Write-Log "[TIMER] Resolution forced to : $Milliseconds ms (Kernel return: $($current / 10000) ms)"
+    } else {
+        Write-Log "[WARN] Timer resolution update failed (Code: $res)"
+    }
 }
 
 # ============================================================
-# CATALOGUE DES TWEAKS + TRADUCTIONS
+# CATALOGUE DES TWEAKS + TRADUCTIONS INTÉGRÉES
 # ============================================================
 $Options = @()
 
@@ -197,7 +196,12 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorit
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; LabelFR="Forcer l'affinité CPU max sur le thread d'affichage"; LabelEN="Force maximum core hardware alignment for display layout"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# --- 4. TIMER RESOLUTION ---
+# --- 4. PROCESSUS WINDOWS (3 Niveaux de Puissance) ---
+$Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE ALLEGE] Tuer les processus de tracking basiques & bloatwares"; LabelEN="[LIGHT MODE] Terminate basic tracking background processes"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0 }}
+$Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE AVANCE] Aligner l'arborescence des services hôtes (Splitting & Isolation RAM)"; LabelEN="[ADVANCED MODE] Split & isolate host processes tree structure (SvcHost Split)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
+$Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTREME] Clôturer agressivement les processus de maintenance et d'indexation système"; LabelEN="[EXTREME MODE] Aggressively terminate indexing and maintenance background tasks"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
+
+# --- 5. TIMER RESOLUTION DÉDIÉ ---
 $Options += [PSCustomObject]@{Id=115; Cat="Timer"; LabelFR="0.45 ms - Latence Expérimentale (Forçage limite bas)"; LabelEN="0.45 ms - Experimental Latency (Force strict hardware floor)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
 $Options += [PSCustomObject]@{Id=116; Cat="Timer"; LabelFR="0.50 ms - Latence Minimale Absolue (Gaming Compétitif)"; LabelEN="0.50 ms - Minimum Latency standard (Competitive Gaming)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.50 }}
 $Options += [PSCustomObject]@{Id=117; Cat="Timer"; LabelFR="0.60 ms - Latence Très Basse (Ultra stable)"; LabelEN="0.60 ms - Ultra Stable Low Latency profile"; Risk="safe"; Action={ Set-SystemTimerResolution 0.60 }}
@@ -205,26 +209,6 @@ $Options += [PSCustomObject]@{Id=118; Cat="Timer"; LabelFR="0.75 ms - Latence In
 $Options += [PSCustomObject]@{Id=119; Cat="Timer"; LabelFR="1.00 ms - Latence Standard Windows Équilibrée"; LabelEN="1.00 ms - Default Balanced Windows OS timer tick rate"; Risk="safe"; Action={ Set-SystemTimerResolution 1.00 }}
 $Options += [PSCustomObject]@{Id=120; Cat="Timer"; LabelFR="2.50 ms - Économie d'Énergie Modérée"; LabelEN="2.50 ms - Moderate Power Saving system clock tick"; Risk="safe"; Action={ Set-SystemTimerResolution 2.50 }}
 $Options += [PSCustomObject]@{Id=121; Cat="Timer"; LabelFR="5.00 ms - Mode Bureautique / Éco Batterie maximal"; LabelEN="5.00 ms - Maximum Office Power Saving battery cycle mode"; Risk="safe"; Action={ Set-SystemTimerResolution 5.00 }}
-
-# --- 5. CATEGORIE DÉDIÉE : PROCESSUS WINDOWS (3 Niveaux de puissance) ---
-$Options += [PSCustomObject]@{Id=201; Cat="Processus"; LabelFR="[MODE ALLÉGÉ] Tuer les processus de tracking basiques & bloatwares"; LabelEN="[LIGHT MODE] Discard lightweight analytics & background bloatware threads"; Risk="safe"; Action={
-    Disable-Task "\Microsoft\Windows\Application Experience" "Microsoft Compatibility Appraiser"
-    Disable-Task "\Microsoft\Windows\Application Experience" "ProgramDataUpdater"
-    Disable-Task "\Microsoft\Windows\Autochk" "Proxy"
-    Disable-Task "\Microsoft\Windows\Customer Experience Improvement Program" "Consolidator"
-}}
-$Options += [PSCustomObject]@{Id=202; Cat="Processus"; LabelFR="[MODE AVANCÉ] Aligner l'arborescence des services hôtes (Splitting & Isolation RAM)"; LabelEN="[ADVANCED MODE] Restructure svchost thread grouping sizes (RAM Isolation optimization)"; Risk="moderate"; Action={
-    # Augmente le seuil d'isolation des processus svchost pour réduire le nombre total de processus système en tâche de fond (3.5 Go+)
-    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000
-    Disable-Task "\Microsoft\Windows\Power Efficiency Diagnostics" "AnalyzeSystem"
-    Disable-Task "\Microsoft\Windows\Maintenance" "WinSAT"
-}}
-$Options += [PSCustomObject]@{Id=203; Cat="Processus"; LabelFR="[MODE EXTRÊME] Clôturer agressivement les processus de maintenance et d'indexation système"; LabelEN="[EXTREME MODE] Terminate background disk checkers & resource consumer system tasks"; Risk="advanced"; Action={
-    Disable-Task "\Microsoft\Windows\Defrag" "ScheduledDefrag"
-    Disable-Task "\Microsoft\Windows\DiskDiagnostic" "Microsoft-Windows-DiskDiagnosticDataCollector"
-    Disable-Task "\Microsoft\Windows\Registry" "RegIdleBackup"
-    Get-Process | Where-Object { $_.Name -eq "SearchIndexer" -or $_.Name -eq "CompatTelRunner" } | Stop-Process -Force -ErrorAction SilentlyContinue
-}}
 
 # --- 6. ÉNERGIE & PROCESSEUR ---
 $Options += [PSCustomObject]@{Id=46; Cat="Power"; LabelFR="Activer le plan d'alimentation Performances Ultimes"; LabelEN="Unlock and apply Ultimate Performance power scheme"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
@@ -284,7 +268,24 @@ $Options += [PSCustomObject]@{Id=93; Cat="Apps"; LabelFR="Brave Browser"; LabelE
 $Options += [PSCustomObject]@{Id=94; Cat="Apps"; LabelFR="Discord"; LabelEN="Discord Chat Client Application"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
 $Options += [PSCustomObject]@{Id=95; Cat="Apps"; LabelFR="Steam"; LabelEN="Valve Steam Gaming Platform Store"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
 $Options += [PSCustomObject]@{Id=96; Cat="Apps"; LabelFR="Epic Games Launcher"; LabelEN="Epic Games Store Storefront Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
+$Options += [PSCustomObject]@{Id=97; Cat="Apps"; LabelFR="EA App (Electronic Arts)"; LabelEN="Electronic Arts Desktop Client App"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
+$Options += [PSCustomObject]@{Id=98; Cat="Apps"; LabelFR="Ubisoft Connect"; LabelEN="Ubisoft Ecosystem Connect Launcher"; Risk="safe"; Action={ Install-WingetApp "Ubisoft.Connect" "Ubisoft Connect" }}
+$Options += [PSCustomObject]@{Id=99; Cat="Apps"; LabelFR="7-Zip (Archivage)"; LabelEN="7-Zip High Compression Ratio File Unpacker"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
+$Options += [PSCustomObject]@{Id=100; Cat="Apps"; LabelFR="WinRAR"; LabelEN="WinRAR Compress Archive Manager Tool"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
 $Options += [PSCustomObject]@{Id=101; Cat="Apps"; LabelFR="VLC Media Player"; LabelEN="VLC Multi-Platform Media Player Framework"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC Media Player" }}
+$Options += [PSCustomObject]@{Id=102; Cat="Apps"; LabelFR="ShareX (Captures & Records)"; LabelEN="ShareX Screen Capture File Sharing Productivity Tool"; Risk="safe"; Action={ Install-WingetApp "ShareX.ShareX" "ShareX" }}
+$Options += [PSCustomObject]@{Id=103; Cat="Apps"; LabelFR="GeForce Experience"; LabelEN="NVIDIA GeForce Experience Optimization Core"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceExperience" "GeForce Experience" }}
+$Options += [PSCustomObject]@{Id=104; Cat="Apps"; LabelFR="MSI Afterburner"; LabelEN="MSI Afterburner Overclocking Hardware Monitor"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
+$Options += [PSCustomObject]@{Id=105; Cat="Apps"; LabelFR="Visual Studio Code"; LabelEN="Microsoft Visual Studio Code Source Code Editor"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
+$Options += [PSCustomObject]@{Id=106; Cat="Apps"; LabelFR="Notepad++"; LabelEN="NotepadPlusPlus Source Code Code Editor Engine"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
+$Options += [PSCustomObject]@{Id=107; Cat="Apps"; LabelFR="Git pour Windows"; LabelEN="Git Distributed Version Control Software Build"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
+$Options += [PSCustomObject]@{Id=108; Cat="Apps"; LabelFR="Python 3"; LabelEN="Python Programming Environment Deployment Pack"; Risk="safe"; Action={ Install-WingetApp "Python.Python.3.11" "Python 3" }}
+$Options += [PSCustomObject]@{Id=109; Cat="Apps"; LabelFR="OBS Studio"; LabelEN="OBS Studio Open Broadcaster Video Recording Suite"; Risk="safe"; Action={ Install-WingetApp "OBSProject.OBSStudio" "OBS Studio" }}
+$Options += [PSCustomObject]@{Id=110; Cat="Apps"; LabelFR="Spotify"; LabelEN="Spotify Desktop Digital Music Service Platform"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
+$Options += [PSCustomObject]@{Id=111; Cat="Apps"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
+$Options += [PSCustomObject]@{Id=112; Cat="Apps"; LabelFR="WhatsApp Desktop"; LabelEN="WhatsApp Desktop Communication Network Messenger"; Risk="safe"; Action={ Install-WingetApp "WhatsApp.WhatsApp" "WhatsApp" }}
+$Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="Opera GX Browser Tailored Core For Gamers"; Risk="safe"; Action={ Install-WingetApp "Opera.OperaGX" "Opera GX" }}
+$Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
 # INTERFACE GRAPHIQUE (WPF)
@@ -339,8 +340,8 @@ $Options += [PSCustomObject]@{Id=101; Cat="Apps"; LabelFR="VLC Media Player"; La
                     <Button Name="BtnReseau" Tag="Reseau" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                     <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                     <Button Name="BtnGaming" Tag="Gaming" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnTimer" Tag="Timer" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                     <Button Name="BtnProcessus" Tag="Processus" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnTimer" Tag="Timer" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                     <Button Name="BtnPower" Tag="Power" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                     <Button Name="BtnServices" Tag="Services" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                     <Button Name="BtnNettoyage" Tag="Nettoyage" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
@@ -410,29 +411,30 @@ $NavButtons = @{
     "Reseau"=$Form.FindName("BtnReseau")
     "Confidentialite"=$Form.FindName("BtnConfidentialite")
     "Gaming"=$Form.FindName("BtnGaming")
-    "Timer"=$Form.FindName("BtnTimer")
     "Processus"=$Form.FindName("BtnProcessus")
+    "Timer"=$Form.FindName("BtnTimer")
     "Power"=$Form.FindName("BtnPower")
     "Services"=$Form.FindName("BtnServices")
     "Nettoyage"=$Form.FindName("BtnNettoyage")
     "Apps"=$Form.FindName("BtnApps")
 }
 
+# Conserver l'historique des clés de logs pour pouvoir les retraduire à la volée !
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
 
 function Write-Log([string]$KeyOrText, [bool]$IsStaticKey = $true) {
-    $L = $Global:LangDict[$Global:CurrentLang]
-    if ($IsStaticKey -and $L.ContainsKey($KeyOrText)) {
+    if ($IsStaticKey) {
         if (-not $Global:LogHistory.Contains($KeyOrText)) { $Global:LogHistory.Add($KeyOrText) }
+    } else {
+        $Global:LogHistory.Add($KeyOrText)
     }
     Refresh-LogBoxDisplay
 }
 
 function Refresh-LogBoxDisplay {
-    if ($null -eq $LogBox) { return }
     $LogBox.Clear()
     $L = $Global:LangDict[$Global:CurrentLang]
     foreach ($logKey in $Global:LogHistory) {
@@ -447,7 +449,6 @@ function Refresh-LogBoxDisplay {
 
 function Update-InterfaceLanguage {
     $L = $Global:LangDict[$Global:CurrentLang]
-    if ($null -eq $L) { return }
     
     $TxtMainTitle.Text = $L["Title"]
     $TxtSubtitle.Text = $L["Subtitle"]
@@ -464,70 +465,80 @@ function Update-InterfaceLanguage {
     $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
     $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConfidentialite"]
     $NavButtons["Gaming"].Content = "🎮  " + $L["CatGaming"]
+    $NavButtons["Processus"].Content = "💻  " + $L["CatProcessus"]
     $NavButtons["Timer"].Content = "⏱️  " + $L["CatTimer"]
-    $NavButtons["Processus"].Content = "📊  " + $L["CatProcessus"]
     $NavButtons["Power"].Content = "⚡  " + $L["CatPower"]
     $NavButtons["Services"].Content = "⚙️  " + $L["CatServices"]
     $NavButtons["Nettoyage"].Content = "🧹  " + $L["CatNettoyage"]
     $NavButtons["Apps"].Content = "📦  " + $L["CatApps"]
     
     Render-Category $Global:LastCategory
+    Refresh-LogBoxDisplay  # Traduction à la volée instantanée de la console Debug !
 }
 
 function Render-Category([string]$Cat) {
-    if ($null -eq $Panel) { return }
-    $Global:LastCategory = $Cat
-    $Panel.Children.Clear()
-    $L = $Global:LangDict[$Global:CurrentLang]
-    
-    $TxtTitle.Text = $L["Cat" + $Cat].ToUpper()
-    
-    $Items = $Options | Where-Object { $_.Cat -eq $Cat }
-    foreach ($item in $Items) {
-        $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
-        $Brush = Get-Brush $color
-
-        $Lbl = New-Object System.Windows.Controls.TextBlock
-        if ($Global:CurrentLang -eq "FR") { $Lbl.Text = $item.LabelFR } else { $Lbl.Text = $item.LabelEN }
-        $Lbl.Foreground = $Brush
-        $Lbl.FontSize = 13
-        $Lbl.TextWrapping = "Wrap"
-        $Lbl.VerticalAlignment = "Center"
-
-        $Chk = New-Object System.Windows.Controls.CheckBox
-        $Chk.Content = $Lbl
-        $Chk.Margin = "0,6,0,6"
-        $Chk.Tag = $item.Id
-        $Chk.IsChecked = $Global:CheckStates[$item.Id]
+    try {
+        $Global:LastCategory = $Cat
+        $Panel.Children.Clear()
+        $L = $Global:LangDict[$Global:CurrentLang]
         
-        $Chk.Add_Checked({ 
-            $id = $this.Tag
-            $Global:CheckStates[$id] = $true 
-            if ($id -ge 115 -and $id -le 121) {
-                for ($i = 115; $i -le 121; $i++) { if ($i -ne $id) { $Global:CheckStates[$i] = $false } }
-                Render-Category $Global:LastCategory
-            }
-        })
-        $Chk.Add_Unchecked({ $Global:CheckStates[$this.Tag] = $false })
-        [void]$Panel.Children.Add($Chk)
-    }
-    
-    foreach ($key in $NavButtons.Keys) {
-        if ($key -eq $Cat) {
-            $NavButtons[$key].Background = Get-Brush "#181824"
-            $NavButtons[$key].Foreground = Get-Brush "#00FFC8"
-        } else {
-            $NavButtons[$key].Background = Get-Brush "#101016"
-            $NavButtons[$key].Foreground = Get-Brush "#A0A0B4"
+        $TxtTitle.Text = $L["Cat" + $Cat].ToUpper()
+        
+        $Items = $Options | Where-Object { $_.Cat -eq $Cat }
+        foreach ($item in $Items) {
+            $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
+            $Brush = Get-Brush $color
+
+            $Lbl = New-Object System.Windows.Controls.TextBlock
+            if ($Global:CurrentLang -eq "FR") { $Lbl.Text = $item.LabelFR } else { $Lbl.Text = $item.LabelEN }
+            $Lbl.Foreground = $Brush
+            $Lbl.FontSize = 13
+            $Lbl.TextWrapping = "Wrap"
+            $Lbl.VerticalAlignment = "Center"
+
+            $Chk = New-Object System.Windows.Controls.CheckBox
+            $Chk.Content = $Lbl
+            $Chk.Margin = "0,6,0,6"
+            $Chk.Tag = $item.Id
+            $Chk.IsChecked = $Global:CheckStates[$item.Id]
+            
+            $Chk.Add_Checked({ 
+                $id = $this.Tag
+                $Global:CheckStates[$id] = $true 
+                
+                # Exclusivité pour les profils de Timer Resolution
+                if ($id -ge 115 -and $id -le 121) {
+                    for ($i = 115; $i -le 121; $i++) {
+                        if ($i -ne $id) { $Global:CheckStates[$i] = $false }
+                    }
+                    Render-Category $Global:LastCategory
+                }
+            })
+            $Chk.Add_Unchecked({ $Global:CheckStates[$this.Tag] = $false })
+            [void]$Panel.Children.Add($Chk)
         }
+        
+        foreach ($key in $NavButtons.Keys) {
+            if ($key -eq $Cat) {
+                $NavButtons[$key].Background = Get-Brush "#181824"
+                $NavButtons[$key].Foreground = Get-Brush "#00FFC8"
+            } else {
+                $NavButtons[$key].Background = Get-Brush "#101016"
+                $NavButtons[$key].Foreground = Get-Brush "#A0A0B4"
+            }
+        }
+    } catch {
+        Write-Log "[ERR] $($_.Exception.Message)" $false
     }
 }
 
-# --- SELECTIONS AUTO CUMULATIVES SANS APPS ---
+# --- LOGIQUE DES BOUTONS DE SÉLECTION RAPIDE ---
 $BtnSelectSafe.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
-        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) { $Global:CheckStates[$item.Id] = $true }
+        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
+            $Global:CheckStates[$item.Id] = $true
+        }
     }
     $Global:CheckStates[119] = $true
     Render-Category $Global:LastCategory
@@ -537,7 +548,9 @@ $BtnSelectSafe.Add_Click({
 $BtnSelectMod.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
-        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) { $Global:CheckStates[$item.Id] = $true }
+        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
+            $Global:CheckStates[$item.Id] = $true
+        }
     }
     $Global:CheckStates[116] = $true
     Render-Category $Global:LastCategory
@@ -547,7 +560,9 @@ $BtnSelectMod.Add_Click({
 $BtnSelectAdv.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
-        if ($item.Id -lt 115 -or $item.Id -gt 121) { $Global:CheckStates[$item.Id] = $true }
+        if ($item.Id -lt 115 -or $item.Id -gt 121) {
+            $Global:CheckStates[$item.Id] = $true
+        }
     }
     $Global:CheckStates[115] = $true
     Render-Category $Global:LastCategory
@@ -556,7 +571,9 @@ $BtnSelectAdv.Add_Click({
 
 $BtnClearAll.Add_Click({
     $Keys = @($Global:CheckStates.Keys)
-    foreach ($id in $Keys) { $Global:CheckStates[$id] = $false }
+    foreach ($id in $Keys) {
+        $Global:CheckStates[$id] = $false
+    }
     Render-Category $Global:LastCategory
     Write-Log "LogClearAll"
 })
@@ -577,7 +594,7 @@ $BtnRestore.Add_Click({
         Checkpoint-Computer -Description "Before OPTI-DYLAN" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
         Write-Log "LogRestoreOk"
     } catch {
-        Write-Log "[WARN] Windows Restore point blocked or disabled on this partition." $false
+        Write-Log "[WARN] $($_.Exception.Message)" $false
     }
 })
 
@@ -598,7 +615,7 @@ $BtnApply.Add_Click({
             & $item.Action
             if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [OK] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [OK] $($item.LabelEN)`n") }
         } catch {
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [INFO/ECHEC] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [INFO/FAILED] $($item.LabelEN)`n") }
+            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [ECHEC] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [FAILED] $($item.LabelEN)`n") }
         }
         $LogBox.ScrollToEnd()
         [System.Windows.Forms.Application]::DoEvents()
@@ -609,7 +626,7 @@ $BtnApply.Add_Click({
     $BtnApply.IsEnabled = $true
 })
 
-# Initialisation sûre
+# Initialisation du log de démarrage
 $Global:LogHistory.Add("LogEngineOnline")
 Update-InterfaceLanguage
 [void]$Form.ShowDialog()
