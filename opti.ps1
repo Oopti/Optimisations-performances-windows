@@ -297,13 +297,13 @@ $Options += [PSCustomObject]@{Id=55; Cat="Reseau"; Label="Reinitialiser l'auto-t
                         <Run Text="Rouge" Foreground="#E74C3C"/><Run Text=" = avance"/>
                     </TextBlock>
                 </Border>
-                <Button Name="BtnReseau" Content="Reseau" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnConfidentialite" Content="Confidentialite" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnGaming" Content="Gaming" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnPower" Content="Power &amp; CPU" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnServices" Content="Services" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnNettoyage" Content="Nettoyage" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                <Button Name="BtnApps" Content="Apps (winget)" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnReseau" Tag="Reseau" Content="Reseau" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnConfidentialite" Tag="Confidentialite" Content="Confidentialite" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnGaming" Tag="Gaming" Content="Gaming" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnPower" Tag="Power" Content="Power &amp; CPU" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnServices" Tag="Services" Content="Services" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnNettoyage" Tag="Nettoyage" Content="Nettoyage" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnApps" Tag="Apps" Content="Apps (winget)" Height="36" Background="Transparent" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                 <Button Name="BtnRestore" Content="Creer point de restauration" Height="40" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,25,0,0"/>
             </StackPanel>
         </Grid>
@@ -390,21 +390,21 @@ function Render-Category([string]$Cat) {
     }
 }
 
-$BtnReseau = $NavButtons["Reseau"]
-$BtnConfidentialite = $NavButtons["Confidentialite"]
-$BtnGaming = $NavButtons["Gaming"]
-$BtnPower = $NavButtons["Power"]
-$BtnServices = $NavButtons["Services"]
-$BtnNettoyage = $NavButtons["Nettoyage"]
-$BtnApps = $NavButtons["Apps"]
+$AllNavButtons = @($NavButtons["Reseau"], $NavButtons["Confidentialite"], $NavButtons["Gaming"], $NavButtons["Power"], $NavButtons["Services"], $NavButtons["Nettoyage"], $NavButtons["Apps"])
 
-$BtnReseau.Add_Click({ Render-Category "Reseau" })
-$BtnConfidentialite.Add_Click({ Render-Category "Confidentialite" })
-$BtnGaming.Add_Click({ Render-Category "Gaming" })
-$BtnPower.Add_Click({ Render-Category "Power" })
-$BtnServices.Add_Click({ Render-Category "Services" })
-$BtnNettoyage.Add_Click({ Render-Category "Nettoyage" })
-$BtnApps.Add_Click({ Render-Category "Apps" })
+$NavClickHandler = {
+    param($sender, $e)
+    Write-Log "[DEBUG] Clic recu sur : $($sender.Tag)"
+    Render-Category $sender.Tag
+}
+
+foreach ($btn in $AllNavButtons) {
+    if ($null -eq $btn) {
+        Write-Log "[ERREUR] Un bouton de navigation n'a pas ete trouve (FindName a echoue)."
+    } else {
+        [void]$btn.Add_Click($NavClickHandler)
+    }
+}
 
 $BtnRestore.Add_Click({
     Write-Log "[SYSTEM] Creation du point de restauration..."
