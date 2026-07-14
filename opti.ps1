@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V11.4 - LOG TRANSLATION SYNC FIX
+    OPTI-DYLAN TOOLKIT PRO V11.5 - LOGIC & LANGUAGE SYNC FIX
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -47,11 +47,13 @@ $Global:LangDict = @{
         "QuickSelect" = "SELECTION RAPIDE"
         "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
         "BtnSelectMod" = "Cocher Tout (Modéré)"
+        "BtnSelectAdv" = "Cocher Tout (Avancé)"
         "BtnClearAll" = "Tout Décocher"
         # Logs traduits
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V11.4 En Ligne. Intégration sélection rapide complète."
-        "LogCheckSafe" = "[UI] Sélection Auto Dynamique : Tous les tweaks 'Sans Risque' cochés."
-        "LogCheckMod" = "[UI] Sélection Auto Dynamique : Tous les tweaks 'Sans Risque' & 'Modéré' cochés."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V11.5 En Ligne. Intégration sélection rapide complète."
+        "LogCheckSafe" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' cochés (Apps ignorées)."
+        "LogCheckMod" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' & 'Modéré' cochés (Apps ignorées)."
+        "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés (Apps ignorées)."
         "LogClearAll" = "[UI] Réinitialisation : Toutes les cases décochées."
         "LogRestoreStart" = "[SYSTEM] Création du point de restauration Windows..."
         "LogRestoreOk" = "[OK] Point de restauration système créé."
@@ -77,11 +79,13 @@ $Global:LangDict = @{
         "QuickSelect" = "QUICK SELECTION"
         "BtnSelectSafe" = "Check All (Safe Only)"
         "BtnSelectMod" = "Check All (Moderate)"
+        "BtnSelectAdv" = "Check All (Advanced)"
         "BtnClearAll" = "Clear All Checkboxes"
         # Logs traduits
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V11.4 Online. Quick select integration complete."
-        "LogCheckSafe" = "[UI] Dynamic Auto-Check: Checked all 'Safe' tweaks."
-        "LogCheckMod" = "[UI] Dynamic Auto-Check: Checked all 'Safe' & 'Moderate' tweaks."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V11.5 Online. Quick select integration complete."
+        "LogCheckSafe" = "[UI] Auto-Check: Checked all 'Safe' tweaks (Apps ignored)."
+        "LogCheckMod" = "[UI] Auto-Check: Checked all 'Safe' & 'Moderate' tweaks (Apps ignored)."
+        "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks (Apps ignored)."
         "LogClearAll" = "[UI] Reset: Unchecked all boxes."
         "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
         "LogRestoreOk" = "[OK] System Restore Point created successfully."
@@ -284,7 +288,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="820" Width="1060"
+        Title="OPTI-DYLAN TOOLKIT" Height="840" Width="1060"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
         <Style TargetType="CheckBox">
@@ -342,6 +346,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
                             <TextBlock Name="TxtQuickSelect" FontSize="10" FontWeight="Bold" Foreground="#00FFC8" Margin="0,0,0,6" HorizontalAlignment="Center"/>
                             <Button Name="BtnSelectSafe" Height="25" Background="#161622" Foreground="#F5F5FA" FontSize="11" BorderThickness="0" Margin="0,2"/>
                             <Button Name="BtnSelectMod" Height="25" Background="#161622" Foreground="#F1C40F" FontSize="11" BorderThickness="0" Margin="0,2"/>
+                            <Button Name="BtnSelectAdv" Height="25" Background="#161622" Foreground="#E74C3C" FontSize="11" BorderThickness="0" Margin="0,2"/>
                             <Button Name="BtnClearAll" Height="25" Background="#221616" Foreground="#E74C3C" FontSize="11" BorderThickness="0" Margin="0,4,0,0"/>
                         </StackPanel>
                     </Border>
@@ -393,6 +398,7 @@ $ComboLang = $Form.FindName("ComboLang")
 $TxtQuickSelect = $Form.FindName("TxtQuickSelect")
 $BtnSelectSafe = $Form.FindName("BtnSelectSafe")
 $BtnSelectMod = $Form.FindName("BtnSelectMod")
+$BtnSelectAdv = $Form.FindName("BtnSelectAdv")
 $BtnClearAll = $Form.FindName("BtnClearAll")
 
 $NavButtons = @{
@@ -406,13 +412,30 @@ $NavButtons = @{
     "Apps"=$Form.FindName("BtnApps")
 }
 
+# Conserver l'historique des clés de logs pour pouvoir les retraduire à la volée !
+$Global:LogHistory = [System.Collections.Generic.List[string]]::new()
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
-$Global:IsFirstLoad = $true
 
-function Write-Log([string]$Text) {
-    $LogBox.AppendText(">> $Text`n")
+function Write-Log([string]$KeyOrText, [bool]$IsStaticKey = $true) {
+    $L = $Global:LangDict[$Global:CurrentLang]
+    if ($IsStaticKey -and $L.ContainsKey($KeyOrText)) {
+        if (-not $Global:LogHistory.Contains($KeyOrText)) { $Global:LogHistory.Add($KeyOrText) }
+    }
+    Refresh-LogBoxDisplay
+}
+
+function Refresh-LogBoxDisplay {
+    $LogBox.Clear()
+    $L = $Global:LangDict[$Global:CurrentLang]
+    foreach ($logKey in $Global:LogHistory) {
+        if ($L.ContainsKey($logKey)) {
+            $LogBox.AppendText(">> $($L[$logKey])`n")
+        } else {
+            $LogBox.AppendText(">> $logKey`n")
+        }
+    }
     $LogBox.ScrollToEnd()
     [System.Windows.Forms.Application]::DoEvents()
 }
@@ -429,6 +452,7 @@ function Update-InterfaceLanguage {
     $TxtQuickSelect.Text = $L["QuickSelect"]
     $BtnSelectSafe.Content = $L["BtnSelectSafe"]
     $BtnSelectMod.Content = $L["BtnSelectMod"]
+    $BtnSelectAdv.Content = $L["BtnSelectAdv"]
     $BtnClearAll.Content = $L["BtnClearAll"]
     
     $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
@@ -441,12 +465,7 @@ function Update-InterfaceLanguage {
     $NavButtons["Apps"].Content = "📦  " + $L["CatApps"]
     
     Render-Category $Global:LastCategory
-    
-    # Évite de ré-afficher le log de démarrage lors d'un simple switch de langue
-    if ($Global:IsFirstLoad) {
-        Write-Log $L["LogEngineOnline"]
-        $Global:IsFirstLoad = $false
-    }
+    Refresh-LogBoxDisplay
 }
 
 function Render-Category([string]$Cat) {
@@ -500,42 +519,59 @@ function Render-Category([string]$Cat) {
             }
         }
     } catch {
-        Write-Log "[ERR] $($_.Exception.Message)"
+        Write-Log "[ERR] $($_.Exception.Message)" $false
     }
 }
 
-# LOGIQUE DES BOUTONS DE SÉLECTION AUTOMATIQUE (LOGS TRADUITS)
+# --- LOGIQUE CORRIGÉE DES BOUTONS DE SÉLECTION AUTOMATIQUE ---
+
+# Cocher Tout (Sans Risque) - Exclut totalement les Apps
 $BtnSelectSafe.Add_Click({
-    $L = $Global:LangDict[$Global:CurrentLang]
     foreach ($item in $Options) {
+        if ($item.Cat -eq "Apps") { continue }
         if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
             $Global:CheckStates[$item.Id] = $true
         }
     }
-    $Global:CheckStates[119] = $true
+    $Global:CheckStates[119] = $true # Par défaut 1.00 ms pour le profil safe
     Render-Category $Global:LastCategory
-    Write-Log $L["LogCheckSafe"]
+    Write-Log "LogCheckSafe"
 })
 
+# Cocher Tout (Modéré) - Cumule Safe + Modéré et exclut totalement les Apps
 $BtnSelectMod.Add_Click({
-    $L = $Global:LangDict[$Global:CurrentLang]
     foreach ($item in $Options) {
+        if ($item.Cat -eq "Apps") { continue }
         if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
             $Global:CheckStates[$item.Id] = $true
         }
     }
-    $Global:CheckStates[116] = $true
+    $Global:CheckStates[116] = $true # Par défaut 0.50 ms pour le profil gaming modéré
     Render-Category $Global:LastCategory
-    Write-Log $L["LogCheckMod"]
+    Write-Log "LogCheckMod"
 })
 
+# Cocher Tout (Avancé) - Coche absolument tout le système (Safe + Modéré + Rouge) et exclut totalement les Apps
+$BtnSelectAdv.Add_Click({
+    foreach ($item in $Options) {
+        if ($item.Cat -eq "Apps") { continue }
+        if ($item.Id -lt 115 -or $item.Id -gt 121) {
+            $Global:CheckStates[$item.Id] = $true
+        }
+    }
+    $Global:CheckStates[115] = $true # Par défaut 0.45 ms profil extrême
+    Render-Category $Global:LastCategory
+    Write-Log "LogCheckAdv"
+})
+
+# Tout Décocher - Correction de la boucle bloquée
 $BtnClearAll.Add_Click({
-    $L = $Global:LangDict[$Global:CurrentLang]
-    foreach ($id in $Global:CheckStates.Keys) {
+    $Keys = @($Global:CheckStates.Keys)
+    foreach ($id in $Keys) {
         $Global:CheckStates[$id] = $false
     }
     Render-Category $Global:LastCategory
-    Write-Log $L["LogClearAll"]
+    Write-Log "LogClearAll"
 })
 
 foreach ($key in $NavButtons.Keys) {
@@ -549,13 +585,12 @@ $ComboLang.Add_SelectionChanged({
 })
 
 $BtnRestore.Add_Click({
-    $L = $Global:LangDict[$Global:CurrentLang]
-    Write-Log $L["LogRestoreStart"]
+    Write-Log "LogRestoreStart"
     try {
         Checkpoint-Computer -Description "Before OPTI-DYLAN" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
-        Write-Log $L["LogRestoreOk"]
+        Write-Log "LogRestoreOk"
     } catch {
-        Write-Log "[WARN] $($_.Exception.Message)"
+        Write-Log "[WARN] $($_.Exception.Message)" $false
     }
 })
 
@@ -565,25 +600,29 @@ $BtnApply.Add_Click({
     $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
     
     if ($selected.Count -eq 0) {
-        Write-Log $L["NoOption"]
+        [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
         $BtnApply.IsEnabled = $true
         return
     }
     
-    Write-Log ($L["Exec"] -f $selected.Count)
+    $LogBox.AppendText(">> " + ($L["Exec"] -f $selected.Count) + "`n")
     foreach ($item in $selected) {
         try {
             & $item.Action
-            if ($Global:CurrentLang -eq "FR") { Write-Log "[OK] $($item.LabelFR)" } else { Write-Log "[OK] $($item.LabelEN)" }
+            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [OK] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [OK] $($item.LabelEN)`n") }
         } catch {
-            if ($Global:CurrentLang -eq "FR") { Write-Log "[ECHEC] $($item.LabelFR)" } else { Write-Log "[FAILED] $($item.LabelEN)" }
+            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [ECHEC] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [FAILED] $($item.LabelEN)`n") }
         }
+        $LogBox.ScrollToEnd()
+        [System.Windows.Forms.Application]::DoEvents()
     }
-    Write-Log $L["Done"]
+    $LogBox.AppendText(">> $($L["Done"])`n")
+    $LogBox.ScrollToEnd()
     [System.Windows.MessageBox]::Show($L["BoxDone"], "OPTI-DYLAN")
     $BtnApply.IsEnabled = $true
 })
 
-# Démarrage initialisé avec langue par défaut
+# Initialisation du log de démarrage
+$Global:LogHistory.Add("LogEngineOnline")
 Update-InterfaceLanguage
 [void]$Form.ShowDialog()
