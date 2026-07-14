@@ -1,7 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V15.1 - THE ULTIMATE CONTROL SYSTEM (STABLE RUN)
-    Édition Spéciale GitHub - Correction du lancement et de l'interface
+    OPTI-DYLAN TOOLKIT PRO V15.1 - THE ULTIMATE CONTROL SYSTEM (ANTI-CRASH EDITION)
 #>
 
 # 1. Force le lancement en mode Administrateur proprement
@@ -26,6 +25,28 @@ public class TimerResolution {
 }
 "@
 Add-Type -TypeDefinition $TimerResolutionCode -ErrorAction SilentlyContinue
+
+# ============================================================
+# RÉCUPÉRATION INFOS PC SÉCURISÉE (ÉVITE LES CRASHES WMI)
+# ============================================================
+$CpuName = "Processeur Inconnu"
+$GpuName = "Carte Graphique Inconnue"
+$TotalRamGB = 16
+
+try {
+    $CpuObj = Get-CimInstance Win32_Processor | Select-Object -First 1
+    if ($CpuObj -and $CpuObj.Name) { $CpuName = $CpuObj.Name.Trim() }
+} catch {}
+
+try {
+    $GpuObj = Get-CimInstance Win32_VideoController | Select-Object -First 1
+    if ($GpuObj -and $GpuObj.Name) { $GpuName = $GpuObj.Name.Trim() }
+} catch {}
+
+try {
+    $RamSum = (Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum
+    if ($RamSum) { $TotalRamGB = [Math]::Round($RamSum / 1GB, 0) }
+} catch {}
 
 # ============================================================
 # DICTIONNAIRE DE TRADUCTION DE L'INTERFACE ET DES LOGS
@@ -65,15 +86,15 @@ $Global:LangDict = @{
         "BtnCleanRam" = "Optimiser la RAM"
         "BtnSaveProfile" = "Sauvegarder Profil"
         "BtnLoadProfile" = "Charger Profil"
-        "ProfileSaved" = "[OK] Profil sauvegardé avec succès dans 'opti_profile.json'."
-        "ProfileLoaded" = "[OK] Profil 'opti_profile.json' chargé avec succès !"
+        "ProfileSaved" = "[OK] Profil sauvegardé dans 'opti_profile.json'."
+        "ProfileLoaded" = "[OK] Profil 'opti_profile.json' chargé !"
         "ProfileErr" = "[ERR] Aucun profil sauvegardé trouvé."
         "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V15.1 En Ligne."
-        "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés."
-        "LogCheckMod" = "[UI] Sélection Auto : 'Sans Risque' & 'Modéré' cochés."
-        "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
-        "LogClearAll" = "[UI] Réinitialisation : Toutes les cases décochées."
-        "LogRestoreStart" = "[SYSTEM] Création du point de restauration Windows..."
+        "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque'."
+        "LogCheckMod" = "[UI] Sélection Auto : 'Sans Risque' & 'Modéré'."
+        "LogCheckAdv" = "[UI] Sélection Auto : Tous les tweaks."
+        "LogClearAll" = "[UI] Réinitialisation : Cases décochées."
+        "LogRestoreStart" = "[SYSTEM] Création du point de restauration..."
         "LogRestoreOk" = "[OK] Point de restauration système créé."
     }
     "EN" = @{
@@ -110,26 +131,19 @@ $Global:LangDict = @{
         "BtnCleanRam" = "Optimize RAM"
         "BtnSaveProfile" = "Save Profile"
         "BtnLoadProfile" = "Load Profile"
-        "ProfileSaved" = "[OK] Profile saved successfully to 'opti_profile.json'."
-        "ProfileLoaded" = "[OK] Profile 'opti_profile.json' loaded successfully!"
+        "ProfileSaved" = "[OK] Profile saved to 'opti_profile.json'."
+        "ProfileLoaded" = "[OK] Profile 'opti_profile.json' loaded!"
         "ProfileErr" = "[ERR] No saved profile found."
         "LogEngineOnline" = "[SYSTEM] Toolkit Engine V15.1 Online."
-        "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked."
-        "LogCheckMod" = "[UI] Auto-Check: 'Safe' & 'Moderate' checked."
+        "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks."
+        "LogCheckMod" = "[UI] Auto-Check: 'Safe' & 'Moderate' tweaks."
         "LogCheckAdv" = "[UI] Checked absolutely ALL tweaks."
         "LogClearAll" = "[UI] Reset: Unchecked all boxes."
-        "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
-        "LogRestoreOk" = "[OK] System Restore Point created successfully."
+        "LogRestoreStart" = "[SYSTEM] Creating System Restore Point..."
+        "LogRestoreOk" = "[OK] System Restore Point created."
     }
 }
 $Global:CurrentLang = "FR"
-
-# ============================================================
-# RÉCUPÉRATION INFOS PC
-# ============================================================
-$CpuName = (Get-CimInstance Win32_Processor).Name.Trim()
-$GpuName = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
-$TotalRamGB = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1GB, 0)
 
 # ============================================================
 # FONCTIONS APIS & UTILITAIRES REGISTRE
@@ -308,7 +322,7 @@ foreach ($opt in $Options) {
 }
 
 # ============================================================
-# DESIGN GRAPHIPHQUE WPF (XAML EXCLUSIF SANS BACKTICKS DE LIGNE)
+# DESIGN GRAPHIPHQUE WPF (SÉCURISÉ SANS SUB-STYLES INSTABLES)
 # ============================================================
 $XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2000/xaml/presentation"
@@ -446,22 +460,22 @@ $XAML = @"
                     <Button x:Name="BtnCleanRam" Content="Nettoyer RAM" Grid.Column="0" Margin="0,0,5,0" Background="#161E2E" Foreground="#FF9900" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#3D2911"/>
                     <Button x:Name="BtnRestore" Content="Créer point de restauration" Grid.Column="1" Background="#1F2937" Foreground="#9CA3AF" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
                 </Grid>
-                <Button x:Name="BtnApply" Content="APPLIQUER LA SELECTION" Height="45" Background="#00FFCC" Foreground="#0A0F1D" FontSize="14" FontWeight="Bold" Cursor="Hand" BorderThickness="0">
-                    <Button.Resources>
-                        <Style TargetType="Border">
-                            <Setter Property="CornerRadius" Value="6"/>
-                        </Style>
-                    </Button.Resources>
-                </Button>
+                <Button x:Name="BtnApply" Content="APPLIQUER LA SELECTION" Height="45" Background="#00FFCC" Foreground="#0A0F1D" FontSize="14" FontWeight="Bold" Cursor="Hand" BorderThickness="0"/>
             </StackPanel>
         </Grid>
     </Grid>
 </Window>
 "@
 
-# Parsing du layout XML/WPF
-$Reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]$XAML)
-$Window = [System.Windows.Markup.XamlReader]::Load($Reader)
+# Parsing sécurisé du layout XML/WPF
+try {
+    $Reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]$XAML)
+    $Window = [System.Windows.Markup.XamlReader]::Load($Reader)
+} catch {
+    # Fenêtre d'urgence si le XAML échoue
+    [System.Windows.Forms.MessageBox]::Show("Erreur critique lors du chargement de l'interface graphique (XAML) :`n`n$_", "Crash OPTI-DYLAN TOOLKIT")
+    exit
+}
 
 # Liaison des variables et des éléments de la fenêtre
 $TxtSubtitle        = $Window.FindName("TxtSubtitle")
@@ -665,7 +679,7 @@ function Build-TweaksPanel {
 # COMPACTION DE LA SOURIS ET DU CLAVIER (LATENCE MATÉRIELLE)
 # ============================================================
 function Apply-InputLagTweaks {
-    Write-Log "[INPUT-LAG] Optimisation des temps de réponse clavier et files d'attente souris..."
+    Write-Log "[INPUT-LAG] Optimisation de la latence matérielle..."
     Set-Reg "HKCU:\Control Panel\Accessibility\Keyboard Response" "DelayBeforeAcceptance" 0
     Set-Reg "HKCU:\Control Panel\Accessibility\Keyboard Response" "AutoRepeatDelay" 200
     Set-Reg "HKCU:\Control Panel\Accessibility\Keyboard Response" "AutoRepeatRate" 15
@@ -758,15 +772,15 @@ $ComboSvcHost.add_SelectionChanged({
 # NETTOYAGE RAM COMPLET
 # ============================================================
 $BtnCleanRam.add_Click({
-    Write-Log "[RAM] Compression de la mémoire de travail..."
+    Write-Log "[RAM] Optimisation de la mémoire..."
     try {
         [System.GC]::Collect()
         [System.GC]::WaitForPendingFinalizers()
         $p = [System.Diagnostics.Process]::GetCurrentProcess()
         $p.MinWorkingSet = $p.MinWorkingSet
-        Write-Log "[RAM] Optimisation terminée avec succès !"
+        Write-Log "[RAM] Libération terminée !"
     } catch {
-        Write-Log "[ECHEC] Erreur lors de l'optimisation mémoire ($($_.Exception.Message))"
+        Write-Log "[ECHEC] Erreur lors du nettoyage de la RAM"
     }
 })
 
@@ -814,7 +828,7 @@ $BtnSaveProfile.add_Click({
         $ProfileData | ConvertTo-Json -Depth 5 | Out-File $ProfilePath -Encoding UTF8
         Write-Log $L["ProfileSaved"]
     } catch {
-        Write-Log "[ERR] Erreur sauvegarde profile : $_"
+        Write-Log "[ERR] Erreur profil : $_"
     }
 })
 
@@ -847,7 +861,7 @@ $BtnLoadProfile.add_Click({
             }
             Write-Log $L["ProfileLoaded"]
         } catch {
-            Write-Log "[ERR] Échec du décodage du profil : $_"
+            Write-Log "[ERR] Échec lecture du profil."
         }
     } else {
         Write-Log $L["ProfileErr"]
@@ -873,13 +887,13 @@ $BtnApply.add_Click({
     Write-Log ($L["Exec"] -f $selected.Count)
     
     try {
-        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue Ko..."
+        Write-Log "[RAM] Paramétrage SvcHost à $Global:SelectedSvcHostValue Ko..."
         Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $Global:SelectedSvcHostValue
     } catch {
         Write-Log "[ECHEC] Configuration SvcHostSplitThresholdInKB"
     }
     
-    # Execution des tweaks d'input-lag souris de base
+    # Execution des tweaks d'input-lag matériels
     Apply-InputLagTweaks
     
     foreach ($item in $selected) {
@@ -899,8 +913,10 @@ $BtnApply.add_Click({
 # ============================================================
 # LANCEMENT DE L'ENGINE
 # ============================================================
-Update-Localization
-Write-Log $Global:LangDict[$Global:CurrentLang]["LogEngineOnline"]
-
-# Affichage synchrone final sans gel de thread
-$Window.ShowDialog() | Out-Null
+try {
+    Update-Localization
+    Write-Log $Global:LangDict[$Global:CurrentLang]["LogEngineOnline"]
+    $Window.ShowDialog() | Out-Null
+} catch {
+    [System.Windows.Forms.MessageBox]::Show("Une erreur inattendue est survenue au démarrage :`n`n$_", "Crash critique OPTI-DYLAN")
+}
