@@ -399,6 +399,7 @@ $AllNavButtons = @($NavButtons["Reseau"], $NavButtons["Confidentialite"], $NavBu
 
 $NavClickHandler = {
     param($sender, $e)
+    Write-Log "[DEBUG] Clic recu sur : $($sender.Tag)"
     Render-Category $sender.Tag
 }
 
