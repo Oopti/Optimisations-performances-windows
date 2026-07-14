@@ -1,5 +1,5 @@
 # ============================================================
-# OPTI-DYLAN TOOLKIT v17.5 - VERSION STRICTEMENT INTÉGRALE
+# OPTI-DYLAN TOOLKIT v17.5 - VERSION INTEGRALE CORRIGEE
 # ============================================================
 
 # --- INITIALISATION ET EXECUTION EN ADMINISTRATEUR ---
@@ -8,7 +8,10 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Exit
 }
 
-Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
+# Chargement requis pour WPF
+Add-Type -AssemblyName PresentationFramework
+Add-Type -AssemblyName PresentationCore
+Add-Type -AssemblyName WindowsBase
 
 # --- RESOLUTION DU CHEMIN DU SCRIPT ---
 $PSScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Definition
@@ -423,7 +426,6 @@ $Options.Add([PSCustomObject]@{Id=140; Cat="Bloatwares"; LabelFR="Désinstaller 
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OPTI-DYLAN TOOLKIT" Height="930" Width="1130"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
@@ -619,7 +621,7 @@ $DiagGpuVal = $Form.FindName("DiagGpuVal")
 $DiagRamLabel = $Form.FindName("DiagRamLabel")
 $DiagRamVal = $Form.FindName("DiagRamVal")
 
-# Nouveaux éléments du module RAM
+# Éléments du module RAM
 $RamTweakPanel = $Form.FindName("RamTweakPanel")
 $ComboSvcHostRam = $Form.FindName("ComboSvcHostRam")
 $TxtSvcHostStatus = $Form.FindName("TxtSvcHostStatus")
@@ -644,7 +646,7 @@ $NavButtons = @{
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
-$Global:SelectedSvcHostValue = "380000" # Valeur par défaut de Windows
+$Global:SelectedSvcHostValue = "380000"
 $Global:LastCategory = "Reseau"
 
 # ============================================================
@@ -675,7 +677,6 @@ $ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
 
 $BtnSaveProfile.Add_Click({
     try {
-        # Création d'un objet structuré contenant l'état des cases et la valeur de svchost
         $SaveObject = @{
             "CheckStates" = $Global:CheckStates
             "SvcHostValue" = $Global:SelectedSvcHostValue
@@ -693,7 +694,6 @@ $BtnLoadProfile.Add_Click({
         try {
             $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json
             
-            # Restauration sécurisée des états cochés
             if ($null -ne $Loaded.CheckStates) {
                 foreach ($prop in $Loaded.CheckStates.PSObject.Properties) {
                     $id = [int]$prop.Name
@@ -701,10 +701,8 @@ $BtnLoadProfile.Add_Click({
                 }
             }
             
-            # Restauration de la valeur SvcHost
             if ($null -ne $Loaded.SvcHostValue) {
                 $Global:SelectedSvcHostValue = $Loaded.SvcHostValue
-                # Resynchroniser le ComboBox visuellement
                 $indexToSelect = 0
                 for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
                     if ($ComboSvcHostRam.Items[$i].Tag -eq $Global:SelectedSvcHostValue) {
@@ -835,7 +833,6 @@ function Render-Category([string]$Cat) {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
         
-        # Afficher le module RAM uniquement dans la section "Processus"
         if ($Cat -eq "Processus") {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
         } else {
@@ -845,7 +842,6 @@ function Render-Category([string]$Cat) {
         $filter = $TxtSearch.Text.Trim()
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         
-        # Recherche active
         if (-not [string]::IsNullOrEmpty($filter)) {
             $Items = $Items | Where-Object {
                 $_.LabelFR -match $filter -or $_.LabelEN -match $filter
@@ -855,7 +851,6 @@ function Render-Category([string]$Cat) {
         $CurrentGroup = ""
         
         foreach ($item in $Items) {
-            # Tri des applications par sous-catégories
             if ($Cat -eq "Apps" -and $null -ne $item.SubCat) {
                 $subCatParsed = @{}
                 foreach ($pair in ($item.SubCat -split "\|")) {
@@ -896,7 +891,6 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Exclusivités Timer (IDs 115 à 121)
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -904,7 +898,6 @@ function Render-Category([string]$Cat) {
                     Render-Category $Global:LastCategory
                 }
                 
-                # Exclusivités Processus (IDs 122 à 124)
                 if ($id -ge 122 -and $id -le 124) {
                     for ($i = 122; $i -le 124; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -1040,16 +1033,15 @@ $BtnApply.Add_Click({
     
     $LogBox.AppendText(">> " + ($L["Exec"] -f $selected.Count) + "`n")
     
-    # 1. APPLICATION DU TWEAK RAM SVCHOST INDÉPENDANT
     try {
-        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue Ko..." $false
+        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue..." $false
         Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $Global:SelectedSvcHostValue
-        $LogBox.AppendText(">> [OK] SvcHostSplitThresholdInKB paramétré à $Global:SelectedSvcHostValue Ko`n")
+        $LogBox.AppendText(">> [OK] SvcHostSplitThresholdInKB paramétré`n")
     } catch {
         $LogBox.AppendText(">> [ECHEC] Configuration SvcHostSplitThresholdInKB`n")
     }
     
-    # 2. APPLICATION DES TWEAKS SÉLECTIONNÉS
+    # Execution et rafraichissement natif WPF
     foreach ($item in $selected) {
         try {
             & $item.Action
@@ -1058,7 +1050,9 @@ $BtnApply.Add_Click({
             if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [ECHEC] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [FAILED] $($item.LabelEN)`n") }
         }
         $LogBox.ScrollToEnd()
-        [System.Windows.Forms.Application]::DoEvents()
+        
+        # Dispatcher natif pour rafraîchir l'interface sans planter
+        [System.Windows.Threading.Dispatcher]::CurrentDispatcher.Invoke([System.Windows.Threading.DispatcherPriority]::Background, [Action]{})
     }
     $LogBox.AppendText(">> $($L["Done"])`n")
     $LogBox.ScrollToEnd()
