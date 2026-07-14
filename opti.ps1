@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V15.0 - THE ULTIMATE CONTROL SYSTEM
+    OPTI-DYLAN TOOLKIT PRO V15.1 - THE ULTIMATE CONTROL SYSTEM (FIXED)
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -64,7 +64,7 @@ $Global:LangDict = @{
         "ProfileLoaded" = "[OK] Profil 'opti_profile.json' chargé avec succès !"
         "ProfileErr" = "[ERR] Aucun profil sauvegardé trouvé."
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V15.0 En Ligne. Corrections appliquées."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V15.1 En Ligne. Corrections appliquées."
         "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés."
         "LogCheckMod" = "[UI] Sélection Auto : 'Sans Risque' & 'Modéré' cochés."
         "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
@@ -84,7 +84,7 @@ $Global:LangDict = @{
         "BoxDone" = "Optimizations applied. Please restart your PC if needed."
         "CatReseau" = "Network & Ping"
         "CatConfidentialite" = "Privacy"
-        "CatGaming" = "Gaming & Latency"
+        "CatGaming" = "Gaming & Latence"
         "CatProcessus" = "RAM & svchost Control"
         "CatTimer" = "Timer Resolution"
         "CatPower" = "Power & CPU"
@@ -110,7 +110,7 @@ $Global:LangDict = @{
         "ProfileLoaded" = "[OK] Profile 'opti_profile.json' loaded successfully!"
         "ProfileErr" = "[ERR] No saved profile found."
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V15.0 Online. Fixed bugs active."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V15.1 Online. Fixed bugs active."
         "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked."
         "LogCheckMod" = "[UI] Auto-Check: 'Safe' & 'Moderate' checked."
         "LogCheckAdv" = "[UI] Checked absolutely ALL tweaks."
@@ -183,7 +183,7 @@ function Set-SystemTimerResolution {
 }
 
 # ============================================================
-# CATALOGUE DES TWEAKS (V15.0)
+# CATALOGUE DES TWEAKS (V15.1)
 # ============================================================
 $Options = @()
 
@@ -236,7 +236,7 @@ $Options += [PSCustomObject]@{Id=42; Cat="Gaming"; LabelFR="Optimiser le rafraî
 $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorité I/O disque pour les jeux"; LabelEN="Increase I/O disk priorities allocation (NTFS cache lookup)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" "NtfsMemoryUsage" 2 }}
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 
-# --- 4. GESTION DE RAM & SVCHOST ---
+# --- 4. GESTION DE RAM & PROCESSUS ---
 $Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE STANDARD] Isolation automatique par Windows (3.5 Go max par service)"; LabelEN="[STANDARD MODE] Let Windows handle service splitting rules natively"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 380000 }}
 $Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE ALLÉGÉ] Isoler les processus hôtes pour soulager l'utilisation RAM"; LabelEN="[LIGHT WEIGHT] Reduce svchost instance spawning parameters"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
 $Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTRÊME] Forcer la compression et clôturer l'indexation"; LabelEN="[EXTREME MODE] Turn off background document content scanning structures"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
@@ -326,7 +326,7 @@ $Options += [PSCustomObject]@{Id=138; Cat="Bloatwares"; LabelFR="Désinstaller l
 $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller Paint 3D"; LabelEN="Uninstall Paint 3D Microsoft Package"; Risk="safe"; Action={ Uninstall-Appx "MSPaint" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - DESIGN V15.0
+# INTERFACE GRAPHIQUE (WPF) - DESIGN V15.1
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -455,7 +455,7 @@ $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller P
 
             <Border Name="RamTweakPanel" Grid.Row="2" Background="#161622" CornerRadius="5" Padding="15" Margin="0,0,0,15" BorderBrush="#2A2A3A" BorderThickness="1" Visibility="Collapsed">
                 <StackPanel>
-                    <TextBlock Text="⚙️ OPTIMISEUR DE CRÉATION DE PROCESSUS (SvcHostSplitThresholdInKB)" Foreground="#00FFC8" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <TextBlock Text="⚙️ OPTIMISEUR DE PROCESSUS HÔTES (SvcHostSplitThresholdInKB)" Foreground="#00FFC8" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>
                     <TextBlock Text="Indiquez votre quantité de RAM physique installée. Le toolkit calculera et ajustera au registre le split svchost optimal pour éviter l'éparpillement inutile des processus ou améliorer l'isolation de sécurité." Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -526,7 +526,7 @@ $DiagGpuVal = $Form.FindName("DiagGpuVal")
 $DiagRamLabel = $Form.FindName("DiagRamLabel")
 $DiagRamVal = $Form.FindName("DiagRamVal")
 
-# Nouveaux éléments du module RAM
+# Éléments du module RAM
 $RamTweakPanel = $Form.FindName("RamTweakPanel")
 $ComboSvcHostRam = $Form.FindName("ComboSvcHostRam")
 $TxtSvcHostStatus = $Form.FindName("TxtSvcHostStatus")
@@ -582,7 +582,6 @@ $ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
 
 $BtnSaveProfile.Add_Click({
     try {
-        # Création d'un objet structuré contenant l'état des cases et la valeur de svchost
         $SaveObject = @{
             "CheckStates" = $Global:CheckStates
             "SvcHostValue" = $Global:SelectedSvcHostValue
@@ -600,7 +599,6 @@ $BtnLoadProfile.Add_Click({
         try {
             $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json
             
-            # Restauration sécurisée des états cochés
             if ($null -ne $Loaded.CheckStates) {
                 foreach ($prop in $Loaded.CheckStates.PSObject.Properties) {
                     $id = [int]$prop.Name
@@ -608,10 +606,8 @@ $BtnLoadProfile.Add_Click({
                 }
             }
             
-            # Restauration de la valeur SvcHost
             if ($null -ne $Loaded.SvcHostValue) {
                 $Global:SelectedSvcHostValue = $Loaded.SvcHostValue
-                # Resynchroniser le ComboBox visuellement
                 $indexToSelect = 0
                 for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
                     if ($ComboSvcHostRam.Items[$i].Tag -eq $Global:SelectedSvcHostValue) {
@@ -742,7 +738,7 @@ function Render-Category([string]$Cat) {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
         
-        # Afficher le module RAM uniquement dans la section "Processus"
+        # Affichage du module dynamique de RAM SvcHost uniquement dans "Processus"
         if ($Cat -eq "Processus") {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
         } else {
@@ -752,7 +748,6 @@ function Render-Category([string]$Cat) {
         $filter = $TxtSearch.Text.Trim()
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         
-        # Recherche active
         if (-not [string]::IsNullOrEmpty($filter)) {
             $Items = $Items | Where-Object {
                 $_.LabelFR -match $filter -or $_.LabelEN -match $filter
@@ -762,7 +757,6 @@ function Render-Category([string]$Cat) {
         $CurrentGroup = ""
         
         foreach ($item in $Items) {
-            # Tri des applications par sous-catégories
             if ($Cat -eq "Apps" -and $null -ne $item.SubCat) {
                 $subCatParsed = @{}
                 foreach ($pair in ($item.SubCat -split "\|")) {
@@ -803,7 +797,6 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Exclusivités Timer (IDs 115 à 121)
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -811,7 +804,6 @@ function Render-Category([string]$Cat) {
                     Render-Category $Global:LastCategory
                 }
                 
-                # Exclusivités Processus (IDs 122 à 124)
                 if ($id -ge 122 -and $id -le 124) {
                     for ($i = 122; $i -le 124; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
