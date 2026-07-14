@@ -580,55 +580,47 @@ $BtnCleanRam.Add_Click({
 # ============================================================
 $ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
 
-$BtnSaveProfile.Add_Click({
+$btnSaveProfile.add_Click({
     try {
-        $SaveObject = @{
-            "CheckStates" = $Global:CheckStates
-            "SvcHostValue" = $Global:SelectedSvcHostValue
+        # Extrait proprement l'état des cases (ID = True/False) sans inclure les objets graphiques lourds
+        $SaveData = @{}
+        foreach ($opt in $Options) {
+            $chkName = "chk_$($opt.Id)"
+            if ($null -ne $global:$chkName) {
+                $SaveData[$opt.Id.ToString()] = [bool]$global:$chkName.IsChecked
+            }
         }
-        $Json = $SaveObject | ConvertTo-Json -Depth 5
-        [System.IO.File]::WriteAllText($ProfilePath, $Json)
-        Write-Log "ProfileSaved"
-    } catch {
-        Write-Log "[ERR] Sauvegarde échouée: $($_.Exception.Message)" $false
+        $JsonData = ConvertTo-Json $SaveData -Depth 2
+        [System.IO.File]::WriteAllText($ProfileFile, $JsonData)
+        $LogBox.AppendText(">> " + $Global:LangDict[$Global:CurrentLang]["ProfileSaved"] + "`n")
+    }
+    catch {
+        $LogBox.AppendText(">> [ERR] Erreur sauvegarde : $_`n")
     }
 })
 
-$BtnLoadProfile.Add_Click({
-    if (Test-Path $ProfilePath) {
-        try {
-            $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json
-            
-            if ($null -ne $Loaded.CheckStates) {
-                foreach ($prop in $Loaded.CheckStates.PSObject.Properties) {
-                    $id = [int]$prop.Name
-                    $Global:CheckStates[$id] = [bool]$prop.Value
-                }
-            }
-            
-            if ($null -ne $Loaded.SvcHostValue) {
-                $Global:SelectedSvcHostValue = $Loaded.SvcHostValue
-                $indexToSelect = 0
-                for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
-                    if ($ComboSvcHostRam.Items[$i].Tag -eq $Global:SelectedSvcHostValue) {
-                        $indexToSelect = $i
-                        break
-                    }
-                }
-                $ComboSvcHostRam.SelectedIndex = $indexToSelect
-            }
-            
-            Render-Category $Global:LastCategory
-            Update-SidebarCounters
-            Write-Log "ProfileLoaded"
-        } catch {
-            Write-Log "[ERR] Erreur lors de la lecture du fichier : $($_.Exception.Message)" $false
+$btnLoadProfile.add_Click({
+    try {
+        if (-not (Test-Path $ProfileFile)) {
+            $LogBox.AppendText(">> " + $Global:LangDict[$Global:CurrentLang]["ProfileErr"] + "`n")
+            return
         }
-    } else {
-        Write-Log "ProfileErr"
+        $JsonContent = [System.IO.File]::ReadAllText($ProfileFile)
+        $LoadedData = ConvertFrom-Json $JsonContent -AsHashtable
+        
+        foreach ($opt in $Options) {
+            $chkName = "chk_$($opt.Id)"
+            if ($null -ne $global:$chkName -and $LoadedData.ContainsKey($opt.Id.ToString())) {
+                $global:$chkName.IsChecked = [bool]$LoadedData[$opt.Id.ToString()]
+            }
+        }
+        $LogBox.AppendText(">> " + $Global:LangDict[$Global:CurrentLang]["ProfileLoaded"] + "`n")
+        Render-TweaksPanel
+    }
+    catch {
+        $LogBox.AppendText(">> [ERR] Erreur chargement : $_`n")
     }
 })
-
 # ============================================================
 # SÉLECTION DE LA VALEUR DE SVCHOST
 # ============================================================
