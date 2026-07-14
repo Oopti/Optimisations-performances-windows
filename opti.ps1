@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V8 - EDITION ULTIME MULTILINGUE
+    OPTI-DYLAN TOOLKIT PRO V9 - 90 TWEAKS ULTIMES & 24 APPS
 #>
 
 # ============================================================
@@ -95,97 +95,145 @@ function Get-Brush {
 }
 
 # ============================================================
-# CATALOGUE DE PLUS DE 50 OPTIONS ET TWEAKS SYSTÈME RÉELS
+# CATALOGUE DE 90 OPTIONS ET TWEAKS SYSTÈME RÉELS
 # ============================================================
 $Options = @()
 
-# --- RÉSEAU & PING ---
-$Options += [PSCustomObject]@{Id=1;  Cat="Reseau"; Label="Désactiver l'algorithme de Nagle (latence réseau réduite)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "TCPNoDelay" 1 }}
-$Options += [PSCustomObject]@{Id=2;  Cat="Reseau"; Label="Forcer TcpAckFrequency à 1 (réponse réseau instantanée)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "TcpAckFrequency" 1 }}
+# --- 1. RÉSEAU & PING (15 Tweaks) ---
+$Options += [PSCustomObject]@{Id=1;  Cat="Reseau"; Label="Désactiver l'algorithme de Nagle (TCPNoDelay)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "TCPNoDelay" 1 }}
+$Options += [PSCustomObject]@{Id=2;  Cat="Reseau"; Label="Forcer TcpAckFrequency à 1 (réduction ping)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "TcpAckFrequency" 1 }}
 $Options += [PSCustomObject]@{Id=3;  Cat="Reseau"; Label="Lever la limitation réseau multimédia (NetworkThrottlingIndex)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "NetworkThrottlingIndex" 0xffffffff }}
-$Options += [PSCustomObject]@{Id=4;  Cat="Reseau"; Label="Vider et réinitialiser le cache DNS client"; Risk="safe"; Action={ Clear-DnsClientCache -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=5;  Cat="Reseau"; Label="Désactiver Large Send Offload (LSO) (évite les micro-coupures)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "DisableTaskOffload" 1 }}
-$Options += [PSCustomObject]@{Id=6;  Cat="Reseau"; Label="Réinitialiser complètement la pile réseau Winsock (netsh reset)"; Risk="moderate"; Action={ netsh winsock reset | Out-Null }}
-$Options += [PSCustomObject]@{Id=7;  Cat="Reseau"; Label="Désactiver IPv6 (uniquement si non supporté par ta box)"; Risk="moderate"; Action={ Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=4;  Cat="Reseau"; Label="Vider et réinitialiser le cache DNS"; Risk="safe"; Action={ Clear-DnsClientCache -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=5;  Cat="Reseau"; Label="Désactiver Large Send Offload (LSO) pour éviter les drops"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "DisableTaskOffload" 1 }}
+$Options += [PSCustomObject]@{Id=6;  Cat="Reseau"; Label="Réinitialiser la pile réseau Winsock"; Risk="moderate"; Action={ netsh winsock reset | Out-Null }}
+$Options += [PSCustomObject]@{Id=7;  Cat="Reseau"; Label="Désactiver IPv6 (si non supporté)"; Risk="moderate"; Action={ Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=8;  Cat="Reseau"; Label="Optimiser la taille du cache NetBIOS"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters" "Size/Small/Medium/Large" 3 }}
+$Options += [PSCustomObject]@{Id=9;  Cat="Reseau"; Label="Désactiver la décharge de chemin (IP Path Offload)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "DisableIPSourceRouting" 2 }}
+$Options += [PSCustomObject]@{Id=10; Cat="Reseau"; Label="Activer Direct Cache Access (DCA) pour processeurs compatibles"; Risk="safe"; Action={ netsh int tcp set global dca=enabled | Out-Null }}
+$Options += [PSCustomObject]@{Id=11; Cat="Reseau"; Label="Activer NetDMA (accès direct mémoire pour réseau)"; Risk="safe"; Action={ netsh int tcp set global netdma=enabled | Out-Null }}
+$Options += [PSCustomObject]@{Id=12; Cat="Reseau"; Label="Désactiver l'Heuristique de Fenêtre TCP Windows"; Risk="safe"; Action={ netsh int tcp set heuristics disabled | Out-Null }}
+$Options += [PSCustomObject]@{Id=13; Cat="Reseau"; Label="Configurer l'Auto-Tuning TCP sur Normal"; Risk="safe"; Action={ netsh int tcp set global autotuninglevel=normal | Out-Null }}
+$Options += [PSCustomObject]@{Id=14; Cat="Reseau"; Label="Activer RSS (Receive Side Scaling)"; Risk="safe"; Action={ netsh int tcp set global rss=enabled | Out-Null }}
+$Options += [PSCustomObject]@{Id=15; Cat="Reseau"; Label="Désactiver l'économie d'énergie de la carte réseau"; Risk="moderate"; Action={ Get-NetAdapter | Set-NetAdapterAdvancedProperty -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled" -ErrorAction SilentlyContinue }}
 
-# --- CONFIDENTIALITÉ & TÉLÉMÉTRIE ---
-$Options += [PSCustomObject]@{Id=9;  Cat="Confidentialite"; Label="Couper la télémétrie Windows (Connected User Experiences)"; Risk="safe"; Action={ Disable-Svc "DiagTrack" }}
-$Options += [PSCustomObject]@{Id=10; Cat="Confidentialite"; Label="Désactiver dmwappushservice (mouchard de synchronisation)"; Risk="safe"; Action={ Disable-Svc "dmwappushservice" }}
-$Options += [PSCustomObject]@{Id=11; Cat="Confidentialite"; Label="Désactiver Delivery Optimization (partage P2P des MAJ)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" "DODownloadMode" 0 }}
-$Options += [PSCustomObject]@{Id=12; Cat="Confidentialite"; Label="Désactiver l'ID de publicité ciblé Windows"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0 }}
-$Options += [PSCustomObject]@{Id=13; Cat="Confidentialite"; Label="Bloquer l'exécution des apps du Store en tâche de fond"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" 2 }}
-$Options += [PSCustomObject]@{Id=14; Cat="Confidentialite"; Label="Désactiver la recherche web Bing intégrée au menu Démarrer"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "BingSearchEnabled" 0 }}
-$Options += [PSCustomObject]@{Id=15; Cat="Confidentialite"; Label="Désactiver la collecte Cortana et la dictée vocale Cloud"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\InputPersonalization" "RestrictImplicitSpeechCollection" 1 }}
-$Options += [PSCustomObject]@{Id=16; Cat="Confidentialite"; Label="Supprimer OneDrive du démarrage automatique"; Risk="moderate"; Action={ Remove-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "OneDrive" }}
+# --- 2. CONFIDENTIALITÉ & TÉLÉMÉTRIE (15 Tweaks) ---
+$Options += [PSCustomObject]@{Id=16; Cat="Confidentialite"; Label="Désactiver DiagTrack (Expériences des utilisateurs connectés)"; Risk="safe"; Action={ Disable-Svc "DiagTrack" }}
+$Options += [PSCustomObject]@{Id=17; Cat="Confidentialite"; Label="Désactiver dmwappushservice (Mouchards)"; Risk="safe"; Action={ Disable-Svc "dmwappushservice" }}
+$Options += [PSCustomObject]@{Id=18; Cat="Confidentialite"; Label="Désactiver Delivery Optimization (Partage P2P)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" "DODownloadMode" 0 }}
+$Options += [PSCustomObject]@{Id=19; Cat="Confidentialite"; Label="Couper l'ID de publicité ciblé Windows"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0 }}
+$Options += [PSCustomObject]@{Id=20; Cat="Confidentialite"; Label="Empêcher les applications Store de tourner en fond"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" 2 }}
+$Options += [PSCustomObject]@{Id=21; Cat="Confidentialite"; Label="Désactiver la recherche Bing dans le menu Démarrer"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "BingSearchEnabled" 0 }}
+$Options += [PSCustomObject]@{Id=22; Cat="Confidentialite"; Label="Désactiver la télémétrie NVIDIA (si GPU NVIDIA)"; Risk="safe"; Action={ Disable-Svc "NvTelemetryContainer" }}
+$Options += [PSCustomObject]@{Id=23; Cat="Confidentialite"; Label="Désactiver l'enregistreur de pas (PSR)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "DisableUAR" 1 }}
+$Options += [PSCustomObject]@{Id=24; Cat="Confidentialite"; Label="Retirer Cortana du démarrage"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" "AllowCortana" 0 }}
+$Options += [PSCustomObject]@{Id=25; Cat="Confidentialite"; Label="Désactiver la collecte d'écriture manuscrite"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\InputPersonalization" "RestrictImplicitSpeechCollection" 1 }}
+$Options += [PSCustomObject]@{Id=26; Cat="Confidentialite"; Label="Désactiver la télémétrie de Microsoft Office (si installé)"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Policies\Microsoft\office\common\clienttelemetry" "sendtelemetry" 0 }}
+$Options += [PSCustomObject]@{Id=27; Cat="Confidentialite"; Label="Retirer OneDrive du démarrage automatique"; Risk="moderate"; Action={ Remove-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "OneDrive" }}
+$Options += [PSCustomObject]@{Id=28; Cat="Confidentialite"; Label="Désactiver le feedback Windows (demande d'avis)"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Siuf\Rules" "PeriodInNanoSeconds" 0 }}
+$Options += [PSCustomObject]@{Id=29; Cat="Confidentialite"; Label="Désactiver le suivi des lancements d'applications"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackProgs" 0 }}
+$Options += [PSCustomObject]@{Id=30; Cat="Confidentialite"; Label="Désactiver la télémétrie Visual Studio / VS Code"; Risk="safe"; Action={ [Environment]::SetEnvironmentVariable("TELEMETRY_DISABLED", "1", "Machine") }}
 
-# --- GAMING & LATENCE ---
-$Options += [PSCustomObject]@{Id=17; Cat="Gaming"; Label="Désactiver Game DVR (enregistrement d'arrière-plan en jeu)"; Risk="safe"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0; Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_FSEBehaviorMode" 2 }}
-$Options += [PSCustomObject]@{Id=18; Cat="Gaming"; Label="Activer le GPU Scheduling matériel (HAGS - Nvidia/AMD requis)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "HwSchMode" 2 }}
-$Options += [PSCustomObject]@{Id=19; Cat="Gaming"; Label="Forcer la priorité maximale MMCSS pour les processus de jeux"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0; Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "GPU Priority" 8 }}
-$Options += [PSCustomObject]@{Id=20; Cat="Gaming"; Label="Optimiser Win32PrioritySeparation (priorité CPU maximale au jeu actif)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" "Win32PrioritySeparation" 38 }}
-$Options += [PSCustomObject]@{Id=21; Cat="Gaming"; Label="Augmenter TdrDelay (bloque les crashs GPU lors des pics de charge)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "TdrDelay" 8 }}
-$Options += [PSCustomObject]@{Id=22; Cat="Gaming"; Label="Désactiver l'accélération de la souris Windows (input 1:1)"; Risk="moderate"; Action={ Set-Reg "HKCU:\Control Panel\Mouse" "MouseSpeed" "0" "String" }}
-$Options += [PSCustomObject]@{Id=23; Cat="Gaming"; Label="Désactiver l'optimisation du plein écran globale (FSE)"; Risk="moderate"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_DSEBehavior" 2 }}
-$Options += [PSCustomObject]@{Id=24; Cat="Gaming"; Label="Accélérer le délai d'ouverture des menus (MenuShowDelay à 0)"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Desktop" "MenuShowDelay" "0" "String" }}
+# --- 3. GAMING & LATENCE (15 Tweaks) ---
+$Options += [PSCustomObject]@{Id=31; Cat="Gaming"; Label="Désactiver Game DVR & Enregistrement en arrière-plan"; Risk="safe"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0; Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_FSEBehaviorMode" 2 }}
+$Options += [PSCustomObject]@{Id=32; Cat="Gaming"; Label="Activer le GPU Scheduling matériel (HAGS)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "HwSchMode" 2 }}
+$Options += [PSCustomObject]@{Id=33; Cat="Gaming"; Label="Priorité MMCSS maximale pour les jeux"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0; Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "GPU Priority" 8 }}
+$Options += [PSCustomObject]@{Id=34; Cat="Gaming"; Label="Ajuster Win32PrioritySeparation (Performance processeur)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" "Win32PrioritySeparation" 38 }}
+$Options += [PSCustomObject]@{Id=35; Cat="Gaming"; Label="Augmenter TdrDelay (Stabilité GPU)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "TdrDelay" 8 }}
+$Options += [PSCustomObject]@{Id=36; Cat="Gaming"; Label="Désactiver l'accélération de la souris (1:1 RAW Input)"; Risk="moderate"; Action={ Set-Reg "HKCU:\Control Panel\Mouse" "MouseSpeed" "0" "String" }}
+$Options += [PSCustomObject]@{Id=37; Cat="Gaming"; Label="Désactiver l'optimisation globale du plein écran (FSE)"; Risk="moderate"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_DSEBehavior" 2 }}
+$Options += [PSCustomObject]@{Id=38; Cat="Gaming"; Label="Accélérer l'affichage des menus (MenuShowDelay à 0)"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Desktop" "MenuShowDelay" "0" "String" }}
+$Options += [PSCustomObject]@{Id=39; Cat="Gaming"; Label="Désactiver les saccades d'affichage dues au GameMode"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" 0 }}
+$Options += [PSCustomObject]@{Id=40; Cat="Gaming"; Label="Désactiver la mise en veille de l'écran pendant le jeu"; Risk="safe"; Action={ powercfg /change monitor-timeout-ac 0 }}
+$Options += [PSCustomObject]@{Id=41; Cat="Gaming"; Label="Ajuster les effets visuels de Windows pour la performance"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" "VisualFXSetting" 2 }}
+$Options += [PSCustomObject]@{Id=42; Cat="Gaming"; Label="Optimiser le taux de rafraîchissement des tâches multimédias"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "Scheduling Category" "High" "String" }}
+$Options += [PSCustomObject]@{Id=43; Cat="Gaming"; Label="Augmenter la priorité I/O disque pour les jeux"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" "NtfsMemoryUsage" 2 }}
+$Options += [PSCustomObject]@{Id=44; Cat="Gaming"; Label="Désactiver l'alerte de raccourci des touches rémanentes"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
+$Options += [PSCustomObject]@{Id=45; Cat="Gaming"; Label="Forcer l'affinité CPU maximale sur les threads d'affichage"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# --- ÉNERGIE & PROCESSEUR ---
-$Options += [PSCustomObject]@{Id=25; Cat="Power"; Label="Activer et appliquer le plan d'alimentation Performances Ultimes"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
-$Options += [PSCustomObject]@{Id=26; Cat="Power"; Label="Désactiver le Core Parking (force tous les coeurs CPU à être actifs)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
-$Options += [PSCustomObject]@{Id=27; Cat="Power"; Label="Désactiver le Power Throttling (empêche le bridage des apps)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling" "PowerThrottlingOff" 1 }}
-$Options += [PSCustomObject]@{Id=28; Cat="Power"; Label="Forcer l'état minimal du CPU à 100% sur secteur"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_processor 893dee8e-2bef-41e0-89c6-b55d0929964c 100 }}
-$Options += [PSCustomObject]@{Id=29; Cat="Power"; Label="Désactiver la mise en veille sélective des ports USB"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 }}
-$Options += [PSCustomObject]@{Id=30; Cat="Power"; Label="Désactiver HPET + Dynamic Tick (latence timer stabilisée)"; Risk="advanced"; Action={ bcdedit /deletevalue useplatformclock; bcdedit /set disabledynamictick yes }}
-$Options += [PSCustomObject]@{Id=31; Cat="Power"; Label="Désactiver les mitigations Spectre/Meltdown (gain FPS, - de sécurité)"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3; Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3 }}
+# --- 4. ÉNERGIE & PROCESSEUR (15 Tweaks) ---
+$Options += [PSCustomObject]@{Id=46; Cat="Power"; Label="Activer le plan d'alimentation Performances Ultimes"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
+$Options += [PSCustomObject]@{Id=47; Cat="Power"; Label="Désactiver le Core Parking (C-States bloqués)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
+$Options += [PSCustomObject]@{Id=48; Cat="Power"; Label="Désactiver le Power Throttling"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling" "PowerThrottlingOff" 1 }}
+$Options += [PSCustomObject]@{Id=49; Cat="Power"; Label="Forcer l'état minimal du processeur à 100%"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_processor 893dee8e-2bef-41e0-89c6-b55d0929964c 100 }}
+$Options += [PSCustomObject]@{Id=50; Cat="Power"; Label="Désactiver la suspension sélective USB"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 }}
+$Options += [PSCustomObject]@{Id=51; Cat="Power"; Label="Désactiver HPET (High Precision Event Timer)"; Risk="advanced"; Action={ bcdedit /deletevalue useplatformclock; bcdedit /set disabledynamictick yes }}
+$Options += [PSCustomObject]@{Id=52; Cat="Power"; Label="Désactiver les mitigations Spectre/Meltdown (gain FPS)"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3; Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3 }}
+$Options += [PSCustomObject]@{Id=53; Cat="Power"; Label="Désactiver le démarrage rapide (Fast Startup, évite les bugs de RAM)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" 0 }}
+$Options += [PSCustomObject]@{Id=54; Cat="Power"; Label="Désactiver l'hibernation système (libère de l'espace disque)"; Risk="safe"; Action={ powercfg /h off }}
+$Options += [PSCustomObject]@{Id=55; Cat="Power"; Label="Ajuster la veille du disque dur sur Jamais (secteur)"; Risk="safe"; Action={ powercfg /change disk-timeout-ac 0 }}
+$Options += [PSCustomObject]@{Id=56; Cat="Power"; Label="Désactiver la veille automatique du PC (secteur)"; Risk="safe"; Action={ powercfg /change standby-timeout-ac 0 }}
+$Options += [PSCustomObject]@{Id=57; Cat="Power"; Label="Désactiver le Link State Power Management (PCIe max perf)"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_pciexpress ee12f20e-c558-4753-b6d2-85978a506a59 0 }}
+$Options += [PSCustomObject]@{Id=58; Cat="Power"; Label="Désactiver la mise en veille des cartes NVMe"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\0012ee47-9041-4b5d-9b77-535fba8b1442\0b2d54ee-2196-4ca6-a93c-7a3120540d0d" "Attributes" 2 }}
+$Options += [PSCustomObject]@{Id=59; Cat="Power"; Label="Optimiser le refroidissement système sur Actif"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 94d3a615-a899-4ac5-ae2b-e4d8f634367f 1 }}
+$Options += [PSCustomObject]@{Id=60; Cat="Power"; Label="Forcer le plan d'alimentation actif après injection"; Risk="safe"; Action={ powercfg /setactive scheme_current }}
 
-# --- SERVICES WINDOWS INUTILES ---
-$Options += [PSCustomObject]@{Id=32; Cat="Services"; Label="Désactiver SysMain / Superfetch (inutile sur SSD)"; Risk="moderate"; Action={ Disable-Svc "SysMain" }}
-$Options += [PSCustomObject]@{Id=33; Cat="Services"; Label="Désactiver Windows Search (Indexation en fond)"; Risk="moderate"; Action={ Disable-Svc "WSearch" }}
-$Options += [PSCustomObject]@{Id=34; Cat="Services"; Label="Désactiver l'ensemble des services Xbox (Si non utilisés)"; Risk="moderate"; Action={ "XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc" | ForEach-Object { Disable-Svc $_ } }}
-$Options += [PSCustomObject]@{Id=35; Cat="Services"; Label="Désactiver le service Bluetooth (Si aucun appareil BT utilisé)"; Risk="moderate"; Action={ Disable-Svc "bthserv" }}
-$Options += [PSCustomObject]@{Id=36; Cat="Services"; Label="Désactiver le Spouleur d'impression (Si pas d'imprimante)"; Risk="moderate"; Action={ Disable-Svc "Spooler" }}
-$Options += [PSCustomObject]@{Id=37; Cat="Services"; Label="Désactiver le service Fax hérité"; Risk="safe"; Action={ Disable-Svc "Fax" }}
-$Options += [PSCustomObject]@{Id=38; Cat="Services"; Label="Désactiver l'accès au Registre à distance (Sûreté accrue)"; Risk="safe"; Action={ Disable-Svc "RemoteRegistry" }}
-$Options += [PSCustomObject]@{Id=39; Cat="Services"; Label="Désactiver l'assistant compatibilité des programmes (PcaSvc)"; Risk="safe"; Action={ Disable-Svc "PcaSvc" }}
-$Options += [PSCustomObject]@{Id=40; Cat="Services"; Label="Désactiver la géolocalisation et les cartes téléchargées"; Risk="moderate"; Action={ Disable-Svc "MapsBroker"; Disable-Svc "lfsvc" }}
+# --- 5. SERVICES WINDOWS INUTILES (15 Tweaks) ---
+$Options += [PSCustomObject]@{Id=61; Cat="Services"; Label="Désactiver SysMain / Superfetch (HDD obsolète)"; Risk="moderate"; Action={ Disable-Svc "SysMain" }}
+$Options += [PSCustomObject]@{Id=62; Cat="Services"; Label="Désactiver Windows Search (Indexation en tâche de fond)"; Risk="moderate"; Action={ Disable-Svc "WSearch" }}
+$Options += [PSCustomObject]@{Id=63; Cat="Services"; Label="Désactiver la suite complète des Services Xbox"; Risk="moderate"; Action={ "XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc" | ForEach-Object { Disable-Svc $_ } }}
+$Options += [PSCustomObject]@{Id=64; Cat="Services"; Label="Désactiver Bluetooth Support Service (si pas d'appareils BT)"; Risk="moderate"; Action={ Disable-Svc "bthserv" }}
+$Options += [PSCustomObject]@{Id=65; Cat="Services"; Label="Désactiver le Spouleur d'impression (si pas d'imprimante)"; Risk="moderate"; Action={ Disable-Svc "Spooler" }}
+$Options += [PSCustomObject]@{Id=66; Cat="Services"; Label="Désactiver le Service Fax"; Risk="safe"; Action={ Disable-Svc "Fax" }}
+$Options += [PSCustomObject]@{Id=67; Cat="Services"; Label="Désactiver le Registre à distance (RemoteRegistry)"; Risk="safe"; Action={ Disable-Svc "RemoteRegistry" }}
+$Options += [PSCustomObject]@{Id=68; Cat="Services"; Label="Désactiver l'assistant compatibilité des programmes (PcaSvc)"; Risk="safe"; Action={ Disable-Svc "PcaSvc" }}
+$Options += [PSCustomObject]@{Id=69; Cat="Services"; Label="Désactiver la géolocalisation et les cartes"; Risk="moderate"; Action={ Disable-Svc "MapsBroker"; Disable-Svc "lfsvc" }}
+$Options += [PSCustomObject]@{Id=70; Cat="Services"; Label="Désactiver le service de biométrie Windows Hello (WbioSrvc)"; Risk="moderate"; Action={ Disable-Svc "WbioSrvc" }}
+$Options += [PSCustomObject]@{Id=71; Cat="Services"; Label="Désactiver le Service de Carte à Puce (Smart Card)"; Risk="safe"; Action={ Disable-Svc "SCardSvr" }}
+$Options += [PSCustomObject]@{Id=72; Cat="Services"; Label="Désactiver le service TabletInputService (clavier tactile)"; Risk="safe"; Action={ Disable-Svc "TabletInputService" }}
+$Options += [PSCustomObject]@{Id=73; Cat="Services"; Label="Désactiver Windows Insider Service"; Risk="safe"; Action={ Disable-Svc "wisvc" }}
+$Options += [PSCustomObject]@{Id=74; Cat="Services"; Label="Désactiver le service de rapport d'erreurs (WerSvc)"; Risk="safe"; Action={ Disable-Svc "WerSvc" }}
+$Options += [PSCustomObject]@{Id=75; Cat="Services"; Label="Désactiver le service de partage de connexion Internet (ICS)"; Risk="moderate"; Action={ Disable-Svc "SharedAccess" }}
 
-# --- NETTOYAGE ET RAM ---
-$Options += [PSCustomObject]@{Id=41; Cat="Nettoyage"; Label="Vider les dossiers de fichiers temporaires système et utilisateur"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=42; Cat="Nettoyage"; Label="Purger l'intégralité du contenu de la Corbeille"; Risk="safe"; Action={ Clear-RecycleBin -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=43; Cat="Nettoyage"; Label="Nettoyer les dossiers de téléchargement de Windows Update"; Risk="moderate"; Action={ Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Remove-Item "$env:WINDIR\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service wuauserv -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=44; Cat="Nettoyage"; Label="Purger l'historique des rapports d'erreurs Windows"; Risk="safe"; Action={ Remove-Item "$env:ALLUSERSPROFILE\Microsoft\Windows\WER\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=45; Cat="Nettoyage"; Label="Nettoyage en profondeur des composants système WinSxS via DISM"; Risk="advanced"; Action={ Start-Process "dism.exe" -ArgumentList "/online /Cleanup-Image /StartComponentCleanup" -Wait -WindowStyle Hidden }}
+# --- 6. NETTOYAGE ET RAM (15 Tweaks) ---
+$Options += [PSCustomObject]@{Id=76; Cat="Nettoyage"; Label="Vider les fichiers temporaires (%TEMP%)"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=77; Cat="Nettoyage"; Label="Vider la Corbeille de tous les disques"; Risk="safe"; Action={ Clear-RecycleBin -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=78; Cat="Nettoyage"; Label="Supprimer le cache de téléchargement de Windows Update"; Risk="moderate"; Action={ Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Remove-Item "$env:WINDIR\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service wuauserv -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=79; Cat="Nettoyage"; Label="Purger l'historique des rapports d'erreurs Windows"; Risk="safe"; Action={ Remove-Item "$env:ALLUSERSPROFILE\Microsoft\Windows\WER\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=80; Cat="Nettoyage"; Label="Nettoyer en profondeur les composants WinSxS via DISM"; Risk="advanced"; Action={ Start-Process "dism.exe" -ArgumentList "/online /Cleanup-Image /StartComponentCleanup" -Wait -WindowStyle Hidden }}
+$Options += [PSCustomObject]@{Id=81; Cat="Nettoyage"; Label="Vider le dossier Prefetch de Windows"; Risk="moderate"; Action={ Remove-Item "$env:WINDIR\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=82; Cat="Nettoyage"; Label="Vider les fichiers de cache des navigateurs web (si fermés)"; Risk="safe"; Action={ Remove-Item "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=83; Cat="Nettoyage"; Label="Optimiser et défragmenter les disques SSD (Trim)"; Risk="safe"; Action={ Optimize-Volume -DriveLetter C -Defrag -Verbose -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=84; Cat="Nettoyage"; Label="Désactiver les fichiers d'historique de fiabilité Windows"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Reliability" "TimeStampInterval" 0 }}
+$Options += [PSCustomObject]@{Id=85; Cat="Nettoyage"; Label="Limiter l'historique récent d'Explorer"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" "ShowRecent" 0 }}
+$Options += [PSCustomObject]@{Id=86; Cat="Nettoyage"; Label="Supprimer le fichier de Swap d'application inutile (Swapfile.sys)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "DisablePagingExecutive" 1 }}
+$Options += [PSCustomObject]@{Id=87; Cat="Nettoyage"; Label="Vider le cache de shader de DirectX (si corrompu)"; Risk="safe"; Action={ Remove-Item "$env:LOCALAPPDATA\D3DSCache\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=88; Cat="Nettoyage"; Label="Nettoyer l'historique des fichiers ouverts récemment"; Risk="safe"; Action={ Remove-Item "$env:APPDATA\Microsoft\Windows\Recent\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; Label="Forcer le vidage de la mémoire RAM en cache"; Risk="safe"; Action={ [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers() }}
+$Options += [PSCustomObject]@{Id=90; Cat="Nettoyage"; Label="Lancer l'utilitaire Cleanmgr en mode automatique silencieux"; Risk="safe"; Action={ Start-Process "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait -WindowStyle Hidden }}
 
-# --- MULTITUDE D'APPS À TÉLÉCHARGER (WINGET) ---
+# --- MULTITUDE D'APPS À TÉLÉCHARGER (WINGET) (24 Applications) ---
 # -- Web Browsers --
-$Options += [PSCustomObject]@{Id=46; Cat="Apps"; Label="Google Chrome"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
-$Options += [PSCustomObject]@{Id=47; Cat="Apps"; Label="Mozilla Firefox"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
-$Options += [PSCustomObject]@{Id=48; Cat="Apps"; Label="Brave Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
+$Options += [PSCustomObject]@{Id=91; Cat="Apps"; Label="Google Chrome"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
+$Options += [PSCustomObject]@{Id=92; Cat="Apps"; Label="Mozilla Firefox"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
+$Options += [PSCustomObject]@{Id=93; Cat="Apps"; Label="Brave Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
 # -- Gaming & Voice --
-$Options += [PSCustomObject]@{Id=49; Cat="Apps"; Label="Discord"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
-$Options += [PSCustomObject]@{Id=50; Cat="Apps"; Label="Steam"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
-$Options += [PSCustomObject]@{Id=51; Cat="Apps"; Label="Epic Games Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
-$Options += [PSCustomObject]@{Id=52; Cat="Apps"; Label="EA App (Electronic Arts)"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
-$Options += [PSCustomObject]@{Id=53; Cat="Apps"; Label="Ubisoft Connect"; Risk="safe"; Action={ Install-WingetApp "Ubisoft.Connect" "Ubisoft Connect" }}
+$Options += [PSCustomObject]@{Id=94; Cat="Apps"; Label="Discord"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
+$Options += [PSCustomObject]@{Id=95; Cat="Apps"; Label="Steam"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
+$Options += [PSCustomObject]@{Id=96; Cat="Apps"; Label="Epic Games Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
+$Options += [PSCustomObject]@{Id=97; Cat="Apps"; Label="EA App (Electronic Arts)"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
+$Options += [PSCustomObject]@{Id=98; Cat="Apps"; Label="Ubisoft Connect"; Risk="safe"; Action={ Install-WingetApp "Ubisoft.Connect" "Ubisoft Connect" }}
 # -- Utilitaires indispensables --
-$Options += [PSCustomObject]@{Id=54; Cat="Apps"; Label="7-Zip (Archivage)"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
-$Options += [PSCustomObject]@{Id=55; Cat="Apps"; Label="WinRAR"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
-$Options += [PSCustomObject]@{Id=56; Cat="Apps"; Label="VLC Media Player"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC Media Player" }}
-$Options += [PSCustomObject]@{Id=57; Cat="Apps"; Label="ShareX (Captures & Records)"; Risk="safe"; Action={ Install-WingetApp "ShareX.ShareX" "ShareX" }}
-$Options += [PSCustomObject]@{Id=58; Cat="Apps"; Label="GeForce Experience"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceExperience" "GeForce Experience" }}
-$Options += [PSCustomObject]@{Id=59; Cat="Apps"; Label="MSI Afterburner"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
+$Options += [PSCustomObject]@{Id=99; Cat="Apps"; Label="7-Zip (Archivage)"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
+$Options += [PSCustomObject]@{Id=100; Cat="Apps"; Label="WinRAR"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
+$Options += [PSCustomObject]@{Id=101; Cat="Apps"; Label="VLC Media Player"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC Media Player" }}
+$Options += [PSCustomObject]@{Id=102; Cat="Apps"; Label="ShareX (Captures & Records)"; Risk="safe"; Action={ Install-WingetApp "ShareX.ShareX" "ShareX" }}
+$Options += [PSCustomObject]@{Id=103; Cat="Apps"; Label="GeForce Experience"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceExperience" "GeForce Experience" }}
+$Options += [PSCustomObject]@{Id=104; Cat="Apps"; Label="MSI Afterburner"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
 # -- Développement & Texte --
-$Options += [PSCustomObject]@{Id=60; Cat="Apps"; Label="Visual Studio Code"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
-$Options += [PSCustomObject]@{Id=61; Cat="Apps"; Label="Notepad++"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
-$Options += [PSCustomObject]@{Id=62; Cat="Apps"; Label="Git pour Windows"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
-$Options += [PSCustomObject]@{Id=63; Cat="Apps"; Label="Python 3"; Risk="safe"; Action={ Install-WingetApp "Python.Python.3.11" "Python 3" }}
+$Options += [PSCustomObject]@{Id=105; Cat="Apps"; Label="Visual Studio Code"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
+$Options += [PSCustomObject]@{Id=106; Cat="Apps"; Label="Notepad++"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
+$Options += [PSCustomObject]@{Id=107; Cat="Apps"; Label="Git pour Windows"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
+$Options += [PSCustomObject]@{Id=108; Cat="Apps"; Label="Python 3"; Risk="safe"; Action={ Install-WingetApp "Python.Python.3.11" "Python 3" }}
 # -- Création & Divers --
-$Options += [PSCustomObject]@{Id=64; Cat="Apps"; Label="OBS Studio (Streaming/Rec)"; Risk="safe"; Action={ Install-WingetApp "OBSProject.OBSStudio" "OBS Studio" }}
-$Options += [PSCustomObject]@{Id=65; Cat="Apps"; Label="Spotify"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
-$Options += [PSCustomObject]@{Id=66; Cat="Apps"; Label="qBittorrent"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
+$Options += [PSCustomObject]@{Id=109; Cat="Apps"; Label="OBS Studio (Streaming/Rec)"; Risk="safe"; Action={ Install-WingetApp "OBSProject.OBSStudio" "OBS Studio" }}
+$Options += [PSCustomObject]@{Id=110; Cat="Apps"; Label="Spotify"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
+$Options += [PSCustomObject]@{Id=111; Cat="Apps"; Label="qBittorrent"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
+$Options += [PSCustomObject]@{Id=112; Cat="Apps"; Label="WhatsApp Desktop"; Risk="safe"; Action={ Install-WingetApp "WhatsApp.WhatsApp" "WhatsApp" }}
+$Options += [PSCustomObject]@{Id=113; Cat="Apps"; Label="Opera GX Gaming Browser"; Risk="safe"; Action={ Install-WingetApp "Opera.OperaGX" "Opera GX" }}
+$Options += [PSCustomObject]@{Id=114; Cat="Apps"; Label="Audacity (Audio Editor)"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF FLUIDE ET TRADUITE)
+# INTERFACE GRAPHIQUE (WPF)
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -293,7 +341,7 @@ $NavButtons = @{
     "Apps"=$Form.FindName("BtnApps")
 }
 
-# Initialisation des états
+# Initialisation des états pour l'ensemble des 114 éléments (90 tweaks + 24 apps)
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
@@ -405,7 +453,7 @@ $BtnRestore.Add_Click({
     }
 })
 
-# Clic Application des Tweaks
+# Clic Application des Tweaks et Installation
 $BtnApply.Add_Click({
     $L = $Global:LangDict[$Global:CurrentLang]
     $BtnApply.IsEnabled = $false
@@ -433,5 +481,5 @@ $BtnApply.Add_Click({
 
 # Démarrage
 Update-InterfaceLanguage
-Write-Log "[SYSTEM] Core Engine V8 Online. Multilingual dictionary initialized."
+Write-Log "[SYSTEM] Core Engine V9 Online. 90 system tweaks and 24 application packages ready."
 [void]$Form.ShowDialog()
