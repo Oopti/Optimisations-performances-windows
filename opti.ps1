@@ -1,6 +1,7 @@
 #requires -Version 5.1
 <#
     OPTI-DYLAN TOOLKIT PRO V15.1 - THE ULTIMATE CONTROL SYSTEM (FIXED)
+    GitHub Release Edition - Complete Fusion
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -183,7 +184,7 @@ function Set-SystemTimerResolution {
 }
 
 # ============================================================
-# CATALOGUE DES TWEAKS (V15.1)
+# CATALOGUE DES TWEAKS (V15.1 - COMPILÉ ET FUSIONNÉ)
 # ============================================================
 $Options = @()
 
@@ -220,7 +221,7 @@ $Options += [PSCustomObject]@{Id=28; Cat="Confidentialite"; LabelFR="Désactiver
 $Options += [PSCustomObject]@{Id=29; Cat="Confidentialite"; LabelFR="Désactiver le suivi des lancements d'applications"; LabelEN="Disable app launch tracking in Windows Explorer"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackProgs" 0 }}
 $Options += [PSCustomObject]@{Id=30; Cat="Confidentialite"; LabelFR="Désactiver la télémétrie Visual Studio / VS Code"; LabelEN="Disable system environment telemetry for VS Code"; Risk="safe"; Action={ [Environment]::SetEnvironmentVariable("TELEMETRY_DISABLED", "1", "Machine") }}
 
-# --- 3. GAMING & LATENCE ---
+# --- 3. GAMING & LATENCE (AVEC LES ANCIENS TRUCS SÉLECTIONNÉS) ---
 $Options += [PSCustomObject]@{Id=31; Cat="Gaming"; LabelFR="Désactiver Game DVR & Enregistrement en arrière-plan"; LabelEN="Disable Xbox Game DVR & Background Recording"; Risk="safe"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0; Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_FSEBehaviorMode" 2 }}
 $Options += [PSCustomObject]@{Id=32; Cat="Gaming"; LabelFR="Activer le GPU Scheduling matériel (HAGS)"; LabelEN="Enable Hardware-Accelerated GPU Scheduling (HAGS)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "HwSchMode" 2 }}
 $Options += [PSCustomObject]@{Id=33; Cat="Gaming"; LabelFR="Priorité MMCSS maximale pour les jeux"; LabelEN="Set MMCSS high priority tasks profile for Games"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0; Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "GPU Priority" 8 }}
@@ -255,30 +256,23 @@ $Options += [PSCustomObject]@{Id=48; Cat="Power"; LabelFR="Désactiver le Power 
 $Options += [PSCustomObject]@{Id=49; Cat="Power"; LabelFR="Forcer l'état minimal du processeur à 100%"; LabelEN="Force Minimum Processor State to 100% on AC power"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_processor 893dee8e-2bef-41e0-89c6-b55d0929964c 100 }}
 $Options += [PSCustomObject]@{Id=50; Cat="Power"; LabelFR="Désactiver la suspension sélective USB"; LabelEN="Disable USB selective suspend settings tasks profiling"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 }}
 $Options += [PSCustomObject]@{Id=51; Cat="Power"; LabelFR="Désactiver HPET (High Precision Event Timer)"; LabelEN="Disable High Precision Event Timer (HPET) ticks"; Risk="advanced"; Action={ bcdedit /deletevalue useplatformclock; bcdedit /set disabledynamictick yes }}
-$Options += [PSCustomObject]@{Id=52; Cat="Power"; LabelFR="Désactiver les mitigations Spectre/Meltdown (gain FPS)"; LabelEN="Disable Spectre/Meltdown hardware mitigations (FPS Boost)"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3; Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3 }}
-$Options += [PSCustomObject]@{Id=53; Cat="Power"; LabelFR="Désactiver le démarrage rapide (Fast Startup)"; LabelEN="Disable Windows Fast Startup (Prevents random kernel bugs)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" 0 }}
-$Options += [PSCustomObject]@{Id=54; Cat="Power"; LabelFR="Désactiver l'hibernation (libère de l'espace)"; LabelEN="Disable Hibernation system file (Deletes hiberfil.sys storage)"; Risk="safe"; Action={ powercfg /h off }}
-$Options += [PSCustomObject]@{Id=57; Cat="Power"; LabelFR="Désactiver le Link State Power Management (PCIe max)"; LabelEN="Turn off PCIe Link State Power Management (Max bandwidth)"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_pciexpress ee12f20e-c558-4753-b6d2-85978a506a59 0 }}
 
-# --- 7. SERVICES WINDOWS INUTILES ---
-$Options += [PSCustomObject]@{Id=61; Cat="Services"; LabelFR="Désactiver SysMain / Superfetch (HDD obsolète)"; LabelEN="Disable SysMain / Superfetch service (Heavy background disk use)"; Risk="moderate"; Action={ Disable-Svc "SysMain" }}
-$Options += [PSCustomObject]@{Id=62; Cat="Services"; LabelFR="Désactiver Windows Search (Indexation en tâche de fond)"; LabelEN="Disable Windows Search (Stops continuous file indexing)"; Risk="moderate"; Action={ Disable-Svc "WSearch" }}
+# --- 7. SERVICES WINDOWS ---
+$Options += [PSCustomObject]@{Id=56; Cat="Services"; LabelFR="Désactiver le service de géolocalisation"; LabelEN="Disable background physical geolocation tracking service"; Risk="safe"; Action={ Disable-Svc "lfsvc" }}
+$Options += [PSCustomObject]@{Id=57; Cat="Services"; LabelFR="Désactiver le service de rapport d'erreurs (WerSvc)"; LabelEN="Disable automatic Windows Error Reporting transmission"; Risk="safe"; Action={ Disable-Svc "WerSvc" }}
+$Options += [PSCustomObject]@{Id=58; Cat="Services"; LabelFR="Désactiver le service d'historique des fichiers"; LabelEN="Disable standard local file history backup tracking"; Risk="safe"; Action={ Disable-Svc "fhsvc" }}
+$Options += [PSCustomObject]@{Id=59; Cat="Services"; LabelFR="Désactiver Windows Search (Indexation fichiers)"; LabelEN="Disable Windows Search service (reclaims storage file indexing)"; Risk="moderate"; Action={ Disable-Svc "WSearch" }}
 $Options += [PSCustomObject]@{Id=63; Cat="Services"; LabelFR="Désactiver la suite complète des Services Xbox"; LabelEN="Disable complete suite of core background Xbox ecosystem services"; Risk="moderate"; Action={ "XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc" | ForEach-Object { Disable-Svc $_ } }}
 $Options += [PSCustomObject]@{Id=64; Cat="Services"; LabelFR="Désactiver Bluetooth Support Service (si inutilisé)"; LabelEN="Disable Bluetooth Support Service (If wireless devices aren't used)"; Risk="moderate"; Action={ Disable-Svc "bthserv" }}
 $Options += [PSCustomObject]@{Id=65; Cat="Services"; LabelFR="Désactiver le Spouleur d'impression"; LabelEN="Disable Print Spooler execution loop service (If printerless)"; Risk="moderate"; Action={ Disable-Svc "Spooler" }}
 $Options += [PSCustomObject]@{Id=66; Cat="Services"; LabelFR="Désactiver le Service Fax"; LabelEN="Disable legacy faxing subsystem layout architecture"; Risk="safe"; Action={ Disable-Svc "Fax" }}
 $Options += [PSCustomObject]@{Id=67; Cat="Services"; LabelFR="Désactiver le Registre à distance (RemoteRegistry)"; LabelEN="Disable Remote Registry modifications system process"; Risk="safe"; Action={ Disable-Svc "RemoteRegistry" }}
-$Options += [PSCustomObject]@{Id=68; Cat="Services"; LabelFR="Désactiver l'assistant compatibilité des programmes"; LabelEN="Disable Program Compatibility Assistant Service (PcaSvc)"; Risk="safe"; Action={ Disable-Svc "PcaSvc" }}
-$Options += [PSCustomObject]@{Id=69; Cat="Services"; LabelFR="Désactiver la géolocalisation et les cartes"; LabelEN="Disable Geolocation tracker loop & Downloaded Maps Manager"; Risk="moderate"; Action={ Disable-Svc "MapsBroker"; Disable-Svc "lfsvc" }}
-$Options += [PSCustomObject]@{Id=74; Cat="Services"; LabelFR="Désactiver le service de rapport d'erreurs (WerSvc)"; LabelEN="Disable Windows Error Reporting Service data uploading loops"; Risk="safe"; Action={ Disable-Svc "WerSvc" }}
 
-# --- 8. NETTOYAGE ET RAM ---
-$Options += [PSCustomObject]@{Id=76; Cat="Nettoyage"; LabelFR="Vider les fichiers temporaires (%TEMP%)"; LabelEN="Purge user environment temp dump files structures (%TEMP%)"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=77; Cat="Nettoyage"; LabelFR="Vider la Corbeille de tous les disques"; LabelEN="Empty system garbage recycling cache structures across all disks"; Risk="safe"; Action={ Clear-RecycleBin -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=78; Cat="Nettoyage"; LabelFR="Supprimer le cache Windows Update"; LabelEN="Wipe software updates download directories repository cache"; Risk="moderate"; Action={ Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Remove-Item "$env:WINDIR\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service wuauserv -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=79; Cat="Nettoyage"; LabelFR="Purger l'historique des rapports d'erreurs Windows"; LabelEN="Clear out local Windows Error Reporting archive dumps folders"; Risk="safe"; Action={ Remove-Item "$env:ALLUSERSPROFILE\Microsoft\Windows\WER\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=80; Cat="Nettoyage"; LabelFR="Nettoyer les composants WinSxS via DISM"; LabelEN="Force deep WinSxS component storage optimization runs via DISM"; Risk="advanced"; Action={ Start-Process "dism.exe" -ArgumentList "/online /Cleanup-Image /StartComponentCleanup" -Wait -WindowStyle Hidden }}
-$Options += [PSCustomObject]@{Id=81; Cat="Nettoyage"; LabelFR="Vider le dossier Prefetch de Windows"; LabelEN="Purge prefetch operational memory directory data stores"; Risk="moderate"; Action={ Remove-Item "$env:WINDIR\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+# --- 8. NETTOYAGE & TRASH ---
+$Options += [PSCustomObject]@{Id=76; Cat="Nettoyage"; LabelFR="Supprimer les fichiers temporaires (%TEMP%)"; LabelEN="Clean global user temporary storage system cache"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=77; Cat="Nettoyage"; LabelFR="Supprimer le cache Windows Update (SoftwareDistribution)"; LabelEN="Purge localized Windows Update payload files"; Risk="safe"; Action={ Stop-Service "wuauserv" -Force -ErrorAction SilentlyContinue; Remove-Item "$env:SystemRoot\SoftwareDistribution\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service "wuauserv" -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=78; Cat="Nettoyage"; LabelFR="Lancer l'outil Nettoyage de disque en arrière-plan"; LabelEN="Trigger cleanmgr baseline profile in quiet execution"; Risk="safe"; Action={ cleanmgr /sagerun:1 | Out-Null }}
+$Options += [PSCustomObject]@{Id=79; Cat="Nettoyage"; LabelFR="Vider le cache Prefetch"; LabelEN="Clear Windows application performance startup stores"; Risk="moderate"; Action={ Remove-Item "$env:WINDIR\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=83; Cat="Nettoyage"; LabelFR="Optimiser et défragmenter les disques SSD (Trim)"; LabelEN="Invoke structural hardware layout storage pass (Trim engine)"; Risk="safe"; Action={ Optimize-Volume -DriveLetter C -Defrag -Verbose -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=86; Cat="Nettoyage"; LabelFR="Supprimer le fichier Swapfile.sys inutile"; LabelEN="Disable low memory app paging executive allocation file handles"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "DisablePagingExecutive" 1 }}
 $Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; LabelFR="Forcer le vidage de la mémoire RAM en cache"; LabelEN="Force global garbage collector collection sweeps across active RAM"; Risk="safe"; Action={ [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers() }}
@@ -286,686 +280,681 @@ $Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; LabelFR="Forcer le vidage 
 # --- 9. APPLICATIONS CLASSIFIÉES ---
 # Pilotes Graphiques
 $Options += [PSCustomObject]@{Id=125; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="NVIDIA GeForce Game Ready Driver"; LabelEN="NVIDIA GeForce Game Ready Driver Core"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceNow" "GeForce Now/Driver" }}
-$Options += [PSCustomObject]@{Id=126; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="AMD Software: Adrenalin Edition"; LabelEN="AMD Software Adrenalin Graphics Driver Edition"; Risk="safe"; Action={ Install-WingetApp "AMD.Adrenalin" "AMD Adrenalin" }}
-$Options += [PSCustomObject]@{Id=127; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="Intel Graphics Command Center"; LabelEN="Intel Graphics Command Center Controller Suite"; Risk="safe"; Action={ Install-WingetApp "Intel.GraphicsCommandCenter" "Intel Graphics Center" }}
-
-# Navigateurs Web
-$Options += [PSCustomObject]@{Id=91; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Google Chrome"; LabelEN="Google Chrome Web Browser"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
-$Options += [PSCustomObject]@{Id=92; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Mozilla Firefox"; LabelEN="Mozilla Firefox Browser"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
-$Options += [PSCustomObject]@{Id=93; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Brave Browser"; LabelEN="Brave Privacy Web Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
-$Options += [PSCustomObject]@{Id=113; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Opera GX"; LabelEN="Opera GX Browser Tailored Core For Gamers"; Risk="safe"; Action={ Install-WingetApp "Opera.OperaGX" "Opera GX" }}
-
-# Gaming & Launchers
-$Options += [PSCustomObject]@{Id=95; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Steam"; LabelEN="Valve Steam Gaming Platform Store"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
-$Options += [PSCustomObject]@{Id=96; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Epic Games Launcher"; LabelEN="Epic Games Store Storefront Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
-$Options += [PSCustomObject]@{Id=97; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="EA App (Electronic Arts)"; LabelEN="Electronic Arts Desktop Client App"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
-$Options += [PSCustomObject]@{Id=104; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="MSI Afterburner"; LabelEN="MSI Afterburner Overclocking Hardware Monitor"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
-
+$Options += [PSCustomObject]@{Id=126; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="AMD Software Adrenalin Edition"; LabelEN="AMD Software Adrenalin Edition Desktop Suite"; Risk="safe"; Action={ Install-WingetApp "AMD.Adrenalin" "AMD Software" }}
+# Navigateurs
+$Options += [PSCustomObject]@{Id=90; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Google Chrome (Stable)"; LabelEN="Google Chrome Browser (Stable Release)"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Chrome" }}
+$Options += [PSCustomObject]@{Id=91; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Mozilla Firefox (Rapide & Privé)"; LabelEN="Mozilla Firefox Web Browser"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Firefox" }}
+$Options += [PSCustomObject]@{Id=92; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Brave Browser (Anti-Pub Intégré)"; LabelEN="Brave Privacy Browser with Adblocker"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave" }}
+# Communication & Chat
+$Options += [PSCustomObject]@{Id=93; Cat="Apps"; SubCat="FR=Communication|EN=Communication"; LabelFR="Discord (Application de Chat)"; LabelEN="Discord VoIP & Chat Native Application"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
+$Options += [PSCustomObject]@{Id=94; Cat="Apps"; SubCat="FR=Communication|EN=Communication"; LabelFR="Telegram Desktop"; LabelEN="Telegram Desktop Secure Instant Messenger"; Risk="safe"; Action={ Install-WingetApp "Telegram.TelegramDesktop" "Telegram" }}
+# Multimédia
+$Options += [PSCustomObject]@{Id=96; Cat="Apps"; SubCat="FR=Multimédia|EN=Multimedia"; LabelFR="VLC Media Player"; LabelEN="VLC Open-Source Multiplatform Media Player"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC" }}
+$Options += [PSCustomObject]@{Id=97; Cat="Apps"; SubCat="FR=Multimédia|EN=Multimedia"; LabelFR="Spotify (Musique)"; LabelEN="Spotify Music Streaming Desktop Client"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
+$Options += [PSCustomObject]@{Id=98; Cat="Apps"; SubCat="FR=Multimédia|EN=Multimedia"; LabelFR="OBS Studio (Streaming/Rec)"; LabelEN="OBS Studio Live Recording Suite"; Risk="safe"; Action={ Install-WingetApp "Obsproject.ObsStudio" "OBS Studio" }}
 # Outils & Productivité
-$Options += [PSCustomObject]@{Id=99; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="7-Zip (Archivage)"; LabelEN="7-Zip High Compression Ratio File Unpacker"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
+$Options += [PSCustomObject]@{Id=99;  Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="7-Zip (Archivage)"; LabelEN="7-Zip High Compression Ratio File Unpacker"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
 $Options += [PSCustomObject]@{Id=100; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="WinRAR"; LabelEN="WinRAR Compress Archive Manager Tool"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
-
 # Développement
-$Options += [PSCustomObject]@{Id=105; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Visual Studio Code"; LabelEN="Microsoft Visual Studio Code Source Code Editor"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
-$Options += [PSCustomObject]@{Id=106; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Notepad++"; LabelEN="NotepadPlusPlus Source Code Code Editor Engine"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
-
-# Communication & Multimédia
-$Options += [PSCustomObject]@{Id=94; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Discord"; LabelEN="Discord Chat Client Application"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
-$Options += [PSCustomObject]@{Id=110; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Spotify"; LabelEN="Spotify Desktop Digital Music Service Platform"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
-$Options += [PSCustomObject]@{Id=111; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
+$Options += [PSCustomObject]@{Id=105; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Visual Studio Code"; LabelEN="Microsoft Visual Studio Code Editor"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
+$Options += [PSCustomObject]@{Id=106; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Git for Windows"; LabelEN="Git Distributed Version Control Engine"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
 
 # --- 10. BLOATWARES WINDOWS ---
-$Options += [PSCustomObject]@{Id=128; Cat="Bloatwares"; LabelFR="Désinstaller OneDrive (Stockage Cloud)"; LabelEN="Fully uninstall Microsoft OneDrive"; Risk="safe"; Action={ Uninstall-Appx "OneDrive"; Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue; Start-Process "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=129; Cat="Bloatwares"; LabelFR="Désinstaller Cortana (Assistant obsolète)"; LabelEN="Uninstall Cortana voice assistant"; Risk="safe"; Action={ Uninstall-Appx "Microsoft.549981C3F5F10" }}
-$Options += [PSCustomObject]@{Id=130; Cat="Bloatwares"; LabelFR="Désinstaller Mobile Connecté (Phone Link / Your Phone)"; LabelEN="Uninstall Link to Windows / Phone Link"; Risk="safe"; Action={ Uninstall-Appx "YourPhone" }}
-$Options += [PSCustomObject]@{Id=131; Cat="Bloatwares"; LabelFR="Désinstaller l'écosystème Xbox App intégré"; LabelEN="Uninstall default Windows Xbox App elements"; Risk="moderate"; Action={ Uninstall-Appx "XboxApp"; Uninstall-Appx "XboxGamingOverlay"; Uninstall-Appx "XboxSpeechToTextOverlay" }}
-$Options += [PSCustomObject]@{Id=132; Cat="Bloatwares"; LabelFR="Désinstaller Cartes Windows (Windows Maps)"; LabelEN="Uninstall native Windows Maps application package"; Risk="safe"; Action={ Uninstall-Appx "WindowsMaps" }}
-$Options += [PSCustomObject]@{Id=133; Cat="Bloatwares"; LabelFR="Désinstaller Microsoft Solitaire Collection"; LabelEN="Uninstall Microsoft Solitaire Collection game"; Risk="safe"; Action={ Uninstall-Appx "MicrosoftSolitaireCollection" }}
-$Options += [PSCustomObject]@{Id=137; Cat="Bloatwares"; LabelFR="Retirer 'Actualités et champs d'intérêt' (News/Widgets Barre des tâches)"; LabelEN="Disable News and Interests taskbar widget feed"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" "ShellFeedsTaskbarViewMode" 2 }}
-$Options += [PSCustomObject]@{Id=138; Cat="Bloatwares"; LabelFR="Désinstaller l'éditeur vidéo Clipchamp"; LabelEN="Uninstall Microsoft Clipchamp Video Editor app"; Risk="safe"; Action={ Uninstall-Appx "Clipchamp" }}
-$Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller Paint 3D"; LabelEN="Uninstall Paint 3D Microsoft Package"; Risk="safe"; Action={ Uninstall-Appx "MSPaint" }}
+$Options += [PSCustomObject]@{Id=110; Cat="Bloatwares"; LabelFR="Retirer Microsoft OneDrive (Application native)"; LabelEN="Force uninstall OneDrive desktop client system-wide"; Risk="moderate"; Action={ Uninstall-Appx "OneDrive" }}
+$Options += [PSCustomObject]@{Id=111; Cat="Bloatwares"; LabelFR="Supprimer l'application Xbox (Console Companion)"; LabelEN="Uninstall legacy Xbox Console Companion app"; Risk="safe"; Action={ Uninstall-Appx "Xbox" }}
+$Options += [PSCustomObject]@{Id=112; Cat="Bloatwares"; LabelFR="Supprimer Skype"; LabelEN="Uninstall obsolete pre-installed Skype application packages"; Risk="safe"; Action={ Uninstall-Appx "Skype" }}
+$Options += [PSCustomObject]@{Id=113; Cat="Bloatwares"; LabelFR="Supprimer Feedback Hub"; LabelEN="Uninstall standard feedback collection hub"; Risk="safe"; Action={ Uninstall-Appx "Feedback" }}
+$Options += [PSCustomObject]@{Id=114; Cat="Bloatwares"; LabelFR="Supprimer Paint 3D (Édition Modern)"; LabelEN="Uninstall pre-provisioned Paint 3D applications"; Risk="safe"; Action={ Uninstall-Appx "Paint3D" }}
+
+# Association automatique de la propriété dynamique de cochage
+foreach ($opt in $Options) {
+    $opt | Add-Member -Type NoteProperty -Name "IsChecked" -Value $false -Force
+}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - DESIGN V15.1
+# DESIGN GRAPHIQUE WPF (XAML)
 # ============================================================
-[xml]$XAML = @"
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="930" Width="1130"
-        WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
-    <Window.Resources>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="#DCDCE6"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="CheckBox">
-                        <StackPanel Orientation="Horizontal">
-                            <Border x:Name="Box" Width="18" Height="18" Background="#181824" BorderBrush="#3A3A4A" BorderThickness="1" CornerRadius="3" Margin="0,0,10,0" VerticalAlignment="Center">
-                                <Path x:Name="CheckMark" Data="M 2 7 L 6.5 12 L 15 2" Stroke="#00FFC8" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
-                            </Border>
-                            <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
-                        </StackPanel>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#00FFC8"/>
-                            </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Box" Property="BorderBrush" Value="#00FFC8"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="280"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+$XAML = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2000/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2000/xaml"
+        Title="OPTI-DYLAN TOOLKIT PRO" Height="780" Width="1080"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanMinimize"
+        Background="#0A0F1D" FontFamily="Segoe UI Semibold" Foreground="#D1D5DB">
+    
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="130"/>
+        </Grid.RowDefinitions>
         
-        <Grid Grid.Column="0" Background="#101016">
-            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <StackPanel Margin="10,15,10,10">
-                    <TextBlock Name="TxtMainTitle" Text="OPTI-DYLAN" FontSize="20" FontWeight="Bold" Foreground="#00FFC8" HorizontalAlignment="Center" Margin="0,0,0,4"/>
-                    <TextBlock Name="TxtSubtitle" Text="Chaque case = une vraie action" FontSize="10" Foreground="#707080" HorizontalAlignment="Center" Margin="0,0,0,12"/>
-                    
-                    <Border Background="#161622" CornerRadius="5" Padding="10" Margin="0,0,0,12">
-                        <TextBlock Name="TxtLegend" Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap"/>
-                    </Border>
-                    
-                    <Button Name="BtnReseau" Tag="Reseau" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnGaming" Tag="Gaming" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnProcessus" Tag="Processus" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnTimer" Tag="Timer" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnPower" Tag="Power" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnServices" Tag="Services" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnNettoyage" Tag="Nettoyage" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnApps" Tag="Apps" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    <Button Name="BtnBloatwares" Tag="Bloatwares" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
-                    
-                    <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
-                        <StackPanel>
-                            <TextBlock Name="TxtQuickSelect" FontSize="10" FontWeight="Bold" Foreground="#00FFC8" Margin="0,0,0,6" HorizontalAlignment="Center"/>
-                            <Button Name="BtnSelectSafe" Height="25" Background="#161622" Foreground="#F5F5FA" FontSize="11" BorderThickness="0" Margin="0,2"/>
-                            <Button Name="BtnSelectMod" Height="25" Background="#161622" Foreground="#F1C40F" FontSize="11" BorderThickness="0" Margin="0,2"/>
-                            <Button Name="BtnSelectAdv" Height="25" Background="#161622" Foreground="#E74C3C" FontSize="11" BorderThickness="0" Margin="0,2"/>
-                            <Button Name="BtnClearAll" Height="25" Background="#221616" Foreground="#E74C3C" FontSize="11" BorderThickness="0" Margin="0,4,0,0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <UniformGrid Columns="2" Margin="0,0,0,8">
-                        <Button Name="BtnSaveProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="0,0,2,0"/>
-                        <Button Name="BtnLoadProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="2,0,0,0"/>
-                    </UniformGrid>
-                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,12"/>
-                    
-                    <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,0,0,12" Padding="8" Background="#0C0C12">
-                        <StackPanel>
-                            <TextBlock Name="TxtRamCleanerTitle" FontSize="9" FontWeight="Bold" Foreground="#00FFC8" HorizontalAlignment="Center" Margin="0,0,0,6"/>
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,8">
-                                <TextBlock Name="TxtRamPercent" Text="-- %" FontSize="18" FontWeight="Bold" Foreground="#F5F5FA"/>
-                                <TextBlock Name="TxtRamUsedLabel" Text=" utilisé" FontSize="10" Foreground="#707080" VerticalAlignment="Bottom" Margin="3,0,0,2"/>
-                            </StackPanel>
-                            <Button Name="BtnCleanRam" Height="25" Background="#161622" Foreground="#00FFC8" FontSize="11" BorderThickness="0"/>
-                        </StackPanel>
-                    </Border>
-
-                    <TextBlock Text="LANGUAGE / LANGUE" FontSize="9" Foreground="#505060" Margin="5,0,0,2" HorizontalAlignment="Left"/>
-                    <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black">
-                        <ComboBoxItem Content="Français (FR)" IsSelected="True"/>
-                        <ComboBoxItem Content="English (EN)"/>
-                    </ComboBox>
+        <Border Grid.Row="0" Background="#111827" CornerRadius="8" Padding="15,10" Margin="0,0,0,10" BorderBrush="#1F2937" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel>
+                    <TextBlock Text="OPTI-DYLAN TOOLKIT PRO V15.1" FontSize="24" FontWeight="Bold" Foreground="#00FFCC"/>
+                    <TextBlock x:Name="TxtSubtitle" Text="Chaque case = une vraie action" FontSize="12" Foreground="#9CA3AF" Margin="0,2,0,0"/>
                 </StackPanel>
-            </ScrollViewer>
-        </Grid>
-        
-        <Grid Grid.Column="1" Margin="20">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="55"/>   </Grid.RowDefinitions>
-            
-            <Border Grid.Row="0" Background="#101016" CornerRadius="5" Padding="12" Margin="0,0,0,15" BorderBrush="#1C1C28" BorderThickness="1">
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="BtnLangFR" Content="FR" Background="#1F2937" Foreground="#00FFCC" FontWeight="Bold" Width="40" Height="25" Margin="0,0,5,0" Cursor="Hand" BorderThickness="1" BorderBrush="#00FFCC"/>
+                    <Button x:Name="BtnLangEN" Content="EN" Background="#1F2937" Foreground="#D1D5DB" FontWeight="Bold" Width="40" Height="25" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1" Background="#161E2E" CornerRadius="6" Padding="10" Margin="0,0,0,10" BorderBrush="#111827" BorderThickness="1">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="2*"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="CPU: " Foreground="#9CA3AF" FontWeight="Bold"/>
+                    <TextBlock x:Name="TxtCpu" Text="..." Foreground="#D1D5DB" TextTrimming="CharacterEllipsis" MaxWidth="250"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="GPU: " Foreground="#9CA3AF" FontWeight="Bold"/>
+                    <TextBlock x:Name="TxtGpu" Text="..." Foreground="#D1D5DB" TextTrimming="CharacterEllipsis" MaxWidth="250"/>
+                </StackPanel>
+                
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                    <TextBlock Text="RAM: " Foreground="#9CA3AF" FontWeight="Bold"/>
+                    <TextBlock x:Name="TxtRam" Text="..." Foreground="#D1D5DB"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="280"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#111827" CornerRadius="8" BorderBrush="#1F2937" BorderThickness="1" Margin="0,0,10,0" Padding="10">
                 <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*"/>
-                        <ColumnDefinition Width="2*"/>
-                        <ColumnDefinition Width="1*"/>
-                    </Grid.ColumnDefinitions>
-                    <StackPanel Grid.Column="0" Margin="0,0,10,0">
-                        <TextBlock Name="DiagCpuLabel" FontSize="10" Foreground="#707080" FontWeight="Bold"/>
-                        <TextBlock Name="DiagCpuVal" FontSize="11" Foreground="#00FFC8" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock x:Name="TxtLegend" Text="Blanc = sans risque`nJaune = modéré`nRouge = avancé" FontSize="11" Foreground="#9CA3AF" LineHeight="15"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="1" Margin="0,0,10,0">
-                        <TextBlock Name="DiagGpuLabel" FontSize="10" Foreground="#707080" FontWeight="Bold"/>
-                        <TextBlock Name="DiagGpuVal" FontSize="11" Foreground="#00FFC8" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"/>
+
+                    <StackPanel Grid.Row="1" Margin="0,5,0,10">
+                        <TextBlock x:Name="TxtQuick" Text="SELECTION RAPIDE" FontSize="11" Foreground="#00FFCC" FontWeight="Bold" Margin="0,0,0,5"/>
+                        <Button x:Name="BtnCheckSafe" Content="Cocher Tout (Sans Risque)" Background="#1F2937" Foreground="#D1D5DB" Margin="0,2" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                        <Button x:Name="BtnCheckMod" Content="Cocher Tout (Modéré)" Background="#1F2937" Foreground="#D1D5DB" Margin="0,2" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                        <Button x:Name="BtnCheckAdv" Content="Cocher Tout (Avancé)" Background="#1F2937" Foreground="#D1D5DB" Margin="0,2" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                        <Button x:Name="BtnClearAll" Content="Tout Décocher" Background="#2A1B1B" Foreground="#FF6B6B" Margin="0,5,0,0" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#3D2020"/>
                     </StackPanel>
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Name="DiagRamLabel" FontSize="10" Foreground="#707080" FontWeight="Bold"/>
-                        <TextBlock Name="DiagRamVal" FontSize="11" Foreground="#00FFC8"/>
-                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="StackCategories"/>
+                    </ScrollViewer>
                 </Grid>
             </Border>
-            
-            <Grid Grid.Row="1" Margin="0,0,0,10">
-                <TextBox Name="TxtSearch" Height="28" Background="#161622" Foreground="#DCDCE6" BorderBrush="#2A2A3A" BorderThickness="1" Padding="25,4,5,4" FontSize="12"/>
-                <TextBlock Text="🔍" Foreground="#505060" FontSize="11" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0" IsHitTestVisible="False"/>
-            </Grid>
 
-            <Border Name="RamTweakPanel" Grid.Row="2" Background="#161622" CornerRadius="5" Padding="15" Margin="0,0,0,15" BorderBrush="#2A2A3A" BorderThickness="1" Visibility="Collapsed">
-                <StackPanel>
-                    <TextBlock Text="⚙️ OPTIMISEUR DE PROCESSUS HÔTES (SvcHostSplitThresholdInKB)" Foreground="#00FFC8" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>
-                    <TextBlock Text="Indiquez votre quantité de RAM physique installée. Le toolkit calculera et ajustera au registre le split svchost optimal pour éviter l'éparpillement inutile des processus ou améliorer l'isolation de sécurité." Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
-                    <Grid>
+            <Border Grid.Column="1" Background="#111827" CornerRadius="8" BorderBrush="#1F2937" BorderThickness="1" Padding="15">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Margin="0,0,0,15">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200"/>
                             <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="220"/>
                         </Grid.ColumnDefinitions>
-                        <ComboBox Name="ComboSvcHostRam" Grid.Column="0" Height="28" Background="#101016" Foreground="Black">
-                            <ComboBoxItem Content="Défaut Windows" Tag="380000"/>
-                            <ComboBoxItem Content="4 Go RAM (4194304)" Tag="4194304"/>
-                            <ComboBoxItem Content="6 Go RAM (6291456)" Tag="6291456"/>
-                            <ComboBoxItem Content="8 Go RAM (8388608)" Tag="8388608"/>
-                            <ComboBoxItem Content="12 Go RAM (12582912)" Tag="12582912"/>
-                            <ComboBoxItem Content="16 Go RAM (16777216)" Tag="16777216"/>
-                            <ComboBoxItem Content="24 Go RAM (25165824)" Tag="25165824"/>
-                            <ComboBoxItem Content="32 Go RAM (33554432)" Tag="33554432"/>
-                            <ComboBoxItem Content="64 Go RAM (67108864)" Tag="67108864"/>
-                        </ComboBox>
-                        <TextBlock Name="TxtSvcHostStatus" Grid.Column="1" Foreground="#F1C40F" FontSize="11" VerticalAlignment="Center" Margin="15,0,0,0" Text="Prêt à configurer."/>
+
+                        <TextBox x:Name="SearchBox" Grid.Column="0" Margin="0,0,10,0" Background="#1F2937" Foreground="#D1D5DB" BorderBrush="#374151" BorderThickness="1" Padding="8,5" VerticalAlignment="Center"/>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <TextBlock Text="SvcHost:" Foreground="#9CA3AF" VerticalAlignment="Center" Margin="0,0,5,0" FontWeight="Bold"/>
+                            <ComboBox x:Name="ComboSvcHost" Width="140" Height="30" Background="#1F2937" Foreground="#111827" BorderBrush="#374151" SelectedIndex="3">
+                                <ComboBoxItem Content="3.8 Go (Standard)" Tag="3800000"/>
+                                <ComboBoxItem Content="4 Go (Tweak)" Tag="4194304"/>
+                                <ComboBoxItem Content="8 Go (Tweak)" Tag="8388608"/>
+                                <ComboBoxItem Content="16 Go (Tweak)" Tag="16777216"/>
+                                <ComboBoxItem Content="32 Go (Tweak)" Tag="33554432"/>
+                            </ComboBox>
+                        </StackPanel>
                     </Grid>
-                </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="StackTweaks"/>
+                    </ScrollViewer>
+                </Grid>
             </Border>
-            
-            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
-                <StackPanel Name="OptionsPanel" Margin="10,0"/>
-            </ScrollViewer>
-            
-            <TextBox Name="LogBox" Grid.Row="4" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
-                     FontFamily="Consolas" FontSize="11" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
-            
-            <Button Name="BtnApply" Grid.Row="5" Margin="0,15,0,0"
-                    Background="#00FFC8" Foreground="#0A0A0E" FontWeight="Bold" FontSize="13" BorderThickness="0"/>
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,10,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="340"/>
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Background="#0A0F1D" CornerRadius="6" Padding="10" BorderBrush="#1F2937" BorderThickness="1" Margin="0,0,10,0">
+                <TextBox x:Name="LogBox" Background="Transparent" Foreground="#00FFCC" BorderThickness="0" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsReadOnly="True" FontFamily="Consolas" FontSize="11"/>
+            </Border>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BtnSaveProfile" Content="Sauvegarder Profil" Grid.Column="0" Margin="0,0,4,0" Background="#161E2E" Foreground="#9CA3AF" Padding="6" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                    <Button x:Name="BtnLoadProfile" Content="Charger Profil" Grid.Column="1" Margin="4,0,0,0" Background="#161E2E" Foreground="#9CA3AF" Padding="6" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                </Grid>
+
+                <Grid Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BtnCleanRam" Content="Nettoyer RAM" Grid.Column="0" Margin="0,0,5,0" Background="#161E2E" Foreground="#FF9900" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#3D2911"/>
+                    <Button x:Name="BtnRestore" Content="Créer point de restauration" Grid.Column="1" Background="#1F2937" Foreground="#9CA3AF" Padding="5" Cursor="Hand" BorderThickness="1" BorderBrush="#1F2937"/>
+                </Grid>
+
+                <Button x:Name="BtnApply" Content="APPLIQUER LA SELECTION" Height="45" Background="#00FFCC" Foreground="#0A0F1D" FontSize="14" FontWeight="Bold" Cursor="Hand" BorderThickness="0">
+                    <Button.Resources>
+                        <Style TargetType="Border">
+                            <Setter Property="CornerRadius" Value="6"/>
+                        </Style>
+                    </Button.Resources>
+                </Button>
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>
 "@
 
-$Reader = New-Object System.Xml.XmlNodeReader $XAML
-$Form = [Windows.Markup.XamlReader]::Load($Reader)
+# Parsing XAML
+$Reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]$XAML)
+$Window = [System.Windows.Markup.XamlReader]::Load($Reader)
 
-# Récupération des contrôles WPF
-$Panel = $Form.FindName("OptionsPanel")
-$TxtMainTitle = $Form.FindName("TxtMainTitle")
-$TxtSubtitle = $Form.FindName("TxtSubtitle")
-$TxtLegend = $Form.FindName("TxtLegend")
-$LogBox = $Form.FindName("LogBox")
-$BtnApply = $Form.FindName("BtnApply")
-$BtnRestore = $Form.FindName("BtnRestore")
-$ComboLang = $Form.FindName("ComboLang")
+# Extraction des objets
+$TxtSubtitle        = $Window.FindName("TxtSubtitle")
+$TxtLegend          = $Window.FindName("TxtLegend")
+$TxtQuick           = $Window.FindName("TxtQuick")
+$BtnLangFR          = $Window.FindName("BtnLangFR")
+$BtnLangEN          = $Window.FindName("BtnLangEN")
+$TxtCpu             = $Window.FindName("TxtCpu")
+$TxtGpu             = $Window.FindName("TxtGpu")
+$TxtRam             = $Window.FindName("TxtRam")
+$BtnCheckSafe       = $Window.FindName("BtnCheckSafe")
+$BtnCheckMod        = $Window.FindName("BtnCheckMod")
+$BtnCheckAdv        = $Window.FindName("BtnCheckAdv")
+$BtnClearAll        = $Window.FindName("BtnClearAll")
+$StackCategories    = $Window.FindName("StackCategories")
+$StackTweaks        = $Window.FindName("StackTweaks")
+$SearchBox          = $Window.FindName("SearchBox")
+$ComboSvcHost       = $Window.FindName("ComboSvcHost")
+$LogBox             = $Window.FindName("LogBox")
+$BtnRestore         = $Window.FindName("BtnRestore")
+$BtnApply           = $Window.FindName("BtnApply")
+$BtnCleanRam        = $Window.FindName("BtnCleanRam")
+$BtnSaveProfile     = $Window.FindName("BtnSaveProfile")
+$BtnLoadProfile     = $Window.FindName("BtnLoadProfile")
 
-$TxtQuickSelect = $Form.FindName("TxtQuickSelect")
-$BtnSelectSafe = $Form.FindName("BtnSelectSafe")
-$BtnSelectMod = $Form.FindName("BtnSelectMod")
-$BtnSelectAdv = $Form.FindName("BtnSelectAdv")
-$BtnClearAll = $Form.FindName("BtnClearAll")
+# Initialisation du Diagnostic PC
+$TxtCpu.Text = $CpuName
+$TxtGpu.Text = $GpuName
+$TxtRam.Text = "$TotalRamGB Go"
 
-$BtnSaveProfile = $Form.FindName("BtnSaveProfile")
-$BtnLoadProfile = $Form.FindName("BtnLoadProfile")
-$TxtRamCleanerTitle = $Form.FindName("TxtRamCleanerTitle")
-$TxtRamPercent = $Form.FindName("TxtRamPercent")
-$TxtRamUsedLabel = $Form.FindName("TxtRamUsedLabel")
-$BtnCleanRam = $Form.FindName("BtnCleanRam")
-$TxtSearch = $Form.FindName("TxtSearch")
+# Variables de Navigation de l'Interface
+$Global:SelectedCategory = "Reseau"
+$Global:SelectedSvcHostValue = 16777216  # Valeur par défaut 16 Go en Ko
+$Global:SearchText = ""
 
-$DiagCpuLabel = $Form.FindName("DiagCpuLabel")
-$DiagCpuVal = $Form.FindName("DiagCpuVal")
-$DiagGpuLabel = $Form.FindName("DiagGpuLabel")
-$DiagGpuVal = $Form.FindName("DiagGpuVal")
-$DiagRamLabel = $Form.FindName("DiagRamLabel")
-$DiagRamVal = $Form.FindName("DiagRamVal")
-
-# Éléments du module RAM
-$RamTweakPanel = $Form.FindName("RamTweakPanel")
-$ComboSvcHostRam = $Form.FindName("ComboSvcHostRam")
-$TxtSvcHostStatus = $Form.FindName("TxtSvcHostStatus")
-
-$DiagCpuVal.Text = $CpuName
-$DiagGpuVal.Text = $GpuName
-$DiagRamVal.Text = "$TotalRamGB Go"
-
-$NavButtons = @{
-    "Reseau"=$Form.FindName("BtnReseau")
-    "Confidentialite"=$Form.FindName("BtnConfidentialite")
-    "Gaming"=$Form.FindName("BtnGaming")
-    "Processus"=$Form.FindName("BtnProcessus")
-    "Timer"=$Form.FindName("BtnTimer")
-    "Power"=$Form.FindName("BtnPower")
-    "Services"=$Form.FindName("BtnServices")
-    "Nettoyage"=$Form.FindName("BtnNettoyage")
-    "Apps"=$Form.FindName("BtnApps")
-    "Bloatwares"=$Form.FindName("BtnBloatwares")
+# ============================================================
+# LOGS ENGINE
+# ============================================================
+function Write-Log {
+    param([string]$Text, [bool]$Append = $true)
+    $Timestamp = Get-Date -Format "HH:mm:ss"
+    $FormattedText = "[$Timestamp] $Text"
+    if ($Append) {
+        $LogBox.AppendText("$FormattedText`r`n")
+        $LogBox.ScrollToEnd()
+    } else {
+        $LogBox.Text += "$FormattedText`r`n"
+    }
 }
 
-$Global:LogHistory = [System.Collections.Generic.List[string]]::new()
-$Global:CheckStates = @{}
-foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
-$Global:SelectedSvcHostValue = "380000" # Valeur par défaut de Windows
-$Global:LastCategory = "Reseau"
+# ============================================================
+# TRADUCTION ET DYNAMISME
+# ============================================================
+function Update-Localization {
+    $L = $Global:LangDict[$Global:CurrentLang]
+    $Window.Title = $L["Title"] + " PRO V15.1"
+    $TxtSubtitle.Text = $L["Subtitle"]
+    $TxtLegend.Text = $L["Legend"]
+    $TxtQuick.Text = $L["QuickSelect"]
+    
+    $BtnCheckSafe.Content = $L["BtnSelectSafe"]
+    $BtnCheckMod.Content = $L["BtnSelectMod"]
+    $BtnCheckAdv.Content = $L["BtnSelectAdv"]
+    $BtnClearAll.Content = $L["BtnClearAll"]
+    $SearchBox.Tag = $L["SearchPlaceholder"]
+    $BtnApply.Content = $L["BtnApply"]
+    $BtnRestore.Content = $L["BtnRestore"]
+    $BtnCleanRam.Content = $L["BtnCleanRam"]
+    $BtnSaveProfile.Content = $L["BtnSaveProfile"]
+    $BtnLoadProfile.Content = $L["BtnLoadProfile"]
+    
+    if ([string]::IsNullOrWhiteSpace($SearchBox.Text) -or $SearchBox.Text -eq $Global:LangDict["FR"]["SearchPlaceholder"] -or $SearchBox.Text -eq $Global:LangDict["EN"]["SearchPlaceholder"]) {
+        $SearchBox.Text = $L["SearchPlaceholder"]
+        $SearchBox.Foreground = Get-Brush "#6B7280"
+    }
+
+    # Redessiner le panneau latéral des catégories
+    Build-CategoryButtons
+    Build-TweaksPanel
+}
 
 # ============================================================
-# NETTOYAGE ET MISE À JOUR DE LA RAM REELLE
+# NAVIGATION & FILTRAGE DES CATEGORIES
 # ============================================================
-$RamTimer = New-Object System.Windows.Threading.DispatcherTimer
-$RamTimer.Interval = [TimeSpan]::FromSeconds(2)
-$RamTimer.Add_Tick({
-    $os = Get-CimInstance Win32_OperatingSystem
-    $pct = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
-    $TxtRamPercent.Text = "$pct %"
+$CategoryKeys = @("Reseau", "Confidentialite", "Gaming", "Processus", "Timer", "Power", "Services", "Nettoyage", "Apps", "Bloatwares")
+
+function Build-CategoryButtons {
+    $StackCategories.Children.Clear()
+    $L = $Global:LangDict[$Global:CurrentLang]
+    
+    foreach ($cat in $CategoryKeys) {
+        $Btn = New-Object System.Windows.Controls.Button
+        $Btn.Height = 35
+        $Btn.Margin = "0,3"
+        $Btn.Cursor = "Hand"
+        $Btn.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Stretch
+        $Btn.HorizontalContentAlignment = [System.Windows.HorizontalAlignment]::Left
+        $Btn.Padding = "10,0,0,0"
+        
+        $LocName = $L["Cat$cat"]
+        $Btn.Content = $LocName
+        
+        # Style dynamique de sélection
+        if ($cat -eq $Global:SelectedCategory) {
+            $Btn.Background = Get-Brush "#00FFCC"
+            $Btn.Foreground = Get-Brush "#0A0F1D"
+            $Btn.FontWeight = [System.Windows.FontWeights]::Bold
+            $Btn.BorderThickness = 0
+        } else {
+            $Btn.Background = Get-Brush "#1F2937"
+            $Btn.Foreground = Get-Brush "#D1D5DB"
+            $Btn.BorderThickness = 1
+            $Btn.BorderBrush = Get-Brush "#1F2937"
+        }
+        
+        $Btn.add_Click({
+            $Global:SelectedCategory = $cat
+            Build-CategoryButtons
+            Build-TweaksPanel
+        })
+        
+        $StackCategories.Children.Add($Btn) | Out-Null
+    }
+}
+
+# ============================================================
+# RENDU DU PANNEAU DE TWEAKS AVEC RISQUES COLORES
+# ============================================================
+function Build-TweaksPanel {
+    $StackTweaks.Children.Clear()
+    $L = $Global:LangDict[$Global:CurrentLang]
+    
+    # Filtrer les tweaks par rapport à la catégorie active et la barre de recherche
+    $Filtered = $Options | Where-Object { $_.Cat -eq $Global:SelectedCategory }
+    
+    if (-not [string]::IsNullOrWhiteSpace($Global:SearchText) -and $Global:SearchText -ne $L["SearchPlaceholder"]) {
+        $Filtered = $Filtered | Where-Object {
+            $_.LabelFR -match $Global:SearchText -or $_.LabelEN -match $Global:SearchText
+        }
+    }
+
+    # Regrouper par sous-catégorie si applicable (pour les applications)
+    $Groups = $Filtered | Group-Object -Property {
+        if ($_.SubCat) {
+            $parts = $_.SubCat -split "\|"
+            if ($Global:CurrentLang -eq "FR") { ($parts[0] -split "=")[1] } else { ($parts[1] -split "=")[1] }
+        } else {
+            "Default"
+        }
+    }
+
+    foreach ($gp in $Groups) {
+        if ($gp.Name -ne "Default") {
+            $Header = New-Object System.Windows.Controls.TextBlock
+            $Header.Text = $gp.Name.ToUpper()
+            $Header.Foreground = Get-Brush "#00FFCC"
+            $Header.FontSize = 12
+            $Header.FontWeight = [System.Windows.FontWeights]::Bold
+            $Header.Margin = "0,10,0,5"
+            $StackTweaks.Children.Add($Header) | Out-Null
+        }
+
+        foreach ($tweak in $gp.Group) {
+            $Grid = New-Object System.Windows.Controls.Grid
+            $Grid.Margin = "0,4"
+            
+            $ColDef1 = New-Object System.Windows.Controls.ColumnDefinition
+            $ColDef1.Width = [System.Windows.GridLength]::Auto
+            $ColDef2 = New-Object System.Windows.Controls.ColumnDefinition
+            $ColDef2.Width = New-Object System.Windows.GridLength(1, [System.Windows.GridUnitType]::Star)
+            $Grid.ColumnDefinitions.Add($ColDef1) | Out-Null
+            $Grid.ColumnDefinitions.Add($ColDef2) | Out-Null
+            
+            # Case à cocher
+            $Chk = New-Object System.Windows.Controls.CheckBox
+            $Chk.IsChecked = $tweak.IsChecked
+            $Chk.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+            $Chk.Margin = "0,0,10,0"
+            $Chk.Cursor = "Hand"
+            
+            # Événements de synchronisation pour l'état IsChecked
+            $Chk.add_Checked({
+                $tweak.IsChecked = $true
+            })
+            $Chk.add_Unchecked({
+                $tweak.IsChecked = $false
+            })
+            
+            # Définition de la couleur en fonction du niveau de risque
+            $Color = "#FFFFFF" # Sans risque (safe)
+            if ($tweak.Risk -eq "moderate") { $Color = "#FFCC00" } # Modéré (jaune)
+            if ($tweak.Risk -eq "advanced") { $Color = "#FF5555" } # Avancé (rouge)
+            
+            # Label
+            $Lbl = New-Object System.Windows.Controls.TextBlock
+            if ($Global:CurrentLang -eq "FR") { $Lbl.Text = $tweak.LabelFR } else { $Lbl.Text = $tweak.LabelEN }
+            $Lbl.Foreground = Get-Brush $Color
+            $Lbl.FontSize = 13
+            $Lbl.TextWrapping = [System.Windows.TextWrapping]::Wrap
+            $Lbl.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+            
+            [System.Windows.Controls.Grid]::SetColumn($Chk, 0)
+            [System.Windows.Controls.Grid]::SetColumn($Lbl, 1)
+            
+            $Grid.Children.Add($Chk) | Out-Null
+            $Grid.Children.Add($Lbl) | Out-Null
+            
+            $StackTweaks.Children.Add($Grid) | Out-Null
+        }
+    }
+}
+
+# ============================================================
+# COMPACTION DE LA SOURIS ET DU CLAVIER (LATENCE)
+# ============================================================
+function Apply-InputLagTweaks {
+    Write-Log "[INPUT-LAG] Optimisation de l'intervalle d'interrogation et du taux de rafraîchissement USB..."
+    Set-Reg "HKCU:\Control Panel\Accessibility\Keyboard Response" "DelayBeforeAcceptance" 0
+    Set-Reg "HKCU:\Control Panel\Accessibility\Keyboard Response" "AutoRepeatDelay" 200
+    Set-Reg "HKCU:\Control Panel\Accessibility\Keyboard Response" "AutoRepeatRate" 15
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\mouclass\Parameters" "MouseDataQueueSize" 32
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\kbdclass\Parameters" "KeyboardDataQueueSize" 32
+}
+
+# ============================================================
+# EVENEMENTS CLICS SELECTION RAPIDE
+# ============================================================
+$BtnCheckSafe.add_Click({
+    foreach ($opt in $Options) {
+        if ($opt.Risk -eq "safe") { $opt.IsChecked = $true } else { $opt.IsChecked = $false }
+    }
+    Build-TweaksPanel
+    Write-Log ($Global:LangDict[$Global:CurrentLang]["LogCheckSafe"])
 })
-$RamTimer.Start()
 
-$BtnCleanRam.Add_Click({
-    [System.GC]::Collect()
-    [System.GC]::WaitForPendingFinalizers()
-    $os = Get-CimInstance Win32_OperatingSystem
-    $pct = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
-    $TxtRamPercent.Text = "$pct %"
-    Write-Log "RAM optimisée et cache libéré." $false
+$BtnCheckMod.add_Click({
+    foreach ($opt in $Options) {
+        if ($opt.Risk -eq "safe" -or $opt.Risk -eq "moderate") { $opt.IsChecked = $true } else { $opt.IsChecked = $false }
+    }
+    Build-TweaksPanel
+    Write-Log ($Global:LangDict[$Global:CurrentLang]["LogCheckMod"])
+})
+
+$BtnCheckAdv.add_Click({
+    foreach ($opt in $Options) {
+        $opt.IsChecked = $true
+    }
+    Build-TweaksPanel
+    Write-Log ($Global:LangDict[$Global:CurrentLang]["LogCheckAdv"])
+})
+
+$BtnClearAll.add_Click({
+    foreach ($opt in $Options) {
+        $opt.IsChecked = $false
+    }
+    Build-TweaksPanel
+    Write-Log ($Global:LangDict[$Global:CurrentLang]["LogClearAll"])
+})
+
+# Recherche textuelle en temps réel
+$SearchBox.add_TextChanged({
+    if ($SearchBox.Text -ne $Global:LangDict[$Global:CurrentLang]["SearchPlaceholder"]) {
+        $Global:SearchText = $SearchBox.Text
+        Build-TweaksPanel
+    }
+})
+
+$SearchBox.add_GotFocus({
+    if ($SearchBox.Text -eq $Global:LangDict[$Global:CurrentLang]["SearchPlaceholder"]) {
+        $SearchBox.Text = ""
+        $SearchBox.Foreground = Get-Brush "#D1D5DB"
+    }
+})
+
+$SearchBox.add_LostFocus({
+    if ([string]::IsNullOrWhiteSpace($SearchBox.Text)) {
+        $SearchBox.Text = $Global:LangDict[$Global:CurrentLang]["SearchPlaceholder"]
+        $SearchBox.Foreground = Get-Brush "#6B7280"
+        $Global:SearchText = ""
+        Build-TweaksPanel
+    }
+})
+
+# Changement de langue
+$BtnLangFR.add_Click({
+    $Global:CurrentLang = "FR"
+    $BtnLangFR.Foreground = Get-Brush "#00FFCC"
+    $BtnLangFR.BorderBrush = Get-Brush "#00FFCC"
+    $BtnLangEN.Foreground = Get-Brush "#D1D5DB"
+    $BtnLangEN.BorderBrush = Get-Brush "#1F2937"
+    Update-Localization
+})
+
+$BtnLangEN.add_Click({
+    $Global:CurrentLang = "EN"
+    $BtnLangEN.Foreground = Get-Brush "#00FFCC"
+    $BtnLangEN.BorderBrush = Get-Brush "#00FFCC"
+    $BtnLangFR.Foreground = Get-Brush "#D1D5DB"
+    $BtnLangFR.BorderBrush = Get-Brush "#1F2937"
+    Update-Localization
+})
+
+# SvcHost selection synchro
+$ComboSvcHost.add_SelectionChanged({
+    $selectedItem = $ComboSvcHost.SelectedItem
+    if ($selectedItem -and $selectedItem.Tag) {
+        $Global:SelectedSvcHostValue = [int]$selectedItem.Tag
+    }
 })
 
 # ============================================================
-# LOGIQUE ET REPARATION DE LA SAUVEGARDE DES PROFILS
+# NETTOYAGE RAM (GARBAGE COLLECTOR & WORKING SETS)
+# ============================================================
+$BtnCleanRam.add_Click({
+    Write-Log "[RAM] Nettoyage en cours... Libération de la mémoire de travail..."
+    try {
+        # Appel du garbage collector natif de .NET
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        
+        # Flush de la mémoire du processus de l'OS via API Kernel32
+        $p = [System.Diagnostics.Process]::GetCurrentProcess()
+        $p.MinWorkingSet = $p.MinWorkingSet
+        
+        Write-Log "[RAM] Mémoire optimisée avec succès !"
+    } catch {
+        Write-Log "[ECHEC] Nettoyage RAM ($($_.Exception.Message))"
+    }
+})
+
+# ============================================================
+# CREER UN POINT DE RESTAURATION
+# ============================================================
+$BtnRestore.add_Click({
+    $L = $Global:LangDict[$Global:CurrentLang]
+    Write-Log $L["LogRestoreStart"]
+    $BtnRestore.IsEnabled = $false
+    
+    # Traitement asynchrone léger pour ne pas geler l'interface graphique
+    Start-Job -ScriptBlock {
+        vssadmin create shadow /For=C: | Out-Null
+        Checkpoint-Computer -Description "OptiDylanRestorePoint" -RestorePointType MODIFY_SETTINGS -ErrorAction SilentlyContinue
+    } | Out-Null
+    
+    # Surveillance rapide de la fin du job
+    $timer = New-Object System.Windows.Forms.Timer
+    $timer.Interval = 2000
+    $timer.add_Tick({
+        $jobs = Get-Job
+        if ($jobs.State -notcontains "Running") {
+            $timer.Stop()
+            Get-Job | Remove-Job
+            Write-Log $L["LogRestoreOk"]
+            $BtnRestore.IsEnabled = $true
+        }
+    })
+    $timer.Start()
+})
+
+# ============================================================
+# SAUVEGARDE & CHARGEMENT DES PROFILS (JSON)
 # ============================================================
 $ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
 
-$BtnSaveProfile.Add_Click({
+$BtnSaveProfile.add_Click({
+    $L = $Global:LangDict[$Global:CurrentLang]
+    $SelectedIds = $Options | Where-Object { $_.IsChecked } | Select-Object -ExpandProperty Id
+    $ProfileData = @{
+        SelectedIds = $SelectedIds
+        SvcHostValue = $Global:SelectedSvcHostValue
+        Language = $Global:CurrentLang
+    }
     try {
-        $SaveObject = @{
-            "CheckStates" = $Global:CheckStates
-            "SvcHostValue" = $Global:SelectedSvcHostValue
-        }
-        $Json = $SaveObject | ConvertTo-Json -Depth 5
-        [System.IO.File]::WriteAllText($ProfilePath, $Json)
-        Write-Log "ProfileSaved"
+        $ProfileData | ConvertTo-Json -Depth 5 | Out-File $ProfilePath -Encoding UTF8
+        Write-Log $L["ProfileSaved"]
     } catch {
-        Write-Log "[ERR] Sauvegarde échouée: $($_.Exception.Message)" $false
+        Write-Log "[ERR] Impossible de sauvegarder le profil : $_"
     }
 })
 
-$BtnLoadProfile.Add_Click({
+$BtnLoadProfile.add_Click({
+    $L = $Global:LangDict[$Global:CurrentLang]
     if (Test-Path $ProfilePath) {
         try {
-            $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json
+            $ProfileData = Get-Content $ProfilePath -Raw | ConvertFrom-Json
             
-            if ($null -ne $Loaded.CheckStates) {
-                foreach ($prop in $Loaded.CheckStates.PSObject.Properties) {
-                    $id = [int]$prop.Name
-                    $Global:CheckStates[$id] = [bool]$prop.Value
+            # Restauration des sélections
+            foreach ($opt in $Options) {
+                if ($ProfileData.SelectedIds -contains $opt.Id) {
+                    $opt.IsChecked = $true
+                } else {
+                    $opt.IsChecked = $false
                 }
             }
             
-            if ($null -ne $Loaded.SvcHostValue) {
-                $Global:SelectedSvcHostValue = $Loaded.SvcHostValue
-                $indexToSelect = 0
-                for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
-                    if ($ComboSvcHostRam.Items[$i].Tag -eq $Global:SelectedSvcHostValue) {
-                        $indexToSelect = $i
+            # SvcHost
+            if ($ProfileData.SvcHostValue) {
+                $Global:SelectedSvcHostValue = $ProfileData.SvcHostValue
+                for ($i = 0; $i -lt $ComboSvcHost.Items.Count; $i++) {
+                    if ([int]$ComboSvcHost.Items[$i].Tag -eq $Global:SelectedSvcHostValue) {
+                        $ComboSvcHost.SelectedIndex = $i
                         break
                     }
                 }
-                $ComboSvcHostRam.SelectedIndex = $indexToSelect
             }
             
-            Render-Category $Global:LastCategory
-            Update-SidebarCounters
-            Write-Log "ProfileLoaded"
-        } catch {
-            Write-Log "[ERR] Erreur lors de la lecture du fichier : $($_.Exception.Message)" $false
-        }
-    } else {
-        Write-Log "ProfileErr"
-    }
-})
-
-# ============================================================
-# SÉLECTION DE LA VALEUR DE SVCHOST
-# ============================================================
-$ComboSvcHostRam.Add_SelectionChanged({
-    $selectedItem = $ComboSvcHostRam.SelectedItem
-    if ($null -ne $selectedItem) {
-        $Global:SelectedSvcHostValue = $selectedItem.Tag
-        $TxtSvcHostStatus.Text = "Prêt à appliquer : $($selectedItem.Content)"
-    }
-})
-
-# ============================================================
-# AFFICHAGE LOGS ET NAVIGATION
-# ============================================================
-function Write-Log([string]$KeyOrText, [bool]$IsStaticKey = $true) {
-    if ($IsStaticKey) {
-        if (-not $Global:LogHistory.Contains($KeyOrText)) { $Global:LogHistory.Add($KeyOrText) }
-    } else {
-        $Global:LogHistory.Add($KeyOrText)
-    }
-    Refresh-LogBoxDisplay
-}
-
-function Refresh-LogBoxDisplay {
-    $LogBox.Clear()
-    $L = $Global:LangDict[$Global:CurrentLang]
-    foreach ($logKey in $Global:LogHistory) {
-        if ($L.ContainsKey($logKey)) {
-            $LogBox.AppendText(">> $($L[$logKey])`n")
-        } else {
-            $LogBox.AppendText(">> $logKey`n")
-        }
-    }
-    $LogBox.ScrollToEnd()
-}
-
-function Update-SidebarCounters {
-    $L = $Global:LangDict[$Global:CurrentLang]
-    foreach ($key in $NavButtons.Keys) {
-        $count = ($Options | Where-Object { $_.Cat -eq $key -and $Global:CheckStates[$_.Id] -eq $true }).Count
-        $catTitle = switch ($key) {
-            "Reseau" { $L["CatReseau"] }
-            "Confidentialite" { $L["CatConfidentialite"] }
-            "Gaming" { $L["CatGaming"] }
-            "Processus" { $L["CatProcessus"] }
-            "Timer" { $L["CatTimer"] }
-            "Power" { $L["CatPower"] }
-            "Services" { $L["CatServices"] }
-            "Nettoyage" { $L["CatNettoyage"] }
-            "Apps" { $L["CatApps"] }
-            "Bloatwares" { $L["CatBloatwares"] }
-        }
-        $emoji = switch ($key) {
-            "Reseau" { "🌐" }
-            "Confidentialite" { "🛡️" }
-            "Gaming" { "🎮" }
-            "Processus" { "💻" }
-            "Timer" { "⏱️" }
-            "Power" { "⚡" }
-            "Services" { "⚙️" }
-            "Nettoyage" { "🧹" }
-            "Apps" { "📦" }
-            "Bloatwares" { "🗑️" }
-        }
-        if ($count -gt 0) {
-            $NavButtons[$key].Content = "$emoji  $catTitle ($count)"
-        } else {
-            $NavButtons[$key].Content = "$emoji  $catTitle"
-        }
-    }
-}
-
-function Update-InterfaceLanguage {
-    $L = $Global:LangDict[$Global:CurrentLang]
-    
-    $TxtMainTitle.Text = $L["Title"]
-    $TxtSubtitle.Text = $L["Subtitle"]
-    $TxtLegend.Text = $L["Legend"]
-    $BtnApply.Content = $L["BtnApply"]
-    $BtnRestore.Content = $L["BtnRestore"]
-    
-    $TxtQuickSelect.Text = $L["QuickSelect"]
-    $BtnSelectSafe.Content = $L["BtnSelectSafe"]
-    $BtnSelectMod.Content = $L["BtnSelectMod"]
-    $BtnSelectAdv.Content = $L["BtnSelectAdv"]
-    $BtnClearAll.Content = $L["BtnClearAll"]
-    
-    $BtnSaveProfile.Content = $L["BtnSaveProfile"]
-    $BtnLoadProfile.Content = $L["BtnLoadProfile"]
-    $TxtRamCleanerTitle.Text = $L["RamCleanerTitle"]
-    $TxtRamUsedLabel.Text = $L["RamUsed"]
-    $BtnCleanRam.Content = $L["BtnCleanRam"]
-    
-    $DiagCpuLabel.Text = $L["Cpu"].ToUpper()
-    $DiagGpuLabel.Text = $L["Gpu"].ToUpper()
-    $DiagRamLabel.Text = $L["Ram"].ToUpper()
-    
-    $TxtSearch.Text = ""
-    
-    Update-SidebarCounters
-    Render-Category $Global:LastCategory
-    Refresh-LogBoxDisplay
-}
-
-function Render-Category([string]$Cat) {
-    try {
-        $Global:LastCategory = $Cat
-        $Panel.Children.Clear()
-        
-        # Affichage du module dynamique de RAM SvcHost uniquement dans "Processus"
-        if ($Cat -eq "Processus") {
-            $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
-        } else {
-            $RamTweakPanel.Visibility = [System.Windows.Visibility]::Collapsed
-        }
-        
-        $filter = $TxtSearch.Text.Trim()
-        $Items = $Options | Where-Object { $_.Cat -eq $Cat }
-        
-        if (-not [string]::IsNullOrEmpty($filter)) {
-            $Items = $Items | Where-Object {
-                $_.LabelFR -match $filter -or $_.LabelEN -match $filter
-            }
-        }
-        
-        $CurrentGroup = ""
-        
-        foreach ($item in $Items) {
-            if ($Cat -eq "Apps" -and $null -ne $item.SubCat) {
-                $subCatParsed = @{}
-                foreach ($pair in ($item.SubCat -split "\|")) {
-                    $parts = $pair -split "="
-                    $subCatParsed[$parts[0]] = $parts[1]
-                }
-                $groupName = $subCatParsed[$Global:CurrentLang]
-                
-                if ($groupName -ne $CurrentGroup) {
-                    $CurrentGroup = $groupName
-                    $Header = New-Object System.Windows.Controls.TextBlock
-                    $Header.Text = "--- $CurrentGroup ---"
-                    $Header.Foreground = Get-Brush "#00FFC8"
-                    $Header.FontSize = 12
-                    $Header.FontWeight = "Bold"
-                    $Header.Margin = "0,15,0,5"
-                    [void]$Panel.Children.Add($Header)
-                }
-            }
-
-            $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
-            $Brush = Get-Brush $color
-
-            $Lbl = New-Object System.Windows.Controls.TextBlock
-            if ($Global:CurrentLang -eq "FR") { $Lbl.Text = $item.LabelFR } else { $Lbl.Text = $item.LabelEN }
-            $Lbl.Foreground = $Brush
-            $Lbl.FontSize = 13
-            $Lbl.TextWrapping = "Wrap"
-            $Lbl.VerticalAlignment = "Center"
-
-            $Chk = New-Object System.Windows.Controls.CheckBox
-            $Chk.Content = $Lbl
-            $Chk.Margin = "0,6,0,6"
-            $Chk.Tag = $item.Id
-            $Chk.IsChecked = $Global:CheckStates[$item.Id]
-            
-            $Chk.Add_Checked({ 
-                $id = $this.Tag
-                $Global:CheckStates[$id] = $true 
-                
-                if ($id -ge 115 -and $id -le 121) {
-                    for ($i = 115; $i -le 121; $i++) {
-                        if ($i -ne $id) { $Global:CheckStates[$i] = $false }
-                    }
-                    Render-Category $Global:LastCategory
-                }
-                
-                if ($id -ge 122 -and $id -le 124) {
-                    for ($i = 122; $i -le 124; $i++) {
-                        if ($i -ne $id) { $Global:CheckStates[$i] = $false }
-                    }
-                    Render-Category $Global:LastCategory
-                }
-                Update-SidebarCounters
-            })
-            $Chk.Add_Unchecked({ 
-                $Global:CheckStates[$this.Tag] = $false 
-                Update-SidebarCounters
-            })
-            [void]$Panel.Children.Add($Chk)
-        }
-        
-        foreach ($key in $NavButtons.Keys) {
-            if ($key -eq $Cat) {
-                $NavButtons[$key].Background = Get-Brush "#181824"
-                $NavButtons[$key].Foreground = Get-Brush "#00FFC8"
+            # Langue
+            if ($ProfileData.Language) {
+                $Global:CurrentLang = $ProfileData.Language
+                Update-Localization
             } else {
-                $NavButtons[$key].Background = Get-Brush "#101016"
-                $NavButtons[$key].Foreground = Get-Brush "#A0A0B4"
+                Build-TweaksPanel
             }
+            
+            Write-Log $L["ProfileLoaded"]
+        } catch {
+            Write-Log "[ERR] Erreur lors du décodage du profil : $_"
         }
-    } catch {
-        Write-Log "[ERR] $($_.Exception.Message)" $false
-    }
-}
-
-$TxtSearch.Add_TextChanged({
-    Render-Category $Global:LastCategory
-})
-
-# --- BOUTONS DE SÉLECTION RAPIDE ---
-$BtnSelectSafe.Add_Click({
-    foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
-        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
-            $Global:CheckStates[$item.Id] = $true
-        } else {
-            $Global:CheckStates[$item.Id] = $false
-        }
-    }
-    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[119] = $true
-
-    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[122] = $true
-    
-    Update-SidebarCounters
-    Render-Category $Global:LastCategory
-    Write-Log "LogCheckSafe"
-})
-
-$BtnSelectMod.Add_Click({
-    foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
-        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
-            $Global:CheckStates[$item.Id] = $true
-        } else {
-            $Global:CheckStates[$item.Id] = $false
-        }
-    }
-    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[116] = $true
-
-    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[123] = $true
-    
-    Update-SidebarCounters
-    Render-Category $Global:LastCategory
-    Write-Log "LogCheckMod"
-})
-
-$BtnSelectAdv.Add_Click({
-    foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
-        if (($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
-            $Global:CheckStates[$item.Id] = $true
-        }
-    }
-    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[115] = $true
-
-    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[124] = $true
-    
-    Update-SidebarCounters
-    Render-Category $Global:LastCategory
-    Write-Log "LogCheckAdv"
-})
-
-$BtnClearAll.Add_Click({
-    $Keys = @($Global:CheckStates.Keys)
-    foreach ($id in $Keys) {
-        $Global:CheckStates[$id] = $false
-    }
-    Update-SidebarCounters
-    Render-Category $Global:LastCategory
-    Write-Log "LogClearAll"
-})
-
-foreach ($key in $NavButtons.Keys) {
-    $b = $NavButtons[$key]
-    if ($null -ne $b) { $b.Add_Click({ Render-Category $this.Tag }) }
-}
-
-$ComboLang.Add_SelectionChanged({
-    if ($ComboLang.SelectedIndex -eq 0) { $Global:CurrentLang = "FR" } else { $Global:CurrentLang = "EN" }
-    Update-InterfaceLanguage
-})
-
-$BtnRestore.Add_Click({
-    Write-Log "LogRestoreStart"
-    try {
-        Checkpoint-Computer -Description "Avant OPTI-DYLAN" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
-        Write-Log "LogRestoreOk"
-    } catch {
-        Write-Log "[WARN] $($_.Exception.Message)" $false
+    } else {
+        Write-Log $L["ProfileErr"]
     }
 })
 
-$BtnApply.Add_Click({
+# ============================================================
+# BOUTON CRITIQUE : APPLIQUER LA SÉLECTION
+# ============================================================
+$BtnApply.add_Click({
     $L = $Global:LangDict[$Global:CurrentLang]
-    $BtnApply.IsEnabled = $false
-    $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
+    $selected = $Options | Where-Object { $_.IsChecked }
     
-    if ($selected.Count -eq 0 -and $Global:SelectedSvcHostValue -eq "380000") {
+    $BtnApply.IsEnabled = $false
+    
+    if ($selected.Count -eq 0) {
+        Write-Log $L["NoOption"]
         [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
         $BtnApply.IsEnabled = $true
         return
     }
     
-    $LogBox.AppendText(">> " + ($L["Exec"] -f $selected.Count) + "`n")
+    Write-Log ($L["Exec"] -f $selected.Count)
     
     # 1. APPLICATION DU TWEAK RAM SVCHOST INDÉPENDANT
     try {
-        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue Ko..." $false
+        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue Ko..."
         Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $Global:SelectedSvcHostValue
-        $LogBox.AppendText(">> [OK] SvcHostSplitThresholdInKB paramétré à $Global:SelectedSvcHostValue Ko`n")
+        Write-Log "[OK] SvcHostSplitThresholdInKB paramétré à $Global:SelectedSvcHostValue Ko"
     } catch {
-        $LogBox.AppendText(">> [ECHEC] Configuration SvcHostSplitThresholdInKB`n")
+        Write-Log "[ECHEC] Configuration SvcHostSplitThresholdInKB"
     }
     
-    # 2. APPLICATION DES TWEAKS SÉLECTIONNÉS
+    # 2. APPLICATION DES SÉLECTIONS PAR CATÉGORIES ET TWEAKS AVANCÉS D'INPUT LAG SOURIS
+    Apply-InputLagTweaks
+    
+    # 3. APPLICATION DES ACTIONS SELECTIONNÉES
     foreach ($item in $selected) {
         try {
             & $item.Action
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [OK] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [OK] $($item.LabelEN)`n") }
+            if ($Global:CurrentLang -eq "FR") { Write-Log "[OK] $($item.LabelFR)" } else { Write-Log "[OK] $($item.LabelEN)" }
         } catch {
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [ECHEC] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [FAILED] $($item.LabelEN)`n") }
+            if ($Global:CurrentLang -eq "FR") { Write-Log "[ECHEC] $($item.LabelFR)" } else { Write-Log "[FAILED] $($item.LabelEN)" }
         }
-        $LogBox.ScrollToEnd()
-        [System.Windows.Forms.Application]::DoEvents()
     }
-    $LogBox.AppendText(">> $($L["Done"])`n")
-    $LogBox.ScrollToEnd()
+    
+    Write-Log $L["Done"]
     [System.Windows.MessageBox]::Show($L["BoxDone"], "OPTI-DYLAN")
     $BtnApply.IsEnabled = $true
 })
 
-# Lancement initial
-$Global:LogHistory.Add("LogEngineOnline")
-Update-InterfaceLanguage
-[void]$Form.ShowDialog()
+# Initialisation au démarrage
+Update-Localization
+Write-Log $Global:LangDict[$Global:CurrentLang]["LogEngineOnline"]
+
+# Affichage de la fenêtre graphique
+$Window.ShowDialog() | Out-Null
