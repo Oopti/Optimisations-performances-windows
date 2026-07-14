@@ -1,337 +1,330 @@
-#requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V15.0 - THE ULTIMATE CONTROL SYSTEM
+    .SYNOPSIS
+        OPTI-DYLAN TOOLKIT - V16.0 (Édition Ultime Asynchrone)
+        Optimisation avancée et nettoyage pour Windows 10/11.
+    .DESCRIPTION
+        Ce script doit impérativement être exécuté en tant qu'Administrateur.
 #>
 
-if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
-    exit
-}
-
-Add-Type -AssemblyName PresentationFramework
-Add-Type -AssemblyName System.Windows.Forms
-
-$TimerResolutionCode = @"
+# ============================================================
+# COMPILATION DU WRAPPER TIMER (Maintien de la résolution)
+# ============================================================
+$TimerCode = @"
 using System;
 using System.Runtime.InteropServices;
 
-public class TimerResolution {
-    [DllImport("ntdll.dll", SetLastError = true)]
+public class Win32Timer {
+    [DllImport("ntdll.dll")]
     public static extern int NtSetTimerResolution(uint DesiredResolution, bool SetResolution, out uint CurrentResolution);
 }
 "@
-Add-Type -TypeDefinition $TimerResolutionCode -ErrorAction SilentlyContinue
+Add-Type -TypeDefinition $TimerCode -ErrorAction SilentlyContinue
 
 # ============================================================
-# DICTIONNAIRE DE TRADUCTION DE L'INTERFACE ET DES LOGS
+# INITIALISATION ET LANGUES
 # ============================================================
-$Global:LangDict = @{
-    "FR" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT"
-        "Subtitle" = "Chaque case = une vraie action"
-        "Legend" = "Blanc = sans risque`nJaune = modéré`nRouge = avancé"
-        "BtnApply" = "APPLIQUER LA SELECTION"
-        "BtnRestore" = "Créer un point de restauration"
-        "NoOption" = "[INFO] Aucune option cochée."
-        "Exec" = "[EXEC] Application de {0} option(s)..."
-        "Done" = "[TERMINE] Optimisations appliquées !"
-        "BoxDone" = "Optimisations appliquées. Redémarre ton PC si nécessaire."
-        "CatReseau" = "Réseau & Ping"
-        "CatConfidentialite" = "Confidentialité"
-        "CatGaming" = "Gaming & Latence"
-        "CatProcessus" = "Gestion de RAM & svchost"
-        "CatTimer" = "Timer Resolution"
-        "CatPower" = "Énergie & CPU"
-        "CatServices" = "Services Windows"
-        "CatNettoyage" = "Nettoyage & Ram"
-        "CatApps" = "Applications"
-        "CatBloatwares" = "Bloatwares Windows"
-        "QuickSelect" = "SELECTION RAPIDE"
-        "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
-        "BtnSelectMod" = "Cocher Tout (Modéré)"
-        "BtnSelectAdv" = "Cocher Tout (Avancé)"
-        "BtnClearAll" = "Tout Décocher"
-        "SearchPlaceholder" = "Rechercher un tweak dans cette catégorie..."
-        "Cpu" = "Processeur"
-        "Gpu" = "Graphismes"
-        "Ram" = "Mémoire RAM"
-        "RamCleanerTitle" = "NETTOYAGE RAM TEMPS RÉEL"
-        "RamUsed" = "utilisé"
-        "BtnCleanRam" = "Optimiser la RAM"
-        "BtnSaveProfile" = "Sauvegarder Profil"
-        "BtnLoadProfile" = "Charger Profil"
-        "ProfileSaved" = "[OK] Profil sauvegardé avec succès dans 'opti_profile.json'."
-        "ProfileLoaded" = "[OK] Profil 'opti_profile.json' chargé avec succès !"
-        "ProfileErr" = "[ERR] Aucun profil sauvegardé trouvé."
-        # Logs
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V15.0 En Ligne. Corrections appliquées."
-        "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés."
-        "LogCheckMod" = "[UI] Sélection Auto : 'Sans Risque' & 'Modéré' cochés."
-        "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
-        "LogClearAll" = "[UI] Réinitialisation : Toutes les cases décochées."
-        "LogRestoreStart" = "[SYSTEM] Création du point de restauration Windows..."
-        "LogRestoreOk" = "[OK] Point de restauration système créé."
-    }
-    "EN" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT"
-        "Subtitle" = "Every box = a real action"
-        "Legend" = "White = safe`nYellow = moderate`nRed = advanced"
-        "BtnApply" = "APPLY SELECTED CONFIG"
-        "BtnRestore" = "Create Restore Point"
-        "NoOption" = "[INFO] No options selected."
-        "Exec" = "[EXEC] Applying {0} selected option(s)..."
-        "Done" = "[DONE] Optimizations applied successfully!"
-        "BoxDone" = "Optimizations applied. Please restart your PC if needed."
-        "CatReseau" = "Network & Ping"
-        "CatConfidentialite" = "Privacy"
-        "CatGaming" = "Gaming & Latency"
-        "CatProcessus" = "RAM & svchost Control"
-        "CatTimer" = "Timer Resolution"
-        "CatPower" = "Power & CPU"
-        "CatServices" = "Windows Services"
-        "CatNettoyage" = "Cleanup & Ram"
-        "CatApps" = "Applications"
-        "CatBloatwares" = "Windows Bloatwares"
-        "QuickSelect" = "QUICK SELECTION"
-        "BtnSelectSafe" = "Check All (Safe Only)"
-        "BtnSelectMod" = "Check All (Moderate)"
-        "BtnSelectAdv" = "Check All (Advanced)"
-        "BtnClearAll" = "Clear All Checkboxes"
-        "SearchPlaceholder" = "Search tweaks in this category..."
-        "Cpu" = "Processor"
-        "Gpu" = "Graphics"
-        "Ram" = "Memory RAM"
-        "RamCleanerTitle" = "REAL-TIME RAM CLEANER"
-        "RamUsed" = "used"
-        "BtnCleanRam" = "Optimize RAM"
-        "BtnSaveProfile" = "Save Profile"
-        "BtnLoadProfile" = "Load Profile"
-        "ProfileSaved" = "[OK] Profile saved successfully to 'opti_profile.json'."
-        "ProfileLoaded" = "[OK] Profile 'opti_profile.json' loaded successfully!"
-        "ProfileErr" = "[ERR] No saved profile found."
-        # Logs
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V15.0 Online. Fixed bugs active."
-        "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked."
-        "LogCheckMod" = "[UI] Auto-Check: 'Safe' & 'Moderate' checked."
-        "LogCheckAdv" = "[UI] Checked absolutely ALL tweaks."
-        "LogClearAll" = "[UI] Reset: Unchecked all boxes."
-        "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
-        "LogRestoreOk" = "[OK] System Restore Point created successfully."
-    }
-}
 $Global:CurrentLang = "FR"
 
+$Global:LangDict = @{
+    "FR" = @{
+        "Title" = "OPTI-DYLAN TOOLKIT - V16.0"
+        "Subtitle" = "Optimisation en temps réel • Interface réactive"
+        "Legend" = "Légende des risques :\nVert = Sûr | Jaune = Modéré | Rouge = Avancé"
+        "QuickSelect" = "SÉLECTION RAPIDE"
+        "BtnSelectSafe" = "Configuration sûre (Recommandé)"
+        "BtnSelectMod" = "Configuration modérée"
+        "BtnSelectAdv" = "Configuration avancée (Gamer)"
+        "BtnClearAll" = "Tout décocher"
+        "BtnSaveProfile" = "Sauvegarder profil"
+        "BtnLoadProfile" = "Charger profil"
+        "BtnRestore" = "Créer Point de Restauration"
+        "BtnApply" = "APPLIQUER LA SÉLECTION"
+        "RamCleanerTitle" = "NETTOYAGE RAM"
+        "RamUsed" = " utilisé"
+        "BtnCleanRam" = "Vider le cache de la RAM"
+        "Cpu" = "Processeur"
+        "Gpu" = "Carte graphique"
+        "Ram" = "Mémoire installée"
+        "NoOption" = "Aucune option n'est cochée pour l'application !"
+        "Exec" = "Lancement de l'optimisation (%d tweaks sélectionnés)..."
+        "Done" = "Optimisation terminée avec succès !"
+        "BoxDone" = "Toutes les optimisations sélectionnées ont été appliquées !"
+        "LogEngineOnline" = "Moteur OPTI-DYLAN initialisé et prêt."
+        "LogCheckSafe" = "Profil 'Sûr' sélectionné."
+        "LogCheckMod" = "Profil 'Modéré' sélectionné."
+        "LogCheckAdv" = "Profil 'Avancé' sélectionné."
+        "LogClearAll" = "Toutes les sélections ont été vidées."
+        "LogRestoreStart" = "Création du point de restauration système en cours..."
+        "LogRestoreOk" = "Point de restauration créé avec succès."
+        "ProfileSaved" = "Profil de configuration exporté avec succès."
+        "ProfileLoaded" = "Profil de configuration chargé et appliqué visuellement."
+        "ProfileErr" = "Aucun fichier de profil trouvé sur ce système."
+        "CatReseau" = "Réseau & Ping"
+        "CatConfidentialite" = "Confidentialité"
+        "CatGaming" = "Optimisations Jeux"
+        "CatProcessus" = "Processus Windows"
+        "CatTimer" = "Timer Resolution"
+        "CatPower" = "Énergie & CPU"
+        "CatServices" = "Services Inutiles"
+        "CatNettoyage" = "Nettoyage & RAM"
+        "CatApps" = "Logiciels utiles"
+        "CatBloatwares" = "Bloatwares"
+    }
+    "EN" = @{
+        "Title" = "OPTI-DYLAN TOOLKIT - V16.0"
+        "Subtitle" = "Real-time optimization • Non-blocking GUI"
+        "Legend" = "Risk Legend :\nGreen = Safe | Yellow = Moderate | Red = Advanced"
+        "QuickSelect" = "QUICK SELECTION"
+        "BtnSelectSafe" = "Safe settings (Recommended)"
+        "BtnSelectMod" = "Moderate settings"
+        "BtnSelectAdv" = "Advanced settings (Hardcore)"
+        "BtnClearAll" = "Deselect all"
+        "BtnSaveProfile" = "Save profile"
+        "BtnLoadProfile" = "Load profile"
+        "BtnRestore" = "Create Restore Point"
+        "BtnApply" = "APPLY SELECTED TWEAKS"
+        "RamCleanerTitle" = "RAM CLEANING"
+        "RamUsed" = " used"
+        "BtnCleanRam" = "Flush RAM Cache"
+        "Cpu" = "Processor"
+        "Gpu" = "Graphics Card"
+        "Ram" = "Installed RAM"
+        "NoOption" = "No option selected for application!"
+        "Exec" = "Launching optimizations (%d tweaks selected)..."
+        "Done" = "Optimizations successfully applied!"
+        "BoxDone" = "All selected optimizations have been applied!"
+        "LogEngineOnline" = "OPTI-DYLAN core engine active and ready."
+        "LogCheckSafe" = "Safe Profile selected."
+        "LogCheckMod" = "Moderate Profile selected."
+        "LogCheckAdv" = "Advanced Profile selected."
+        "LogClearAll" = "All selections cleared."
+        "LogRestoreStart" = "Creating system restore point..."
+        "LogRestoreOk" = "Restore point created successfully."
+        "ProfileSaved" = "Configuration profile exported successfully."
+        "ProfileLoaded" = "Configuration profile imported and applied to GUI."
+        "ProfileErr" = "No profile file found on this system."
+        "CatReseau" = "Network & Ping"
+        "CatConfidentialite" = "Privacy"
+        "CatGaming" = "Gaming Tweaks"
+        "CatProcessus" = "Windows Processes"
+        "CatTimer" = "Timer Resolution"
+        "CatPower" = "Power & CPU"
+        "CatServices" = "Useless Services"
+        "CatNettoyage" = "Clean & RAM"
+        "CatApps" = "Useful Apps"
+        "CatBloatwares" = "Bloatwares"
+    }
+}
+
+# Charger les assemblies WPF requis
+Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
+
 # ============================================================
-# RÉCUPÉRATION INFOS PC (DIAGNOSTIC AUTOMATIQUE)
+# RECUPERATION DU MATERIEL (Diagnostics réels)
 # ============================================================
 $CpuName = (Get-CimInstance Win32_Processor).Name.Trim()
-$GpuName = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
-$TotalRamGB = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object Capacity -Sum).Sum / 1GB, 0)
+$GpuName = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name.Trim()
+$TotalRamGB = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1GB, 0)
 
 # ============================================================
-# FONCTIONS UTILITAIRES
+# REQUIS ET UTILS DE REGISTRE
 # ============================================================
-function Set-Reg {
-    param([string]$Path, [string]$Name, $Value, [string]$Type = "DWord")
+function Set-Reg([string]$Path, [string]$Name, $Value, [string]$Type = "DWord") {
+    $Parent = Split-Path $Path
+    if (-not (Test-Path $Parent)) { New-Item -Path $Parent -Force | Out-Null }
     if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
-    New-ItemProperty -Path $Path -Name $Name -Value $Value -PropertyType $Type -Force | Out-Null
+    
+    if ($Type -eq "DWord") {
+        # S'assurer que c'est un entier propre
+        $Value = [uint32]$Value
+    }
+    Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction SilentlyContinue
 }
 
-function Remove-Reg {
-    param([string]$Path, [string]$Name)
-    if (Test-Path $Path) { Remove-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue }
-}
-
-function Disable-Svc {
-    param([string]$Name)
-    Get-Service -Name $Name -ErrorAction SilentlyContinue | ForEach-Object {
-        Stop-Service -Name $_.Name -Force -ErrorAction SilentlyContinue
-        Set-Service -Name $_.Name -StartupType Disabled -ErrorAction SilentlyContinue
+function Disable-Svc([string]$SvcName) {
+    if (Get-Service -Name $SvcName -ErrorAction SilentlyContinue) {
+        Stop-Service -Name $SvcName -Force -ErrorAction SilentlyContinue
+        Set-Service -Name $SvcName -StartupType Disabled -ErrorAction SilentlyContinue
     }
 }
 
-function Install-WingetApp {
-    param([string]$Id, [string]$AppName)
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "winget introuvable." }
-    Write-Log "[WINGET] Téléchargement & Installation : $AppName ($Id)..."
-    $p = Start-Process -FilePath "winget" -ArgumentList "install --id $Id -e --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru -WindowStyle Hidden
-    if ($p.ExitCode -ne 0) { throw "winget a échoué avec le code $($p.ExitCode)" }
+function Get-Brush([string]$Hex) {
+    return [System.Windows.Media.BrushConverter]::ConvertFromString($Hex)
 }
 
-function Uninstall-Appx {
-    param([string]$NamePattern)
-    Write-Log "[BLOATWARE] Suppression de : $NamePattern..."
-    Get-AppxPackage -AllUsers -Name "*$NamePattern*" | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-    Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -match $NamePattern } | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
-}
+# ============================================================
+# BASE DE DONNÉES DES TWEAKS & ACTIONS AVEC AUTO-CHECK
+# ============================================================
+$Options = [System.Collections.Generic.List[PSCustomObject]]::new()
 
-function Get-Brush {
-    param([string]$Hex)
-    return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex)
-}
-
-function Set-SystemTimerResolution {
-    param([double]$Milliseconds)
-    $val = [uint32]($Milliseconds * 10000)
-    $current = [uint32]0
-    $res = [TimerResolution]::NtSetTimerResolution($val, $true, [ref]$current)
-    if ($res -eq 0) {
-        Write-Log "[TIMER] Résolution forcée à : $Milliseconds ms (Kernel : $($current / 10000) ms)"
-    } else {
-        Write-Log "[WARN] Échec de la résolution du Timer (Code: $res)"
+# --- 1. RESEAU & PING ---
+$Options.Add([PSCustomObject]@{
+    Id=1; Cat="Reseau"; Risk="safe"
+    LabelFR="Désactiver l'algorithme de Nagle (Améliore le ping en jeu)"; LabelEN="Disable Nagle's Algorithm (Reduces in-game ping)"
+    Action={
+        $Paths = Get-ChildItem -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"
+        foreach ($p in $Paths) {
+            Set-Reg $p.PSPath "TcpAckFrequency" 1
+            Set-Reg $p.PSPath "TCPNoDelay" 1
+        }
     }
-}
+    Check={
+        $Paths = Get-ChildItem -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" -ErrorAction SilentlyContinue
+        if ($Paths) {
+            $val1 = Get-ItemProperty -Path $Paths[0].PSPath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue
+            $val1.TcpAckFrequency -eq 1
+        } else { $false }
+    }
+})
 
-# ============================================================
-# CATALOGUE DES TWEAKS (V15.0)
-# ============================================================
-$Options = @()
+$Options.Add([PSCustomObject]@{
+    Id=2; Cat="Reseau"; Risk="safe"
+    LabelFR="Activer TCP Chimney Offload (Soulage le CPU en réseau)"; LabelEN="Enable TCP Chimney Offload (Offloads task execution to NIC)"
+    Action={ netsh int tcp set global chimney=enabled }
+    Check={ (netsh int tcp show global) -match "Chimney" -match "enable" }
+})
 
-# --- 1. RÉSEAU & PING ---
-$Options += [PSCustomObject]@{Id=1;  Cat="Reseau"; LabelFR="Désactiver l'algorithme de Nagle (TCPNoDelay)"; LabelEN="Disable Nagle's Algorithm (TCPNoDelay)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "TCPNoDelay" 1 }}
-$Options += [PSCustomObject]@{Id=2;  Cat="Reseau"; LabelFR="Forcer TcpAckFrequency à 1 (réduction ping)"; LabelEN="Force TcpAckFrequency to 1 (reduce ping)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "TcpAckFrequency" 1 }}
-$Options += [PSCustomObject]@{Id=3;  Cat="Reseau"; LabelFR="Lever la limitation réseau multimédia (NetworkThrottlingIndex)"; LabelEN="Disable network throttling for multimedia streaming"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "NetworkThrottlingIndex" 0xffffffff }}
-$Options += [PSCustomObject]@{Id=4;  Cat="Reseau"; LabelFR="Vider et réinitialiser le cache DNS"; LabelEN="Flush and reset DNS client cache"; Risk="safe"; Action={ Clear-DnsClientCache -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=5;  Cat="Reseau"; LabelFR="Désactiver Large Send Offload (LSO) pour éviter les drops"; LabelEN="Disable Large Send Offload (LSO) to prevent packet drops"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters" "DisableTaskOffload" 1 }}
-$Options += [PSCustomObject]@{Id=6;  Cat="Reseau"; LabelFR="Réinitialiser la pile réseau Winsock"; LabelEN="Reset Winsock catalog & network stack"; Risk="moderate"; Action={ netsh winsock reset | Out-Null }}
-$Options += [PSCustomObject]@{Id=7;  Cat="Reseau"; LabelFR="Désactiver IPv6 (si non supporté par ta box)"; LabelEN="Disable IPv6 bindings (if unsupported)"; Risk="moderate"; Action={ Disable-NetAdapterBinding -Name "*" -ComponentID ms_tcpip6 -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=8;  Cat="Reseau"; LabelFR="Optimiser la taille du cache NetBIOS"; LabelEN="Optimize NetBIOS cache size for packet lookup"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\NetBT\Parameters" "Size/Small/Medium/Large" 3 }}
-$Options += [PSCustomObject]@{Id=10; Cat="Reseau"; LabelFR="Activer Direct Cache Access (DCA)"; LabelEN="Enable Direct Cache Access (DCA) for CPUs"; Risk="safe"; Action={ netsh int tcp set global dca=enabled | Out-Null }}
-$Options += [PSCustomObject]@{Id=11; Cat="Reseau"; LabelFR="Activer NetDMA (accès direct mémoire réseau)"; LabelEN="Enable NetDMA (Direct Memory Access for network)"; Risk="safe"; Action={ netsh int tcp set global netdma=enabled | Out-Null }}
-$Options += [PSCustomObject]@{Id=12; Cat="Reseau"; LabelFR="Désactiver l'Heuristique de Fenêtre TCP Windows"; LabelEN="Disable Windows TCP Window Heuristics"; Risk="safe"; Action={ netsh int tcp set heuristics disabled | Out-Null }}
-$Options += [PSCustomObject]@{Id=13; Cat="Reseau"; LabelFR="Configurer l'Auto-Tuning TCP sur Normal"; LabelEN="Set TCP Auto-Tuning Level to Normal"; Risk="safe"; Action={ netsh int tcp set global autotuninglevel=normal | Out-Null }}
-$Options += [PSCustomObject]@{Id=14; Cat="Reseau"; LabelFR="Activer RSS (Receive Side Scaling)"; LabelEN="Enable RSS (Receive Side Scaling)"; Risk="safe"; Action={ netsh int tcp set global rss=enabled | Out-Null }}
-$Options += [PSCustomObject]@{Id=15; Cat="Reseau"; LabelFR="Désactiver l'économie d'énergie de la carte réseau"; LabelEN="Disable network adapter Energy Efficient Ethernet"; Risk="moderate"; Action={ Get-NetAdapter | Set-NetAdapterAdvancedProperty -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled" -ErrorAction SilentlyContinue }}
+$Options.Add([PSCustomObject]@{
+    Id=4; Cat="Reseau"; Risk="safe"
+    LabelFR="Désactiver la limitation de bande passante réseau réservable (QoS)"; LabelEN="Disable QoS Reserved Bandwidth Limit (Unlocks full pipes)"
+    Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" "NonBestEffortLimit" 0 }
+    Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" -Name "NonBestEffortLimit" -ErrorAction SilentlyContinue).NonBestEffortLimit -eq 0 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=8; Cat="Reseau"; Risk="safe"
+    LabelFR="Optimiser l'allocation de la taille mémoire réseau (Registre corrigé)"; LabelEN="Optimize Network Memory Buffer Size (Fixed Registry Tweak)"
+    Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" "Size" 3 }
+    Check={ (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "Size" -ErrorAction SilentlyContinue).Size -eq 3 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=9; Cat="Reseau"; Risk="safe"
+    LabelFR="Forcer l'optimisation moderne de l'auto-tuning TCP (Restauration RSS)"; LabelEN="Enable Modern TCP Auto-Tuning Optimization (RSS & LSO)"
+    Action={
+        netsh int tcp set global autotuninglevel=normal
+        netsh int tcp set global rss=enabled
+    }
+    Check={ (netsh int tcp show global) -match "Receive-Side Scaling State.*enabled" }
+})
 
 # --- 2. CONFIDENTIALITÉ & TÉLÉMÉTRIE ---
-$Options += [PSCustomObject]@{Id=16; Cat="Confidentialite"; LabelFR="Désactiver DiagTrack (Expériences utilisateurs connectés)"; LabelEN="Disable DiagTrack (Connected User Experiences and Telemetry)"; Risk="safe"; Action={ Disable-Svc "DiagTrack" }}
-$Options += [PSCustomObject]@{Id=17; Cat="Confidentialite"; LabelFR="Désactiver dmwappushservice (Mouchards)"; LabelEN="Disable dmwappushservice routing service (Spyware)"; Risk="safe"; Action={ Disable-Svc "dmwappushservice" }}
-$Options += [PSCustomObject]@{Id=18; Cat="Confidentialite"; LabelFR="Désactiver Delivery Optimization (Partage P2P)"; LabelEN="Disable Delivery Optimization (P2P Windows Update sharing)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Config" "DODownloadMode" 0 }}
-$Options += [PSCustomObject]@{Id=19; Cat="Confidentialite"; LabelFR="Couper l'ID de publicité ciblé Windows"; LabelEN="Disable Windows targeted advertising ID track"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0 }}
-$Options += [PSCustomObject]@{Id=20; Cat="Confidentialite"; LabelFR="Empêcher les applications Store de tourner en fond"; LabelEN="Disable Windows Store background app processing"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" 2 }}
-$Options += [PSCustomObject]@{Id=21; Cat="Confidentialite"; LabelFR="Désactiver la recherche Bing dans le menu Démarrer"; LabelEN="Disable Bing search queries integration in Start Menu"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "BingSearchEnabled" 0 }}
-$Options += [PSCustomObject]@{Id=22; Cat="Confidentialite"; LabelFR="Désactiver la télémétrie NVIDIA (si GPU NVIDIA)"; LabelEN="Disable NVIDIA telemetry background services container"; Risk="safe"; Action={ Disable-Svc "NvTelemetryContainer" }}
-$Options += [PSCustomObject]@{Id=23; Cat="Confidentialite"; LabelFR="Désactiver l'enregistreur de pas (PSR)"; LabelEN="Disable Problem Steps Recorder (PSR)"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "DisableUAR" 1 }}
-$Options += [PSCustomObject]@{Id=24; Cat="Confidentialite"; LabelFR="Retirer Cortana du démarrage"; LabelEN="Remove Cortana assistant from automatic startup"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search" "AllowCortana" 0 }}
-$Options += [PSCustomObject]@{Id=25; Cat="Confidentialite"; LabelFR="Désactiver la collecte d'écriture manuscrite"; LabelEN="Disable handwriting & speech telemetry collection"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\InputPersonalization" "RestrictImplicitSpeechCollection" 1 }}
-$Options += [PSCustomObject]@{Id=26; Cat="Confidentialite"; LabelFR="Désactiver la télémétrie de Microsoft Office"; LabelEN="Disable Microsoft Office client telemetry tracking"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Policies\Microsoft\office\common\clienttelemetry" "sendtelemetry" 0 }}
-$Options += [PSCustomObject]@{Id=27; Cat="Confidentialite"; LabelFR="Retirer OneDrive du démarrage automatique"; LabelEN="Remove Microsoft OneDrive from startup list"; Risk="moderate"; Action={ Remove-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "OneDrive" }}
-$Options += [PSCustomObject]@{Id=28; Cat="Confidentialite"; LabelFR="Désactiver le feedback Windows (demande d'avis)"; LabelEN="Disable Windows Feedback notification prompts"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Siuf\Rules" "PeriodInNanoSeconds" 0 }}
-$Options += [PSCustomObject]@{Id=29; Cat="Confidentialite"; LabelFR="Désactiver le suivi des lancements d'applications"; LabelEN="Disable app launch tracking in Windows Explorer"; Risk="safe"; Action={ Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackProgs" 0 }}
-$Options += [PSCustomObject]@{Id=30; Cat="Confidentialite"; LabelFR="Désactiver la télémétrie Visual Studio / VS Code"; LabelEN="Disable system environment telemetry for VS Code"; Risk="safe"; Action={ [Environment]::SetEnvironmentVariable("TELEMETRY_DISABLED", "1", "Machine") }}
+$Options.Add([PSCustomObject]@{
+    Id=15; Cat="Confidentialite"; Risk="safe"
+    LabelFR="Désactiver la télémétrie Windows (Expérience utilisateur)"; LabelEN="Disable Windows Diagnostic Telemetry data engines"
+    Action={
+        Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0
+        Disable-Svc "DiagTrack"
+        Disable-Svc "dmwappushservice"
+    }
+    Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -ErrorAction SilentlyContinue).AllowTelemetry -eq 0 }
+})
 
-# --- 3. GAMING & LATENCE ---
-$Options += [PSCustomObject]@{Id=31; Cat="Gaming"; LabelFR="Désactiver Game DVR & Enregistrement en arrière-plan"; LabelEN="Disable Xbox Game DVR & Background Recording"; Risk="safe"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0; Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_FSEBehaviorMode" 2 }}
-$Options += [PSCustomObject]@{Id=32; Cat="Gaming"; LabelFR="Activer le GPU Scheduling matériel (HAGS)"; LabelEN="Enable Hardware-Accelerated GPU Scheduling (HAGS)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "HwSchMode" 2 }}
-$Options += [PSCustomObject]@{Id=33; Cat="Gaming"; LabelFR="Priorité MMCSS maximale pour les jeux"; LabelEN="Set MMCSS high priority tasks profile for Games"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0; Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "GPU Priority" 8 }}
-$Options += [PSCustomObject]@{Id=34; Cat="Gaming"; LabelFR="Ajuster Win32PrioritySeparation (Perf processeur)"; LabelEN="Optimize Win32PrioritySeparation (CPU core focus)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" "Win32PrioritySeparation" 38 }}
-$Options += [PSCustomObject]@{Id=35; Cat="Gaming"; LabelFR="Augmenter TdrDelay (Stabilité GPU)"; LabelEN="Increase TdrDelay (Prevent random graphics driver resets)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "TdrDelay" 8 }}
-$Options += [PSCustomObject]@{Id=36; Cat="Gaming"; LabelFR="Désactiver l'accélération de la souris (1:1 RAW Input)"; LabelEN="Disable Enhance Pointer Precision (1:1 RAW mouse input)"; Risk="moderate"; Action={ Set-Reg "HKCU:\Control Panel\Mouse" "MouseSpeed" "0" "String" }}
-$Options += [PSCustomObject]@{Id=37; Cat="Gaming"; LabelFR="Désactiver l'optimisation globale du plein écran (FSE)"; LabelEN="Disable Fullscreen Optimizations globally (Fix FSE lag)"; Risk="moderate"; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_DSEBehavior" 2 }}
-$Options += [PSCustomObject]@{Id=38; Cat="Gaming"; LabelFR="Accélérer l'affichage des menus (MenuShowDelay à 0)"; LabelEN="Set MenuShowDelay to 0 (Instant desktop UI responsiveness)"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Desktop" "MenuShowDelay" "0" "String" }}
-$Options += [PSCustomObject]@{Id=39; Cat="Gaming"; LabelFR="Désactiver les saccades dues au GameMode"; LabelEN="Disable automatic background stutter linked to GameMode"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" 0 }}
-$Options += [PSCustomObject]@{Id=40; Cat="Gaming"; LabelFR="Désactiver la mise en veille de l'écran pendant le jeu"; LabelEN="Disable screen timeout sleep cycles during gaming sessions"; Risk="safe"; Action={ powercfg /change monitor-timeout-ac 0 }}
-$Options += [PSCustomObject]@{Id=41; Cat="Gaming"; LabelFR="Ajuster les effets visuels pour la performance"; LabelEN="Adjust Windows Visual Effects styling for raw performance"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" "VisualFXSetting" 2 }}
-$Options += [PSCustomObject]@{Id=42; Cat="Gaming"; LabelFR="Optimiser le rafraîchissement multimédia"; LabelEN="Optimize high multimedia task scheduling categories"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "Scheduling Category" "High" "String" }}
-$Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorité I/O disque pour les jeux"; LabelEN="Increase I/O disk priorities allocation (NTFS cache lookup)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" "NtfsMemoryUsage" 2 }}
-$Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
+# --- 3. JEUX (GAMING) ---
+$Options.Add([PSCustomObject]@{
+    Id=30; Cat="Gaming"; Risk="safe"
+    LabelFR="Activer le mode jeu Windows (Windows Game Mode)"; LabelEN="Enable Native Windows Game Mode execution profiles"
+    Action={ Set-Reg "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" 1 }
+    Check={ (Get-ItemProperty -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -ErrorAction SilentlyContinue).AllowAutoGameMode -eq 1 }
+})
 
-# --- 4. GESTION DE RAM & SVCHOST ---
-$Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE STANDARD] Isolation automatique par Windows (3.5 Go max par service)"; LabelEN="[STANDARD MODE] Let Windows handle service splitting rules natively"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 380000 }}
-$Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE ALLÉGÉ] Isoler les processus hôtes pour soulager l'utilisation RAM"; LabelEN="[LIGHT WEIGHT] Reduce svchost instance spawning parameters"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
-$Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTRÊME] Forcer la compression et clôturer l'indexation"; LabelEN="[EXTREME MODE] Turn off background document content scanning structures"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
+$Options.Add([PSCustomObject]@{
+    Id=31; Cat="Gaming"; Risk="safe"
+    LabelFR="Désactiver la Game Bar et les enregistrements DVR en arrière-plan"; LabelEN="Disable Windows Game Bar and background DVR capture loops"
+    Action={
+        Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" 0
+        Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0
+    }
+    Check={ (Get-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -ErrorAction SilentlyContinue).GameDVR_Enabled -eq 0 }
+})
 
 # --- 5. TIMER RESOLUTION ---
-$Options += [PSCustomObject]@{Id=115; Cat="Timer"; LabelFR="0.45 ms - Latence Expérimentale (Forçage limite bas)"; LabelEN="0.45 ms - Experimental Latency (Force strict hardware floor)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
-$Options += [PSCustomObject]@{Id=116; Cat="Timer"; LabelFR="0.50 ms - Latence Minimale Absolue (Gaming Compétitif)"; LabelEN="0.50 ms - Minimum Latency standard (Competitive Gaming)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.50 }}
-$Options += [PSCustomObject]@{Id=117; Cat="Timer"; LabelFR="0.60 ms - Latence Très Basse (Ultra stable)"; LabelEN="0.60 ms - Ultra Stable Low Latency profile"; Risk="safe"; Action={ Set-SystemTimerResolution 0.60 }}
-$Options += [PSCustomObject]@{Id=118; Cat="Timer"; LabelFR="0.75 ms - Latence Intermédiaire Optimisée"; LabelEN="0.75 ms - Balanced Hybrid Optimized Latency"; Risk="safe"; Action={ Set-SystemTimerResolution 0.75 }}
-$Options += [PSCustomObject]@{Id=119; Cat="Timer"; LabelFR="1.00 ms - Latence Standard Windows Équilibrée"; LabelEN="1.00 ms - Default Balanced Windows OS timer tick rate"; Risk="safe"; Action={ Set-SystemTimerResolution 1.00 }}
+$Options.Add([PSCustomObject]@{
+    Id=115; Cat="Timer"; Risk="advanced"
+    LabelFR="Timer Resolution : Bloquer à 0.5 ms (Latence Minimale Extrême)"; LabelEN="Timer Resolution: Lock to 0.5 ms (Maximum latency reduction)"
+    Action={ [Win32Timer]::NtSetTimerResolution(5000, $true, [ref]0) | Out-Null }
+    Check={ $Global:CheckStates[115] }
+})
+$Options.Add([PSCustomObject]@{
+    Id=116; Cat="Timer"; Risk="moderate"
+    LabelFR="Timer Resolution : Bloquer à 0.75 ms (Profil de Latence Réduite)"; LabelEN="Timer Resolution: Lock to 0.75 ms (Smooth gaming balance)"
+    Action={ [Win32Timer]::NtSetTimerResolution(7500, $true, [ref]0) | Out-Null }
+    Check={ $Global:CheckStates[116] }
+})
+$Options.Add([PSCustomObject]@{
+    Id=119; Cat="Timer"; Risk="safe"
+    LabelFR="Timer Resolution : Bloquer à 1.0 ms (Profil Standard Stable)"; LabelEN="Timer Resolution: Lock to 1.0 ms (Stable generic layout)"
+    Action={ [Win32Timer]::NtSetTimerResolution(10000, $true, [ref]0) | Out-Null }
+    Check={ $Global:CheckStates[119] }
+})
 
 # --- 6. ÉNERGIE & PROCESSEUR ---
-$Options += [PSCustomObject]@{Id=46; Cat="Power"; LabelFR="Activer le plan d'alimentation Performances Ultimes"; LabelEN="Unlock and apply Ultimate Performance power scheme"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
-$Options += [PSCustomObject]@{Id=47; Cat="Power"; LabelFR="Désactiver le Core Parking (C-States bloqués)"; LabelEN="Disable CPU Core Parking (Locks minimum active logical cores)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
-$Options += [PSCustomObject]@{Id=48; Cat="Power"; LabelFR="Désactiver le Power Throttling"; LabelEN="Disable Global Windows Power Throttling engines"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling" "PowerThrottlingOff" 1 }}
-$Options += [PSCustomObject]@{Id=49; Cat="Power"; LabelFR="Forcer l'état minimal du processeur à 100%"; LabelEN="Force Minimum Processor State to 100% on AC power"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_processor 893dee8e-2bef-41e0-89c6-b55d0929964c 100 }}
-$Options += [PSCustomObject]@{Id=50; Cat="Power"; LabelFR="Désactiver la suspension sélective USB"; LabelEN="Disable USB selective suspend settings tasks profiling"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0 }}
-$Options += [PSCustomObject]@{Id=51; Cat="Power"; LabelFR="Désactiver HPET (High Precision Event Timer)"; LabelEN="Disable High Precision Event Timer (HPET) ticks"; Risk="advanced"; Action={ bcdedit /deletevalue useplatformclock; bcdedit /set disabledynamictick yes }}
-$Options += [PSCustomObject]@{Id=52; Cat="Power"; LabelFR="Désactiver les mitigations Spectre/Meltdown (gain FPS)"; LabelEN="Disable Spectre/Meltdown hardware mitigations (FPS Boost)"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3; Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3 }}
-$Options += [PSCustomObject]@{Id=53; Cat="Power"; LabelFR="Désactiver le démarrage rapide (Fast Startup)"; LabelEN="Disable Windows Fast Startup (Prevents random kernel bugs)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" 0 }}
-$Options += [PSCustomObject]@{Id=54; Cat="Power"; LabelFR="Désactiver l'hibernation (libère de l'espace)"; LabelEN="Disable Hibernation system file (Deletes hiberfil.sys storage)"; Risk="safe"; Action={ powercfg /h off }}
-$Options += [PSCustomObject]@{Id=57; Cat="Power"; LabelFR="Désactiver le Link State Power Management (PCIe max)"; LabelEN="Turn off PCIe Link State Power Management (Max bandwidth)"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_pciexpress ee12f20e-c558-4753-b6d2-85978a506a59 0 }}
+$Options.Add([PSCustomObject]@{
+    Id=46; Cat="Power"; Risk="safe"
+    LabelFR="Activer le plan d'alimentation Performances Ultimes"; LabelEN="Unlock and apply Ultimate Performance power scheme"
+    Action={
+        $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+        $guid = ($out -split "\s+")[3]
+        powercfg /setactive $guid
+    }
+    Check={ (powercfg /getactive) -match "Performances ultimes" -or (powercfg /getactive) -match "Ultimate Performance" }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=47; Cat="Power"; Risk="safe"
+    LabelFR="Désactiver le Core Parking (C-States bloqués)"; LabelEN="Disable CPU Core Parking (Locks minimum active logical cores)"
+    Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }
+    Check={ $true }
+})
 
 # --- 7. SERVICES WINDOWS INUTILES ---
-$Options += [PSCustomObject]@{Id=61; Cat="Services"; LabelFR="Désactiver SysMain / Superfetch (HDD obsolète)"; LabelEN="Disable SysMain / Superfetch service (Heavy background disk use)"; Risk="moderate"; Action={ Disable-Svc "SysMain" }}
-$Options += [PSCustomObject]@{Id=62; Cat="Services"; LabelFR="Désactiver Windows Search (Indexation en tâche de fond)"; LabelEN="Disable Windows Search (Stops continuous file indexing)"; Risk="moderate"; Action={ Disable-Svc "WSearch" }}
-$Options += [PSCustomObject]@{Id=63; Cat="Services"; LabelFR="Désactiver la suite complète des Services Xbox"; LabelEN="Disable complete suite of core background Xbox ecosystem services"; Risk="moderate"; Action={ "XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc" | ForEach-Object { Disable-Svc $_ } }}
-$Options += [PSCustomObject]@{Id=64; Cat="Services"; LabelFR="Désactiver Bluetooth Support Service (si inutilisé)"; LabelEN="Disable Bluetooth Support Service (If wireless devices aren't used)"; Risk="moderate"; Action={ Disable-Svc "bthserv" }}
-$Options += [PSCustomObject]@{Id=65; Cat="Services"; LabelFR="Désactiver le Spouleur d'impression"; LabelEN="Disable Print Spooler execution loop service (If printerless)"; Risk="moderate"; Action={ Disable-Svc "Spooler" }}
-$Options += [PSCustomObject]@{Id=66; Cat="Services"; LabelFR="Désactiver le Service Fax"; LabelEN="Disable legacy faxing subsystem layout architecture"; Risk="safe"; Action={ Disable-Svc "Fax" }}
-$Options += [PSCustomObject]@{Id=67; Cat="Services"; LabelFR="Désactiver le Registre à distance (RemoteRegistry)"; LabelEN="Disable Remote Registry modifications system process"; Risk="safe"; Action={ Disable-Svc "RemoteRegistry" }}
-$Options += [PSCustomObject]@{Id=68; Cat="Services"; LabelFR="Désactiver l'assistant compatibilité des programmes"; LabelEN="Disable Program Compatibility Assistant Service (PcaSvc)"; Risk="safe"; Action={ Disable-Svc "PcaSvc" }}
-$Options += [PSCustomObject]@{Id=69; Cat="Services"; LabelFR="Désactiver la géolocalisation et les cartes"; LabelEN="Disable Geolocation tracker loop & Downloaded Maps Manager"; Risk="moderate"; Action={ Disable-Svc "MapsBroker"; Disable-Svc "lfsvc" }}
-$Options += [PSCustomObject]@{Id=74; Cat="Services"; LabelFR="Désactiver le service de rapport d'erreurs (WerSvc)"; LabelEN="Disable Windows Error Reporting Service data uploading loops"; Risk="safe"; Action={ Disable-Svc "WerSvc" }}
+$Options.Add([PSCustomObject]@{
+    Id=61; Cat="Services"; Risk="moderate"
+    LabelFR="Désactiver SysMain / Superfetch (HDD obsolète)"; LabelEN="Disable SysMain / Superfetch service (Heavy background disk use)"
+    Action={ Disable-Svc "SysMain" }
+    Check={ (Get-Service -Name "SysMain" -ErrorAction SilentlyContinue).StartType -eq "Disabled" }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=62; Cat="Services"; Risk="moderate"
+    LabelFR="Désactiver Windows Search (Indexation en tâche de fond)"; LabelEN="Disable Windows Search (Stops continuous file indexing)"
+    Action={ Disable-Svc "WSearch" }
+    Check={ (Get-Service -Name "WSearch" -ErrorAction SilentlyContinue).StartType -eq "Disabled" }
+})
 
 # --- 8. NETTOYAGE ET RAM ---
-$Options += [PSCustomObject]@{Id=76; Cat="Nettoyage"; LabelFR="Vider les fichiers temporaires (%TEMP%)"; LabelEN="Purge user environment temp dump files structures (%TEMP%)"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=77; Cat="Nettoyage"; LabelFR="Vider la Corbeille de tous les disques"; LabelEN="Empty system garbage recycling cache structures across all disks"; Risk="safe"; Action={ Clear-RecycleBin -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=78; Cat="Nettoyage"; LabelFR="Supprimer le cache Windows Update"; LabelEN="Wipe software updates download directories repository cache"; Risk="moderate"; Action={ Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Remove-Item "$env:WINDIR\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service wuauserv -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=79; Cat="Nettoyage"; LabelFR="Purger l'historique des rapports d'erreurs Windows"; LabelEN="Clear out local Windows Error Reporting archive dumps folders"; Risk="safe"; Action={ Remove-Item "$env:ALLUSERSPROFILE\Microsoft\Windows\WER\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=80; Cat="Nettoyage"; LabelFR="Nettoyer les composants WinSxS via DISM"; LabelEN="Force deep WinSxS component storage optimization runs via DISM"; Risk="advanced"; Action={ Start-Process "dism.exe" -ArgumentList "/online /Cleanup-Image /StartComponentCleanup" -Wait -WindowStyle Hidden }}
-$Options += [PSCustomObject]@{Id=81; Cat="Nettoyage"; LabelFR="Vider le dossier Prefetch de Windows"; LabelEN="Purge prefetch operational memory directory data stores"; Risk="moderate"; Action={ Remove-Item "$env:WINDIR\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=83; Cat="Nettoyage"; LabelFR="Optimiser et défragmenter les disques SSD (Trim)"; LabelEN="Invoke structural hardware layout storage pass (Trim engine)"; Risk="safe"; Action={ Optimize-Volume -DriveLetter C -Defrag -Verbose -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=86; Cat="Nettoyage"; LabelFR="Supprimer le fichier Swapfile.sys inutile"; LabelEN="Disable low memory app paging executive allocation file handles"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "DisablePagingExecutive" 1 }}
-$Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; LabelFR="Forcer le vidage de la mémoire RAM en cache"; LabelEN="Force global garbage collector collection sweeps across active RAM"; Risk="safe"; Action={ [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers() }}
+$Options.Add([PSCustomObject]@{
+    Id=76; Cat="Nettoyage"; Risk="safe"
+    LabelFR="Vider les fichiers temporaires (%TEMP%)"; LabelEN="Purge user environment temp dump files structures (%TEMP%)"
+    Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }
+    Check={ $false }
+})
 
-# --- 9. APPLICATIONS CLASSIFIÉES ---
-# Pilotes Graphiques
-$Options += [PSCustomObject]@{Id=125; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="NVIDIA GeForce Game Ready Driver"; LabelEN="NVIDIA GeForce Game Ready Driver Core"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceNow" "GeForce Now/Driver" }}
-$Options += [PSCustomObject]@{Id=126; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="AMD Software: Adrenalin Edition"; LabelEN="AMD Software Adrenalin Graphics Driver Edition"; Risk="safe"; Action={ Install-WingetApp "AMD.Adrenalin" "AMD Adrenalin" }}
-$Options += [PSCustomObject]@{Id=127; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="Intel Graphics Command Center"; LabelEN="Intel Graphics Command Center Controller Suite"; Risk="safe"; Action={ Install-WingetApp "Intel.GraphicsCommandCenter" "Intel Graphics Center" }}
-
-# Navigateurs Web
-$Options += [PSCustomObject]@{Id=91; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Google Chrome"; LabelEN="Google Chrome Web Browser"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
-$Options += [PSCustomObject]@{Id=92; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Mozilla Firefox"; LabelEN="Mozilla Firefox Browser"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
-$Options += [PSCustomObject]@{Id=93; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Brave Browser"; LabelEN="Brave Privacy Web Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
-$Options += [PSCustomObject]@{Id=113; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Opera GX"; LabelEN="Opera GX Browser Tailored Core For Gamers"; Risk="safe"; Action={ Install-WingetApp "Opera.OperaGX" "Opera GX" }}
-
-# Gaming & Launchers
-$Options += [PSCustomObject]@{Id=95; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Steam"; LabelEN="Valve Steam Gaming Platform Store"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
-$Options += [PSCustomObject]@{Id=96; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Epic Games Launcher"; LabelEN="Epic Games Store Storefront Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
-$Options += [PSCustomObject]@{Id=97; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="EA App (Electronic Arts)"; LabelEN="Electronic Arts Desktop Client App"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
-$Options += [PSCustomObject]@{Id=104; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="MSI Afterburner"; LabelEN="MSI Afterburner Overclocking Hardware Monitor"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
-
-# Outils & Productivité
-$Options += [PSCustomObject]@{Id=99; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="7-Zip (Archivage)"; LabelEN="7-Zip High Compression Ratio File Unpacker"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
-$Options += [PSCustomObject]@{Id=100; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="WinRAR"; LabelEN="WinRAR Compress Archive Manager Tool"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
-
-# Développement
-$Options += [PSCustomObject]@{Id=105; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Visual Studio Code"; LabelEN="Microsoft Visual Studio Code Source Code Editor"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
-$Options += [PSCustomObject]@{Id=106; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Notepad++"; LabelEN="NotepadPlusPlus Source Code Code Editor Engine"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
-
-# Communication & Multimédia
-$Options += [PSCustomObject]@{Id=94; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Discord"; LabelEN="Discord Chat Client Application"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
-$Options += [PSCustomObject]@{Id=110; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Spotify"; LabelEN="Spotify Desktop Digital Music Service Platform"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
-$Options += [PSCustomObject]@{Id=111; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
+$Options.Add([PSCustomObject]@{
+    Id=80; Cat="Nettoyage"; Risk="advanced"
+    LabelFR="Nettoyer les composants WinSxS via DISM"; LabelEN="Force deep WinSxS component storage optimization runs via DISM"
+    Action={ Start-Process "dism.exe" -ArgumentList "/online /Cleanup-Image /StartComponentCleanup" -Wait -WindowStyle Hidden }
+    Check={ $false }
+})
 
 # --- 10. BLOATWARES WINDOWS ---
-$Options += [PSCustomObject]@{Id=128; Cat="Bloatwares"; LabelFR="Désinstaller OneDrive (Stockage Cloud)"; LabelEN="Fully uninstall Microsoft OneDrive"; Risk="safe"; Action={ Uninstall-Appx "OneDrive"; Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue; Start-Process "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=129; Cat="Bloatwares"; LabelFR="Désinstaller Cortana (Assistant obsolète)"; LabelEN="Uninstall Cortana voice assistant"; Risk="safe"; Action={ Uninstall-Appx "Microsoft.549981C3F5F10" }}
-$Options += [PSCustomObject]@{Id=130; Cat="Bloatwares"; LabelFR="Désinstaller Mobile Connecté (Phone Link / Your Phone)"; LabelEN="Uninstall Link to Windows / Phone Link"; Risk="safe"; Action={ Uninstall-Appx "YourPhone" }}
-$Options += [PSCustomObject]@{Id=131; Cat="Bloatwares"; LabelFR="Désinstaller l'écosystème Xbox App intégré"; LabelEN="Uninstall default Windows Xbox App elements"; Risk="moderate"; Action={ Uninstall-Appx "XboxApp"; Uninstall-Appx "XboxGamingOverlay"; Uninstall-Appx "XboxSpeechToTextOverlay" }}
-$Options += [PSCustomObject]@{Id=132; Cat="Bloatwares"; LabelFR="Désinstaller Cartes Windows (Windows Maps)"; LabelEN="Uninstall native Windows Maps application package"; Risk="safe"; Action={ Uninstall-Appx "WindowsMaps" }}
-$Options += [PSCustomObject]@{Id=133; Cat="Bloatwares"; LabelFR="Désinstaller Microsoft Solitaire Collection"; LabelEN="Uninstall Microsoft Solitaire Collection game"; Risk="safe"; Action={ Uninstall-Appx "MicrosoftSolitaireCollection" }}
-$Options += [PSCustomObject]@{Id=137; Cat="Bloatwares"; LabelFR="Retirer 'Actualités et champs d'intérêt' (News/Widgets Barre des tâches)"; LabelEN="Disable News and Interests taskbar widget feed"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" "ShellFeedsTaskbarViewMode" 2 }}
-$Options += [PSCustomObject]@{Id=138; Cat="Bloatwares"; LabelFR="Désinstaller l'éditeur vidéo Clipchamp"; LabelEN="Uninstall Microsoft Clipchamp Video Editor app"; Risk="safe"; Action={ Uninstall-Appx "Clipchamp" }}
-$Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller Paint 3D"; LabelEN="Uninstall Paint 3D Microsoft Package"; Risk="safe"; Action={ Uninstall-Appx "MSPaint" }}
+$Options.Add([PSCustomObject]@{
+    Id=128; Cat="Bloatwares"; Risk="safe"
+    LabelFR="Désinstaller OneDrive complet (Stockage Cloud)"; LabelEN="Fully uninstall Microsoft OneDrive client"
+    Action={
+        Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue
+        Start-Process "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue
+    }
+    Check={ -not (Test-Path "$env:LocalAppData\Microsoft\OneDrive") }
+})
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - DESIGN V15.0
+# DESIGN INTERFACE GRAPHIQUE (WPF) - DESIGN V16.0
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="930" Width="1130"
+        Title="OPTI-DYLAN TOOLKIT" Height="960" Width="1130"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
         <Style TargetType="CheckBox">
@@ -424,7 +417,14 @@ $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller P
         
         <Grid Grid.Column="1" Margin="20">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="55"/>   </Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="130"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
             
             <Border Grid.Row="0" Background="#101016" CornerRadius="5" Padding="12" Margin="0,0,0,15" BorderBrush="#1C1C28" BorderThickness="1">
                 <Grid>
@@ -455,25 +455,17 @@ $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller P
 
             <Border Name="RamTweakPanel" Grid.Row="2" Background="#161622" CornerRadius="5" Padding="15" Margin="0,0,0,15" BorderBrush="#2A2A3A" BorderThickness="1" Visibility="Collapsed">
                 <StackPanel>
-                    <TextBlock Text="⚙️ OPTIMISEUR DE CRÉATION DE PROCESSUS (SvcHostSplitThresholdInKB)" Foreground="#00FFC8" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>
-                    <TextBlock Text="Indiquez votre quantité de RAM physique installée. Le toolkit calculera et ajustera au registre le split svchost optimal pour éviter l'éparpillement inutile des processus ou améliorer l'isolation de sécurité." Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                    <TextBlock Text="⚙️ RÉDUCTION DES PROCESSUS WINDOWS (svchost.exe)" Foreground="#00FFC8" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>
+                    <TextBlock Text="Le toolkit regroupe les processus hôtes Windows pour libérer de la mémoire RAM et des cycles processeur." Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="200"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <ComboBox Name="ComboSvcHostRam" Grid.Column="0" Height="28" Background="#101016" Foreground="Black">
-                            <ComboBoxItem Content="Défaut Windows" Tag="380000"/>
-                            <ComboBoxItem Content="4 Go RAM (4194304)" Tag="4194304"/>
-                            <ComboBoxItem Content="6 Go RAM (6291456)" Tag="6291456"/>
-                            <ComboBoxItem Content="8 Go RAM (8388608)" Tag="8388608"/>
-                            <ComboBoxItem Content="12 Go RAM (12582912)" Tag="12582912"/>
-                            <ComboBoxItem Content="16 Go RAM (16777216)" Tag="16777216"/>
-                            <ComboBoxItem Content="24 Go RAM (25165824)" Tag="25165824"/>
-                            <ComboBoxItem Content="32 Go RAM (33554432)" Tag="33554432"/>
-                            <ComboBoxItem Content="64 Go RAM (67108864)" Tag="67108864"/>
-                        </ComboBox>
-                        <TextBlock Name="TxtSvcHostStatus" Grid.Column="1" Foreground="#F1C40F" FontSize="11" VerticalAlignment="Center" Margin="15,0,0,0" Text="Prêt à configurer."/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton Name="RadSvcLevel1" Content="Niveau 1: Basique (3.8 Go)" Foreground="#F5F5FA" Margin="0,0,15,0" IsChecked="True"/>
+                            <RadioButton Name="RadSvcLevel2" Content="Niveau 2: Optimisé (16 Go)" Foreground="#F1C40F" Margin="0,0,15,0"/>
+                            <RadioButton Name="RadSvcLevel3" Content="Niveau 3: Extrême (128 Go)" Foreground="#E74C3C"/>
+                        </StackPanel>
                     </Grid>
                 </StackPanel>
             </Border>
@@ -485,13 +477,16 @@ $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller P
             <TextBox Name="LogBox" Grid.Row="4" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
                      FontFamily="Consolas" FontSize="11" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
             
-            <Button Name="BtnApply" Grid.Row="5" Margin="0,15,0,0"
+            <ProgressBar Name="ApplyProgress" Grid.Row="5" Height="10" Margin="0,10,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Visibility="Collapsed"/>
+
+            <Button Name="BtnApply" Grid.Row="6" Height="40" Margin="0,10,0,0"
                     Background="#00FFC8" Foreground="#0A0A0E" FontWeight="Bold" FontSize="13" BorderThickness="0"/>
         </Grid>
     </Grid>
 </Window>
 "@
 
+# Chargement du XAML dans le moteur PowerShell
 $Reader = New-Object System.Xml.XmlNodeReader $XAML
 $Form = [Windows.Markup.XamlReader]::Load($Reader)
 
@@ -504,6 +499,7 @@ $LogBox = $Form.FindName("LogBox")
 $BtnApply = $Form.FindName("BtnApply")
 $BtnRestore = $Form.FindName("BtnRestore")
 $ComboLang = $Form.FindName("ComboLang")
+$ApplyProgress = $Form.FindName("ApplyProgress")
 
 $TxtQuickSelect = $Form.FindName("TxtQuickSelect")
 $BtnSelectSafe = $Form.FindName("BtnSelectSafe")
@@ -526,10 +522,11 @@ $DiagGpuVal = $Form.FindName("DiagGpuVal")
 $DiagRamLabel = $Form.FindName("DiagRamLabel")
 $DiagRamVal = $Form.FindName("DiagRamVal")
 
-# Nouveaux éléments du module RAM
+# RadioButtons de la réduction de processus svchost
 $RamTweakPanel = $Form.FindName("RamTweakPanel")
-$ComboSvcHostRam = $Form.FindName("ComboSvcHostRam")
-$TxtSvcHostStatus = $Form.FindName("TxtSvcHostStatus")
+$RadSvcLevel1 = $Form.FindName("RadSvcLevel1")
+$RadSvcLevel2 = $Form.FindName("RadSvcLevel2")
+$RadSvcLevel3 = $Form.FindName("RadSvcLevel3")
 
 $DiagCpuVal.Text = $CpuName
 $DiagGpuVal.Text = $GpuName
@@ -551,11 +548,10 @@ $NavButtons = @{
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
-$Global:SelectedSvcHostValue = "380000" # Valeur par défaut de Windows
 $Global:LastCategory = "Reseau"
 
 # ============================================================
-# NETTOYAGE ET MISE À JOUR DE LA RAM REELLE
+# NETTOYAGE ET MISE À JOUR DE LA RAM RÉELLE
 # ============================================================
 $RamTimer = New-Object System.Windows.Threading.DispatcherTimer
 $RamTimer.Interval = [TimeSpan]::FromSeconds(2)
@@ -572,26 +568,29 @@ $BtnCleanRam.Add_Click({
     $os = Get-CimInstance Win32_OperatingSystem
     $pct = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
     $TxtRamPercent.Text = "$pct %"
-    Write-Log "RAM optimisée et cache libéré." $false
+    Write-Log "RAM optimisée et cache libéré de la mémoire système." $false
 })
 
 # ============================================================
-# LOGIQUE ET REPARATION DE LA SAUVEGARDE DES PROFILS
+# LOGIQUE DE SAUVEGARDE ET DE CHARGEMENT DE PROFIL (JSON)
 # ============================================================
 $ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
 
 $BtnSaveProfile.Add_Click({
     try {
-        # Création d'un objet structuré contenant l'état des cases et la valeur de svchost
+        $SvcLevel = "1"
+        if ($RadSvcLevel2.IsChecked) { $SvcLevel = "2" }
+        if ($RadSvcLevel3.IsChecked) { $SvcLevel = "3" }
+
         $SaveObject = @{
             "CheckStates" = $Global:CheckStates
-            "SvcHostValue" = $Global:SelectedSvcHostValue
+            "SvcLevel" = $SvcLevel
         }
         $Json = $SaveObject | ConvertTo-Json -Depth 5
         [System.IO.File]::WriteAllText($ProfilePath, $Json)
         Write-Log "ProfileSaved"
     } catch {
-        Write-Log "[ERR] Sauvegarde échouée: $($_.Exception.Message)" $false
+        Write-Log "[ERR] Sauvegarde échouée : $($_.Exception.Message)" $false
     }
 })
 
@@ -599,34 +598,22 @@ $BtnLoadProfile.Add_Click({
     if (Test-Path $ProfilePath) {
         try {
             $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json
-            
-            # Restauration sécurisée des états cochés
             if ($null -ne $Loaded.CheckStates) {
                 foreach ($prop in $Loaded.CheckStates.PSObject.Properties) {
                     $id = [int]$prop.Name
                     $Global:CheckStates[$id] = [bool]$prop.Value
                 }
             }
-            
-            # Restauration de la valeur SvcHost
-            if ($null -ne $Loaded.SvcHostValue) {
-                $Global:SelectedSvcHostValue = $Loaded.SvcHostValue
-                # Resynchroniser le ComboBox visuellement
-                $indexToSelect = 0
-                for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
-                    if ($ComboSvcHostRam.Items[$i].Tag -eq $Global:SelectedSvcHostValue) {
-                        $indexToSelect = $i
-                        break
-                    }
-                }
-                $ComboSvcHostRam.SelectedIndex = $indexToSelect
+            if ($null -ne $Loaded.SvcLevel) {
+                if ($Loaded.SvcLevel -eq "1") { $RadSvcLevel1.IsChecked = $true }
+                elseif ($Loaded.SvcLevel -eq "2") { $RadSvcLevel2.IsChecked = $true }
+                elseif ($Loaded.SvcLevel -eq "3") { $RadSvcLevel3.IsChecked = $true }
             }
-            
             Render-Category $Global:LastCategory
             Update-SidebarCounters
             Write-Log "ProfileLoaded"
         } catch {
-            Write-Log "[ERR] Erreur lors de la lecture du fichier : $($_.Exception.Message)" $false
+            Write-Log "[ERR] Erreur lors de la lecture : $($_.Exception.Message)" $false
         }
     } else {
         Write-Log "ProfileErr"
@@ -634,18 +621,7 @@ $BtnLoadProfile.Add_Click({
 })
 
 # ============================================================
-# SÉLECTION DE LA VALEUR DE SVCHOST
-# ============================================================
-$ComboSvcHostRam.Add_SelectionChanged({
-    $selectedItem = $ComboSvcHostRam.SelectedItem
-    if ($null -ne $selectedItem) {
-        $Global:SelectedSvcHostValue = $selectedItem.Tag
-        $TxtSvcHostStatus.Text = "Prêt à appliquer : $($selectedItem.Content)"
-    }
-})
-
-# ============================================================
-# AFFICHAGE LOGS ET NAVIGATION
+# TRAITEMENT DU JOURNAL DES LOGS ET DE LA LANGUE
 # ============================================================
 function Write-Log([string]$KeyOrText, [bool]$IsStaticKey = $true) {
     if ($IsStaticKey) {
@@ -737,52 +713,31 @@ function Update-InterfaceLanguage {
     Refresh-LogBoxDisplay
 }
 
+# ============================================================
+# ALGORITHME DE RENDU ET RECHERCHE FLUIDE
+# ============================================================
 function Render-Category([string]$Cat) {
     try {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
         
-        # Afficher le module RAM uniquement dans la section "Processus"
+        # Afficher la boîte SvcHost uniquement dans "Processus"
         if ($Cat -eq "Processus") {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
         } else {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Collapsed
         }
-        
+
         $filter = $TxtSearch.Text.Trim()
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         
-        # Recherche active
         if (-not [string]::IsNullOrEmpty($filter)) {
             $Items = $Items | Where-Object {
                 $_.LabelFR -match $filter -or $_.LabelEN -match $filter
             }
         }
         
-        $CurrentGroup = ""
-        
         foreach ($item in $Items) {
-            # Tri des applications par sous-catégories
-            if ($Cat -eq "Apps" -and $null -ne $item.SubCat) {
-                $subCatParsed = @{}
-                foreach ($pair in ($item.SubCat -split "\|")) {
-                    $parts = $pair -split "="
-                    $subCatParsed[$parts[0]] = $parts[1]
-                }
-                $groupName = $subCatParsed[$Global:CurrentLang]
-                
-                if ($groupName -ne $CurrentGroup) {
-                    $CurrentGroup = $groupName
-                    $Header = New-Object System.Windows.Controls.TextBlock
-                    $Header.Text = "--- $CurrentGroup ---"
-                    $Header.Foreground = Get-Brush "#00FFC8"
-                    $Header.FontSize = 12
-                    $Header.FontWeight = "Bold"
-                    $Header.Margin = "0,15,0,5"
-                    [void]$Panel.Children.Add($Header)
-                }
-            }
-
             $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
             $Brush = Get-Brush $color
 
@@ -810,14 +765,6 @@ function Render-Category([string]$Cat) {
                     }
                     Render-Category $Global:LastCategory
                 }
-                
-                # Exclusivités Processus (IDs 122 à 124)
-                if ($id -ge 122 -and $id -le 124) {
-                    for ($i = 122; $i -le 124; $i++) {
-                        if ($i -ne $id) { $Global:CheckStates[$i] = $false }
-                    }
-                    Render-Category $Global:LastCategory
-                }
                 Update-SidebarCounters
             })
             $Chk.Add_Unchecked({ 
@@ -841,26 +788,44 @@ function Render-Category([string]$Cat) {
     }
 }
 
+# ============================================================
+# AUTO-CHECK DES TWEAKS AU DÉMARRAGE
+# ============================================================
+function Start-AutoCheck {
+    Write-Log "Lancement de l'Auto-Check du système..." $false
+    foreach ($item in $Options) {
+        if ($null -ne $item.Check) {
+            try {
+                $alreadyApplied = & $item.Check
+                if ($alreadyApplied) {
+                    $Global:CheckStates[$item.Id] = $true
+                }
+            } catch {
+                # Ignorer les exceptions de l'auto-check
+            }
+        }
+    }
+    Update-SidebarCounters
+    Render-Category $Global:LastCategory
+    Write-Log "Auto-Check terminé. États d'optimisation synchronisés !" $false
+}
+
+# ============================================================
+# GESTION DES EVENEMENTS D'INTERFACE
+# ============================================================
 $TxtSearch.Add_TextChanged({
     Render-Category $Global:LastCategory
 })
 
-# --- BOUTONS DE SÉLECTION RAPIDE ---
 $BtnSelectSafe.Add_Click({
     foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
-        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
+        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
             $Global:CheckStates[$item.Id] = $true
         } else {
             $Global:CheckStates[$item.Id] = $false
         }
     }
-    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[119] = $true
-
-    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[122] = $true
-    
     Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogCheckSafe"
@@ -868,19 +833,13 @@ $BtnSelectSafe.Add_Click({
 
 $BtnSelectMod.Add_Click({
     foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
-        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
+        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
             $Global:CheckStates[$item.Id] = $true
         } else {
             $Global:CheckStates[$item.Id] = $false
         }
     }
-    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[116] = $true
-
-    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[123] = $true
-    
     Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogCheckMod"
@@ -888,17 +847,11 @@ $BtnSelectMod.Add_Click({
 
 $BtnSelectAdv.Add_Click({
     foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
-        if (($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
+        if ($item.Id -lt 115 -or $item.Id -gt 121) {
             $Global:CheckStates[$item.Id] = $true
         }
     }
-    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[115] = $true
-
-    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
-    $Global:CheckStates[124] = $true
-    
     Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogCheckAdv"
@@ -906,9 +859,7 @@ $BtnSelectAdv.Add_Click({
 
 $BtnClearAll.Add_Click({
     $Keys = @($Global:CheckStates.Keys)
-    foreach ($id in $Keys) {
-        $Global:CheckStates[$id] = $false
-    }
+    foreach ($id in $Keys) { $Global:CheckStates[$id] = $false }
     Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogClearAll"
@@ -934,46 +885,132 @@ $BtnRestore.Add_Click({
     }
 })
 
-$BtnApply.Add_Click({
-    $L = $Global:LangDict[$Global:CurrentLang]
-    $BtnApply.IsEnabled = $false
+# ============================================================
+# EXÉCUTION ASYNCHRONIQUE (ANTI-FREEZE)
+# ============================================================
+$Worker = New-Object System.ComponentModel.BackgroundWorker
+$Worker.WorkerReportsProgress = $true
+
+$Worker.Add_DoWork({
     $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
+    $totalSteps = $selected.Count + 1
+    $currentStep = 0
+
+    # 1. APPLICATION DU PROFIL SVCHOST SÉLECTIONNÉ
+    $currentStep++
+    $pct = [int](($currentStep / $totalSteps) * 100)
     
-    if ($selected.Count -eq 0 -and $Global:SelectedSvcHostValue -eq "380000") {
-        [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
-        $BtnApply.IsEnabled = $true
-        return
-    }
-    
-    $LogBox.AppendText(">> " + ($L["Exec"] -f $selected.Count) + "`n")
-    
-    # 1. APPLICATION DU TWEAK RAM SVCHOST INDÉPENDANT
+    $SvcValue = 3800000
+    if ($using:RadSvcLevel2.IsChecked) { $SvcValue = 16777216 }
+    elseif ($using:RadSvcLevel3.IsChecked) { $SvcValue = 134217728 }
+
     try {
-        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue Ko..." $false
-        Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $Global:SelectedSvcHostValue
-        $LogBox.AppendText(">> [OK] SvcHostSplitThresholdInKB paramétré à $Global:SelectedSvcHostValue Ko`n")
+        Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $SvcValue
+        $Worker.ReportProgress($pct, "SvcHost")
     } catch {
-        $LogBox.AppendText(">> [ECHEC] Configuration SvcHostSplitThresholdInKB`n")
+        $Worker.ReportProgress($pct, "SvcHostErr")
     }
-    
-    # 2. APPLICATION DES TWEAKS SÉLECTIONNÉS
+
+    # 2. TRAITEMENT DES TWEAKS SELECTIONNES
     foreach ($item in $selected) {
+        $currentStep++
+        $pct = [int](($currentStep / $totalSteps) * 100)
         try {
+            # Execution de l'action PowerShell
             & $item.Action
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [OK] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [OK] $($item.LabelEN)`n") }
+            $Worker.ReportProgress($pct, "OK|$($item.Id)")
         } catch {
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [ECHEC] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [FAILED] $($item.LabelEN)`n") }
+            $Worker.ReportProgress($pct, "ERR|$($item.Id)")
         }
-        $LogBox.ScrollToEnd()
-        [System.Windows.Forms.Application]::DoEvents()
+        [System.Threading.Thread]::Sleep(50) # Légère pause pour l'animation
     }
-    $LogBox.AppendText(">> $($L["Done"])`n")
-    $LogBox.ScrollToEnd()
-    [System.Windows.MessageBox]::Show($L["BoxDone"], "OPTI-DYLAN")
-    $BtnApply.IsEnabled = $true
 })
 
-# Lancement initial
+$Worker.Add_ProgressChanged({
+    $pct = $_.ProgressPercentage
+    $state = $_.UserState
+    $ApplyProgress.Value = $pct
+
+    $L = $Global:LangDict[$Global:CurrentLang]
+
+    if ($state -eq "SvcHost") {
+        Write-Log "[SYSTEM] Configuration du seuil SvcHost appliquée." $false
+    } elseif ($state -eq "SvcHostErr") {
+        Write-Log "[SYSTEM] [ÉCHEC] Configuration du seuil SvcHost." $false
+    } else {
+        $parts = $state -split "\|"
+        $status = $parts[0]
+        $id = [int]$parts[1]
+        $item = $Options | Where-Object { $_.Id -eq $id }
+        $label = if ($Global:CurrentLang -eq "FR") { $item.LabelFR } else { $item.LabelEN }
+
+        if ($status -eq "OK") {
+            Write-Log "[OK] $label" $false
+        } else {
+            Write-Log "[ÉCHEC] $label" $false
+        }
+    }
+})
+
+$Worker.Add_RunWorkerCompleted({
+    $ApplyProgress.Visibility = [System.Windows.Visibility]::Collapsed
+    $BtnApply.IsEnabled = $true
+    
+    $L = $Global:LangDict[$Global:CurrentLang]
+    Write-Log "Done"
+    [System.Windows.MessageBox]::Show($L["BoxDone"], "OPTI-DYLAN")
+})
+
+$BtnApply.Add_Click({
+    $L = $Global:LangDict[$Global:CurrentLang]
+    $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
+    
+    if ($selected.Count -eq 0) {
+        [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
+        return
+    }
+
+    $BtnApply.IsEnabled = $false
+    $ApplyProgress.Value = 0
+    $ApplyProgress.Visibility = [System.Windows.Visibility]::Visible
+
+    Write-Log ($L["Exec"] -f $selected.Count) $false
+    $Worker.RunWorkerAsync()
+})
+
+# ============================================================
+# EXPORT DES LOGS ET FERMETURE PROPRE
+# ============================================================
+$Form.Add_Closed({
+    # Écriture du rapport de logs sur le Bureau à la fermeture
+    $DesktopPath = [Environment]::GetFolderPath("Desktop")
+    $ReportFile = Join-Path $DesktopPath "opti_dylan_report.txt"
+    try {
+        $ReportText = @()
+        $ReportText += "=================================================="
+        $ReportText += "        RAPPORT D'OPTIMISATION OPTI-DYLAN         "
+        $ReportText += "=================================================="
+        $ReportText += "Date : $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
+        $ReportText += "Configuration : $CpuName | $GpuName | $TotalRamGB Go"
+        $ReportText += "--------------------------------------------------"
+        foreach ($logKey in $Global:LogHistory) {
+            $L = $Global:LangDict[$Global:CurrentLang]
+            if ($L.ContainsKey($logKey)) {
+                $ReportText += ">> $($L[$logKey])"
+            } else {
+                $ReportText += ">> $logKey"
+            }
+        }
+        [System.IO.File]::WriteAllLines($ReportFile, $ReportText)
+    } catch {
+        # Échoue silencieusement si les droits d'écriture manquent
+    }
+})
+
+# ============================================================
+# LANCEMENT INITIAL ET BINDING
+# ============================================================
 $Global:LogHistory.Add("LogEngineOnline")
 Update-InterfaceLanguage
+Start-AutoCheck
 [void]$Form.ShowDialog()
