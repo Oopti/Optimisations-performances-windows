@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V9 - 90 TWEAKS ULTIMES & 24 APPS
+    OPTI-DYLAN TOOLKIT PRO V10 - 90 TWEAKS, 24 APPS & TIMER RESOLUTION CONTROL
 #>
 
 # ============================================================
@@ -13,6 +13,18 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
+
+# Import de l'API pour modifier la résolution du Timer système
+$TimerResolutionCode = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class TimerResolution {
+    [DllImport("ntdll.dll", SetLastError = true)]
+    public static extern int NtSetTimerResolution(uint DesiredResolution, bool SetResolution, out uint CurrentResolution);
+}
+"@
+Add-Type -TypeDefinition $TimerResolutionCode -ErrorAction SilentlyContinue
 
 # ============================================================
 # DICTIONNAIRE DE TRADUCTION (FRANÇAIS / ENGLISH)
@@ -27,7 +39,7 @@ $Global:LangDict = @{
         "NoOption" = "[INFO] Aucune option cochée."
         "Exec" = "[EXEC] Application de {0} option(s)..."
         "Done" = "[TERMINE] Optimisations appliquées !"
-        "BoxDone" = "Optimisations appliquées. Redémarre ton PC."
+        "BoxDone" = "Optimisations appliquées. Redémarre ton PC si nécessaire."
         "CatReseau" = "Réseau & Ping"
         "CatConf" = "Confidentialité"
         "CatGaming" = "Gaming & Latence"
@@ -45,7 +57,7 @@ $Global:LangDict = @{
         "NoOption" = "[INFO] No options selected."
         "Exec" = "[EXEC] Applying {0} selected option(s)..."
         "Done" = "[DONE] Optimizations applied successfully!"
-        "BoxDone" = "Optimizations applied. Please restart your PC."
+        "BoxDone" = "Optimizations applied. Please restart your PC if needed."
         "CatReseau" = "Network & Ping"
         "CatConf" = "Privacy"
         "CatGaming" = "Gaming & Latency"
@@ -92,6 +104,19 @@ function Install-WingetApp {
 function Get-Brush {
     param([string]$Hex)
     return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex)
+}
+
+function Set-SystemTimerResolution {
+    param([double]$Milliseconds)
+    # Conversion en unités de 100 nanosecondes (0.5ms = 5000)
+    $val = [uint32]($Milliseconds * 10000)
+    $current = [uint32]0
+    $res = [TimerResolution]::NtSetTimerResolution($val, $true, [ref]$current)
+    if ($res -eq 0) {
+        Write-Log "[TIMER] Résolution du timer système forcée à : $Milliseconds ms (Actuel: $($current / 10000) ms)"
+    } else {
+        Write-Log "[WARN] Impossible de modifier la résolution du timer (Code: $res)"
+    }
 }
 
 # ============================================================
@@ -150,6 +175,10 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; Label="Augmenter la priorité
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; Label="Désactiver l'alerte de raccourci des touches rémanentes"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; Label="Forcer l'affinité CPU maximale sur les threads d'affichage"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
+# -- TIMER RESOLUTION OPTIONS DANS GAMING --
+$Options += [PSCustomObject]@{Id=115; Cat="Gaming"; Label="Timer Resolution : Forcer 0.5 ms (Latence Minimale - Gaming Extrême)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.5 }}
+$Options += [PSCustomObject]@{Id=116; Cat="Gaming"; Label="Timer Resolution : Fixer à 1.0 ms (Latence Standard - Équilibré)"; Risk="safe"; Action={ Set-SystemTimerResolution 1.0 }}
+
 # --- 4. ÉNERGIE & PROCESSEUR (15 Tweaks) ---
 $Options += [PSCustomObject]@{Id=46; Cat="Power"; Label="Activer le plan d'alimentation Performances Ultimes"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
 $Options += [PSCustomObject]@{Id=47; Cat="Power"; Label="Désactiver le Core Parking (C-States bloqués)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
@@ -202,29 +231,24 @@ $Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; Label="Forcer le vidage de
 $Options += [PSCustomObject]@{Id=90; Cat="Nettoyage"; Label="Lancer l'utilitaire Cleanmgr en mode automatique silencieux"; Risk="safe"; Action={ Start-Process "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait -WindowStyle Hidden }}
 
 # --- MULTITUDE D'APPS À TÉLÉCHARGER (WINGET) (24 Applications) ---
-# -- Web Browsers --
 $Options += [PSCustomObject]@{Id=91; Cat="Apps"; Label="Google Chrome"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
 $Options += [PSCustomObject]@{Id=92; Cat="Apps"; Label="Mozilla Firefox"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
 $Options += [PSCustomObject]@{Id=93; Cat="Apps"; Label="Brave Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
-# -- Gaming & Voice --
 $Options += [PSCustomObject]@{Id=94; Cat="Apps"; Label="Discord"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
 $Options += [PSCustomObject]@{Id=95; Cat="Apps"; Label="Steam"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
 $Options += [PSCustomObject]@{Id=96; Cat="Apps"; Label="Epic Games Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
 $Options += [PSCustomObject]@{Id=97; Cat="Apps"; Label="EA App (Electronic Arts)"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
 $Options += [PSCustomObject]@{Id=98; Cat="Apps"; Label="Ubisoft Connect"; Risk="safe"; Action={ Install-WingetApp "Ubisoft.Connect" "Ubisoft Connect" }}
-# -- Utilitaires indispensables --
 $Options += [PSCustomObject]@{Id=99; Cat="Apps"; Label="7-Zip (Archivage)"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
 $Options += [PSCustomObject]@{Id=100; Cat="Apps"; Label="WinRAR"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
 $Options += [PSCustomObject]@{Id=101; Cat="Apps"; Label="VLC Media Player"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC Media Player" }}
 $Options += [PSCustomObject]@{Id=102; Cat="Apps"; Label="ShareX (Captures & Records)"; Risk="safe"; Action={ Install-WingetApp "ShareX.ShareX" "ShareX" }}
 $Options += [PSCustomObject]@{Id=103; Cat="Apps"; Label="GeForce Experience"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceExperience" "GeForce Experience" }}
 $Options += [PSCustomObject]@{Id=104; Cat="Apps"; Label="MSI Afterburner"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
-# -- Développement & Texte --
 $Options += [PSCustomObject]@{Id=105; Cat="Apps"; Label="Visual Studio Code"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
 $Options += [PSCustomObject]@{Id=106; Cat="Apps"; Label="Notepad++"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
 $Options += [PSCustomObject]@{Id=107; Cat="Apps"; Label="Git pour Windows"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
 $Options += [PSCustomObject]@{Id=108; Cat="Apps"; Label="Python 3"; Risk="safe"; Action={ Install-WingetApp "Python.Python.3.11" "Python 3" }}
-# -- Création & Divers --
 $Options += [PSCustomObject]@{Id=109; Cat="Apps"; Label="OBS Studio (Streaming/Rec)"; Risk="safe"; Action={ Install-WingetApp "OBSProject.OBSStudio" "OBS Studio" }}
 $Options += [PSCustomObject]@{Id=110; Cat="Apps"; Label="Spotify"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
 $Options += [PSCustomObject]@{Id=111; Cat="Apps"; Label="qBittorrent"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
@@ -341,7 +365,7 @@ $NavButtons = @{
     "Apps"=$Form.FindName("BtnApps")
 }
 
-# Initialisation des états pour l'ensemble des 114 éléments (90 tweaks + 24 apps)
+# Initialisation des états pour l'ensemble des éléments
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
@@ -381,7 +405,6 @@ function Render-Category([string]$Cat) {
         $Panel.Children.Clear()
         $L = $Global:LangDict[$Global:CurrentLang]
         
-        # Titre dynamique de section
         $TxtTitle.Text = $L["Cat" + ($Cat.Replace("Confidentialite","Conf").Replace("Reseau","Reseau"))].ToUpper()
         
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
@@ -402,7 +425,20 @@ function Render-Category([string]$Cat) {
             $Chk.Tag = $item.Id
             $Chk.IsChecked = $Global:CheckStates[$item.Id]
             
-            $Chk.Add_Checked({ $Global:CheckStates[$this.Tag] = $true })
+            $Chk.Add_Checked({ 
+                $id = $this.Tag
+                $Global:CheckStates[$id] = $true 
+                
+                # Empêcher de cocher deux résolutions de timer différentes en même temps
+                if ($id -eq 115) { 
+                    $Global:CheckStates[116] = $false
+                    Render-Category $Global:LastCategory
+                }
+                elseif ($id -eq 116) { 
+                    $Global:CheckStates[115] = $false
+                    Render-Category $Global:LastCategory
+                }
+            })
             $Chk.Add_Unchecked({ $Global:CheckStates[$this.Tag] = $false })
             [void]$Panel.Children.Add($Chk)
         }
@@ -481,5 +517,5 @@ $BtnApply.Add_Click({
 
 # Démarrage
 Update-InterfaceLanguage
-Write-Log "[SYSTEM] Core Engine V9 Online. 90 system tweaks and 24 application packages ready."
+Write-Log "[SYSTEM] Core Engine V10 Online. Timer Resolution sub-system loaded."
 [void]$Form.ShowDialog()
