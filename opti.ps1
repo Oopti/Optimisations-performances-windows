@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V12.3 - SMART QUICK SELECT
+    OPTI-DYLAN TOOLKIT PRO V12.4 - PROCESS EXCLUSIVITY UPDATE
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -51,7 +51,7 @@ $Global:LangDict = @{
         "BtnSelectAdv" = "Cocher Tout (Avancé)"
         "BtnClearAll" = "Tout Décocher"
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.3 En Ligne. Sélection intelligente active."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.4 En Ligne. Profils exclusifs actifs."
         "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés. Modéré/Avancé décochés."
         "LogCheckMod" = "[UI] Sélection Auto : Uniquement 'Sans Risque' & 'Modéré' cochés. Avancé décochés."
         "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
@@ -84,7 +84,7 @@ $Global:LangDict = @{
         "BtnSelectAdv" = "Check All (Advanced)"
         "BtnClearAll" = "Clear All Checkboxes"
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.3 Online. Smart selection active."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.4 Online. Exclusive profiles active."
         "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked. Moderate/Advanced cleared."
         "LogCheckMod" = "[UI] Auto-Check: Only 'Safe' & 'Moderate' checked. Advanced cleared."
         "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks."
@@ -198,7 +198,7 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorit
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; LabelFR="Forcer l'affinité CPU max sur le thread d'affichage"; LabelEN="Force maximum core hardware alignment for display layout"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# --- 4. PROCESSUS WINDOWS ---
+# --- 4. PROCESSUS WINDOWS (MIS À JOUR : PROFILS EXCLUSIFS) ---
 $Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE ALLEGE] Tuer les processus de tracking basiques & bloatwares"; LabelEN="[LIGHT MODE] Terminate basic tracking background processes"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0 }}
 $Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE AVANCE] Aligner l'arborescence des services hôtes (Splitting & Isolation RAM)"; LabelEN="[ADVANCED MODE] Split & isolate host processes tree structure"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
 $Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTREME] Clôturer agressivement les processus de maintenance et d'indexation système"; LabelEN="[EXTREME MODE] Aggressively terminate indexing and maintenance background tasks"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
@@ -290,7 +290,7 @@ $Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="O
 $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - DESIGN V12.3
+# INTERFACE GRAPHIQUE (WPF) - DESIGN V12.4
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -507,8 +507,17 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
+                # Exclusivité pour la catégorie "Timer" (IDs 115 à 121)
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
+                        if ($i -ne $id) { $Global:CheckStates[$i] = $false }
+                    }
+                    Render-Category $Global:LastCategory
+                }
+                
+                # NOUVEAU: Exclusivité pour la catégorie "Processus" (IDs 122, 123 et 124)
+                if ($id -ge 122 -and $id -le 124) {
+                    for ($i = 122; $i -le 124; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
                     }
                     Render-Category $Global:LastCategory
@@ -536,8 +545,7 @@ function Render-Category([string]$Cat) {
 $BtnSelectSafe.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
-        # Si on clique sur Safe, on coche le safe, et on DECOCHE impérativement le reste
-        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
+        if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
             $Global:CheckStates[$item.Id] = $true
         } else {
             $Global:CheckStates[$item.Id] = $false
@@ -546,6 +554,10 @@ $BtnSelectSafe.Add_Click({
     # Reset du timer sur 1.00 ms (Le plus safe)
     for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[119] = $true
+
+    # Mode Processus : On force uniquement le Mode Allégé (ID 122)
+    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
+    $Global:CheckStates[122] = $true
     
     Render-Category $Global:LastCategory
     Write-Log "LogCheckSafe"
@@ -554,8 +566,7 @@ $BtnSelectSafe.Add_Click({
 $BtnSelectMod.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
-        # Si on clique sur Modéré, on coche Safe + Modéré, et on DECOCHE impérativement l'Advanced
-        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
+        if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
             $Global:CheckStates[$item.Id] = $true
         } else {
             $Global:CheckStates[$item.Id] = $false
@@ -564,6 +575,10 @@ $BtnSelectMod.Add_Click({
     # Reset du timer sur 0.50 ms (Le standard Gaming)
     for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[116] = $true
+
+    # Mode Processus : On force uniquement le Mode Avancé (ID 123)
+    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
+    $Global:CheckStates[123] = $true
     
     Render-Category $Global:LastCategory
     Write-Log "LogCheckMod"
@@ -572,14 +587,17 @@ $BtnSelectMod.Add_Click({
 $BtnSelectAdv.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
-        # On coche tout
-        if ($item.Id -lt 115 -or $item.Id -gt 121) {
+        if (($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
             $Global:CheckStates[$item.Id] = $true
         }
     }
     # Force la latence expérimentale 0.45 ms
     for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[115] = $true
+
+    # Mode Processus : On force uniquement le Mode Extrême (ID 124)
+    for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
+    $Global:CheckStates[124] = $true
     
     Render-Category $Global:LastCategory
     Write-Log "LogCheckAdv"
