@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V13.0 - ULTIMATE INNOVATION UPDATE
+    OPTI-DYLAN TOOLKIT PRO V14.0 - ULTIMATE CATEGORIZED UPDATE
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -44,7 +44,8 @@ $Global:LangDict = @{
         "CatPower" = "Énergie & CPU"
         "CatServices" = "Services Windows"
         "CatNettoyage" = "Nettoyage & Ram"
-        "CatApps" = "Apps (Winget)"
+        "CatApps" = "Applications"
+        "CatBloatwares" = "Bloatwares Windows"
         "QuickSelect" = "SELECTION RAPIDE"
         "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
         "BtnSelectMod" = "Cocher Tout (Modéré)"
@@ -55,7 +56,7 @@ $Global:LangDict = @{
         "Gpu" = "Graphismes"
         "Ram" = "Mémoire RAM"
         "RamCleanerTitle" = "NETTOYAGE RAM TEMPS RÉEL"
-        "RamUsed" = "Utilisé"
+        "RamUsed" = "utilisé"
         "BtnCleanRam" = "Optimiser la RAM"
         "BtnSaveProfile" = "Sauvegarder Profil"
         "BtnLoadProfile" = "Charger Profil"
@@ -63,7 +64,7 @@ $Global:LangDict = @{
         "ProfileLoaded" = "[OK] Profil 'opti_profile.json' chargé avec succès !"
         "ProfileErr" = "[ERR] Aucun profil sauvegardé trouvé."
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V13.0 En Ligne. Innovations prêtes."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V14.0 En Ligne. Innovations prêtes."
         "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés."
         "LogCheckMod" = "[UI] Sélection Auto : 'Sans Risque' & 'Modéré' cochés."
         "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
@@ -89,7 +90,8 @@ $Global:LangDict = @{
         "CatPower" = "Power & CPU"
         "CatServices" = "Windows Services"
         "CatNettoyage" = "Cleanup & Ram"
-        "CatApps" = "Apps (Winget)"
+        "CatApps" = "Applications"
+        "CatBloatwares" = "Windows Bloatwares"
         "QuickSelect" = "QUICK SELECTION"
         "BtnSelectSafe" = "Check All (Safe Only)"
         "BtnSelectMod" = "Check All (Moderate)"
@@ -100,7 +102,7 @@ $Global:LangDict = @{
         "Gpu" = "Graphics"
         "Ram" = "Memory RAM"
         "RamCleanerTitle" = "REAL-TIME RAM CLEANER"
-        "RamUsed" = "Used"
+        "RamUsed" = "used"
         "BtnCleanRam" = "Optimize RAM"
         "BtnSaveProfile" = "Save Profile"
         "BtnLoadProfile" = "Load Profile"
@@ -108,10 +110,10 @@ $Global:LangDict = @{
         "ProfileLoaded" = "[OK] Profile 'opti_profile.json' loaded successfully!"
         "ProfileErr" = "[ERR] No saved profile found."
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V13.0 Online. Innovations active."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V14.0 Online. Innovations active."
         "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked."
         "LogCheckMod" = "[UI] Auto-Check: 'Safe' & 'Moderate' checked."
-        "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks."
+        "LogCheckAdv" = "[UI] Checked absolutely ALL tweaks."
         "LogClearAll" = "[UI] Reset: Unchecked all boxes."
         "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
         "LogRestoreOk" = "[OK] System Restore Point created successfully."
@@ -156,6 +158,13 @@ function Install-WingetApp {
     if ($p.ExitCode -ne 0) { throw "winget failed with code $($p.ExitCode)" }
 }
 
+function Uninstall-Appx {
+    param([string]$NamePattern)
+    Write-Log "[BLOATWARE] Suppression de : $NamePattern..."
+    Get-AppxPackage -AllUsers -Name "*$NamePattern*" | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+    Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -match $NamePattern } | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+}
+
 function Get-Brush {
     param([string]$Hex)
     return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex)
@@ -174,7 +183,7 @@ function Set-SystemTimerResolution {
 }
 
 # ============================================================
-# CATALOGUE DES TWEAKS
+# CATALOGUE DES TWEAKS (V14.0)
 # ============================================================
 $Options = @()
 
@@ -294,39 +303,64 @@ $Options += [PSCustomObject]@{Id=88; Cat="Nettoyage"; LabelFR="Nettoyer l'histor
 $Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; LabelFR="Forcer le vidage de la mémoire RAM en cache"; LabelEN="Force global garbage collector collection sweeps across active RAM"; Risk="safe"; Action={ [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers() }}
 $Options += [PSCustomObject]@{Id=90; Cat="Nettoyage"; LabelFR="Lancer Cleanmgr en mode automatique silencieux"; LabelEN="Trigger implicit native disk storage wizard tool in silent mode"; Risk="safe"; Action={ Start-Process "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait -WindowStyle Hidden }}
 
-# --- 9. APPLICATIONS WINGET ---
-$Options += [PSCustomObject]@{Id=91; Cat="Apps"; LabelFR="Google Chrome"; LabelEN="Google Chrome Web Browser"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
-$Options += [PSCustomObject]@{Id=92; Cat="Apps"; LabelFR="Mozilla Firefox"; LabelEN="Mozilla Firefox Browser"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
-$Options += [PSCustomObject]@{Id=93; Cat="Apps"; LabelFR="Brave Browser"; LabelEN="Brave Privacy Web Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
-$Options += [PSCustomObject]@{Id=94; Cat="Apps"; LabelFR="Discord"; LabelEN="Discord Chat Client Application"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
-$Options += [PSCustomObject]@{Id=95; Cat="Apps"; LabelFR="Steam"; LabelEN="Valve Steam Gaming Platform Store"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
-$Options += [PSCustomObject]@{Id=96; Cat="Apps"; LabelFR="Epic Games Launcher"; LabelEN="Epic Games Store Storefront Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
-$Options += [PSCustomObject]@{Id=97; Cat="Apps"; LabelFR="EA App (Electronic Arts)"; LabelEN="Electronic Arts Desktop Client App"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
-$Options += [PSCustomObject]@{Id=98; Cat="Apps"; LabelFR="Ubisoft Connect"; LabelEN="Ubisoft Ecosystem Connect Launcher"; Risk="safe"; Action={ Install-WingetApp "Ubisoft.Connect" "Ubisoft Connect" }}
-$Options += [PSCustomObject]@{Id=99; Cat="Apps"; LabelFR="7-Zip (Archivage)"; LabelEN="7-Zip High Compression Ratio File Unpacker"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
-$Options += [PSCustomObject]@{Id=100; Cat="Apps"; LabelFR="WinRAR"; LabelEN="WinRAR Compress Archive Manager Tool"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
-$Options += [PSCustomObject]@{Id=101; Cat="Apps"; LabelFR="VLC Media Player"; LabelEN="VLC Multi-Platform Media Player Framework"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC Media Player" }}
-$Options += [PSCustomObject]@{Id=102; Cat="Apps"; LabelFR="ShareX (Captures & Records)"; LabelEN="ShareX Screen Capture File Sharing Productivity Tool"; Risk="safe"; Action={ Install-WingetApp "ShareX.ShareX" "ShareX" }}
-$Options += [PSCustomObject]@{Id=103; Cat="Apps"; LabelFR="GeForce Experience"; LabelEN="NVIDIA GeForce Experience Optimization Core"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceExperience" "GeForce Experience" }}
-$Options += [PSCustomObject]@{Id=104; Cat="Apps"; LabelFR="MSI Afterburner"; LabelEN="MSI Afterburner Overclocking Hardware Monitor"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
-$Options += [PSCustomObject]@{Id=105; Cat="Apps"; LabelFR="Visual Studio Code"; LabelEN="Microsoft Visual Studio Code Source Code Editor"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
-$Options += [PSCustomObject]@{Id=106; Cat="Apps"; LabelFR="Notepad++"; LabelEN="NotepadPlusPlus Source Code Code Editor Engine"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
-$Options += [PSCustomObject]@{Id=107; Cat="Apps"; LabelFR="Git pour Windows"; LabelEN="Git Distributed Version Control Software Build"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
-$Options += [PSCustomObject]@{Id=108; Cat="Apps"; LabelFR="Python 3"; LabelEN="Python Programming Environment Deployment Pack"; Risk="safe"; Action={ Install-WingetApp "Python.Python.3.11" "Python 3" }}
-$Options += [PSCustomObject]@{Id=109; Cat="Apps"; LabelFR="OBS Studio"; LabelEN="OBS Studio Open Broadcaster Video Recording Suite"; Risk="safe"; Action={ Install-WingetApp "OBSProject.OBSStudio" "OBS Studio" }}
-$Options += [PSCustomObject]@{Id=110; Cat="Apps"; LabelFR="Spotify"; LabelEN="Spotify Desktop Digital Music Service Platform"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
-$Options += [PSCustomObject]@{Id=111; Cat="Apps"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
-$Options += [PSCustomObject]@{Id=112; Cat="Apps"; LabelFR="WhatsApp Desktop"; LabelEN="WhatsApp Desktop Communication Network Messenger"; Risk="safe"; Action={ Install-WingetApp "WhatsApp.WhatsApp" "WhatsApp" }}
-$Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="Opera GX Browser Tailored Core For Gamers"; Risk="safe"; Action={ Install-WingetApp "Opera.OperaGX" "Opera GX" }}
-$Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
+# --- 9. APPLICATIONS CLASSIFIÉES ---
+# Sous-catégories virtuelles gérées lors de l'affichage
+# Pilotes Graphiques
+$Options += [PSCustomObject]@{Id=125; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="NVIDIA GeForce Game Ready Driver"; LabelEN="NVIDIA GeForce Game Ready Driver Core"; Risk="safe"; Action={ Install-WingetApp "Nvidia.GeForceNow" "GeForce Now/Driver" }}
+$Options += [PSCustomObject]@{Id=126; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="AMD Software: Adrenalin Edition"; LabelEN="AMD Software Adrenalin Graphics Driver Edition"; Risk="safe"; Action={ Install-WingetApp "AMD.Adrenalin" "AMD Adrenalin" }}
+$Options += [PSCustomObject]@{Id=127; Cat="Apps"; SubCat="FR=Pilotes Graphiques|EN=Graphics Drivers"; LabelFR="Intel Graphics Command Center"; LabelEN="Intel Graphics Command Center Controller Suite"; Risk="safe"; Action={ Install-WingetApp "Intel.GraphicsCommandCenter" "Intel Graphics Center" }}
+
+# Navigateurs Web
+$Options += [PSCustomObject]@{Id=91; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Google Chrome"; LabelEN="Google Chrome Web Browser"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
+$Options += [PSCustomObject]@{Id=92; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Mozilla Firefox"; LabelEN="Mozilla Firefox Browser"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
+$Options += [PSCustomObject]@{Id=93; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Brave Browser"; LabelEN="Brave Privacy Web Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
+$Options += [PSCustomObject]@{Id=113; Cat="Apps"; SubCat="FR=Navigateurs Web|EN=Web Browsers"; LabelFR="Opera GX"; LabelEN="Opera GX Browser Tailored Core For Gamers"; Risk="safe"; Action={ Install-WingetApp "Opera.OperaGX" "Opera GX" }}
+
+# Gaming & Launchers
+$Options += [PSCustomObject]@{Id=95; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Steam"; LabelEN="Valve Steam Gaming Platform Store"; Risk="safe"; Action={ Install-WingetApp "Valve.Steam" "Steam" }}
+$Options += [PSCustomObject]@{Id=96; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Epic Games Launcher"; LabelEN="Epic Games Store Storefront Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" "Epic Games" }}
+$Options += [PSCustomObject]@{Id=97; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="EA App (Electronic Arts)"; LabelEN="Electronic Arts Desktop Client App"; Risk="safe"; Action={ Install-WingetApp "ElectronicArts.EADesktop" "EA App" }}
+$Options += [PSCustomObject]@{Id=98; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="Ubisoft Connect"; LabelEN="Ubisoft Ecosystem Connect Launcher"; Risk="safe"; Action={ Install-WingetApp "Ubisoft.Connect" "Ubisoft Connect" }}
+$Options += [PSCustomObject]@{Id=104; Cat="Apps"; SubCat="FR=Gaming & Launchers|EN=Gaming & Launchers"; LabelFR="MSI Afterburner"; LabelEN="MSI Afterburner Overclocking Hardware Monitor"; Risk="safe"; Action={ Install-WingetApp "Guru3D.MSIAfterburner" "MSI Afterburner" }}
+
+# Outils & Productivité
+$Options += [PSCustomObject]@{Id=99; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="7-Zip (Archivage)"; LabelEN="7-Zip High Compression Ratio File Unpacker"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" "7-Zip" }}
+$Options += [PSCustomObject]@{Id=100; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="WinRAR"; LabelEN="WinRAR Compress Archive Manager Tool"; Risk="safe"; Action={ Install-WingetApp "RARLab.WinRAR" "WinRAR" }}
+$Options += [PSCustomObject]@{Id=102; Cat="Apps"; SubCat="FR=Outils & Productivité|EN=Tools & Productivity"; LabelFR="ShareX (Captures & Vidéos)"; LabelEN="ShareX Screen Capture File Sharing Productivity Tool"; Risk="safe"; Action={ Install-WingetApp "ShareX.ShareX" "ShareX" }}
+
+# Développement
+$Options += [PSCustomObject]@{Id=105; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Visual Studio Code"; LabelEN="Microsoft Visual Studio Code Source Code Editor"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" "VS Code" }}
+$Options += [PSCustomObject]@{Id=106; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Notepad++"; LabelEN="NotepadPlusPlus Source Code Code Editor Engine"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" "Notepad++" }}
+$Options += [PSCustomObject]@{Id=107; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Git pour Windows"; LabelEN="Git Distributed Version Control Software Build"; Risk="safe"; Action={ Install-WingetApp "Git.Git" "Git" }}
+$Options += [PSCustomObject]@{Id=108; Cat="Apps"; SubCat="FR=Développement|EN=Development Tools"; LabelFR="Python 3"; LabelEN="Python Programming Environment Deployment Pack"; Risk="safe"; Action={ Install-WingetApp "Python.Python.3.11" "Python 3" }}
+
+# Communication & Multimédia
+$Options += [PSCustomObject]@{Id=94; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Discord"; LabelEN="Discord Chat Client Application"; Risk="safe"; Action={ Install-WingetApp "Discord.Discord" "Discord" }}
+$Options += [PSCustomObject]@{Id=112; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="WhatsApp Desktop"; LabelEN="WhatsApp Desktop Communication Network Messenger"; Risk="safe"; Action={ Install-WingetApp "WhatsApp.WhatsApp" "WhatsApp" }}
+$Options += [PSCustomObject]@{Id=101; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="VLC Media Player"; LabelEN="VLC Multi-Platform Media Player Framework"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" "VLC Media Player" }}
+$Options += [PSCustomObject]@{Id=109; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="OBS Studio"; LabelEN="OBS Studio Open Broadcaster Video Recording Suite"; Risk="safe"; Action={ Install-WingetApp "OBSProject.OBSStudio" "OBS Studio" }}
+$Options += [PSCustomObject]@{Id=110; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Spotify"; LabelEN="Spotify Desktop Digital Music Service Platform"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
+$Options += [PSCustomObject]@{Id=111; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
+$Options += [PSCustomObject]@{Id=114; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
+
+# --- 10. BLOATWARES WINDOWS (NOUVELLE CATÉGORIE) ---
+$Options += [PSCustomObject]@{Id=128; Cat="Bloatwares"; LabelFR="Désinstaller complètement Microsoft OneDrive"; LabelEN="Fully uninstall Microsoft OneDrive"; Risk="safe"; Action={ Uninstall-Appx "OneDrive"; Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue; Start-Process "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=129; Cat="Bloatwares"; LabelFR="Désinstaller Cortana"; LabelEN="Uninstall Cortana voice assistant"; Risk="safe"; Action={ Uninstall-Appx "Microsoft.549981C3F5F10" }}
+$Options += [PSCustomObject]@{Id=130; Cat="Bloatwares"; LabelFR="Désinstaller Mobile Connecté (Phone Link / Your Phone)"; LabelEN="Uninstall Link to Windows / Phone Link"; Risk="safe"; Action={ Uninstall-Appx "YourPhone" }}
+$Options += [PSCustomObject]@{Id=131; Cat="Bloatwares"; LabelFR="Désinstaller l'écosystème Xbox App intégré"; LabelEN="Uninstall default Windows Xbox App elements"; Risk="moderate"; Action={ Uninstall-Appx "XboxApp"; Uninstall-Appx "XboxGamingOverlay"; Uninstall-Appx "XboxSpeechToTextOverlay" }}
+$Options += [PSCustomObject]@{Id=132; Cat="Bloatwares"; LabelFR="Désinstaller Cartes Windows (Windows Maps)"; LabelEN="Uninstall native Windows Maps application package"; Risk="safe"; Action={ Uninstall-Appx "WindowsMaps" }}
+$Options += [PSCustomObject]@{Id=133; Cat="Bloatwares"; LabelFR="Désinstaller Microsoft Solitaire Collection"; LabelEN="Uninstall Microsoft Solitaire Collection game"; Risk="safe"; Action={ Uninstall-Appx "MicrosoftSolitaireCollection" }}
+$Options += [PSCustomObject]@{Id=134; Cat="Bloatwares"; LabelFR="Désinstaller l'Enregistreur de Voix Windows"; LabelEN="Uninstall Windows Voice Recorder application pack"; Risk="safe"; Action={ Uninstall-Appx "WindowsSoundRecorder" }}
+$Options += [PSCustomObject]@{Id=135; Cat="Bloatwares"; LabelFR="Désinstaller Météo Windows (Bing Weather)"; LabelEN="Uninstall Bing Weather application software package"; Risk="safe"; Action={ Uninstall-Appx "BingWeather" }}
+$Options += [PSCustomObject]@{Id=136; Cat="Bloatwares"; LabelFR="Désinstaller Plans 3D (3D Viewer)"; LabelEN="Uninstall Microsoft 3D Viewer engine components"; Risk="safe"; Action={ Uninstall-Appx "3DViewer" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - DESIGN V13.0
+# INTERFACE GRAPHIQUE (WPF) - DESIGN V14.0
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="920" Width="1120"
+        Title="OPTI-DYLAN TOOLKIT" Height="930" Width="1130"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
         <Style TargetType="CheckBox">
@@ -356,7 +390,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
     </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="260"/>
+            <ColumnDefinition Width="280"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         
@@ -379,6 +413,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
                     <Button Name="BtnServices" Tag="Services" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnNettoyage" Tag="Nettoyage" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnApps" Tag="Apps" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnBloatwares" Tag="Bloatwares" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
                         <StackPanel>
@@ -513,6 +548,7 @@ $NavButtons = @{
     "Services"=$Form.FindName("BtnServices")
     "Nettoyage"=$Form.FindName("BtnNettoyage")
     "Apps"=$Form.FindName("BtnApps")
+    "Bloatwares"=$Form.FindName("BtnBloatwares")
 }
 
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
@@ -535,7 +571,6 @@ $RamTimer.Start()
 $BtnCleanRam.Add_Click({
     [System.GC]::Collect()
     [System.GC]::WaitForPendingFinalizers()
-    # Nettoyage additionnel mémoire de cache
     $os = Get-CimInstance Win32_OperatingSystem
     $pct = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
     $TxtRamPercent.Text = "$pct %"
@@ -562,11 +597,11 @@ $BtnLoadProfile.Add_Click({
         try {
             $Loaded = Get-Content $ProfilePath -Raw | ConvertFrom-Json -AsHashtable
             foreach ($k in $Loaded.Keys) {
-                # Force conversion string key to integer ID
                 $id = [int]$k
                 $Global:CheckStates[$id] = [bool]$Loaded[$k]
             }
             Render-Category $Global:LastCategory
+            Update-SidebarCounters
             Write-Log "ProfileLoaded"
         } catch {
             Write-Log "[ERR] $($_.Exception.Message)" $false
@@ -601,6 +636,43 @@ function Refresh-LogBoxDisplay {
     $LogBox.ScrollToEnd()
 }
 
+# Met à jour les compteurs (ex: Réseau (2)) à côté du nom de chaque catégorie dans le menu
+function Update-SidebarCounters {
+    $L = $Global:LangDict[$Global:CurrentLang]
+    foreach ($key in $NavButtons.Keys) {
+        $count = ($Options | Where-Object { $_.Cat -eq $key -and $Global:CheckStates[$_.Id] -eq $true }).Count
+        $catTitle = switch ($key) {
+            "Reseau" { $L["CatReseau"] }
+            "Confidentialite" { $L["CatConfidentialite"] }
+            "Gaming" { $L["CatGaming"] }
+            "Processus" { $L["CatProcessus"] }
+            "Timer" { $L["CatTimer"] }
+            "Power" { $L["CatPower"] }
+            "Services" { $L["CatServices"] }
+            "Nettoyage" { $L["CatNettoyage"] }
+            "Apps" { $L["CatApps"] }
+            "Bloatwares" { $L["CatBloatwares"] }
+        }
+        $emoji = switch ($key) {
+            "Reseau" { "🌐" }
+            "Confidentialite" { "🛡️" }
+            "Gaming" { "🎮" }
+            "Processus" { "💻" }
+            "Timer" { "⏱️" }
+            "Power" { "⚡" }
+            "Services" { "⚙️" }
+            "Nettoyage" { "🧹" }
+            "Apps" { "📦" }
+            "Bloatwares" { "🗑️" }
+        }
+        if ($count -gt 0) {
+            $NavButtons[$key].Content = "$emoji  $catTitle ($count)"
+        } else {
+            $NavButtons[$key].Content = "$emoji  $catTitle"
+        }
+    }
+}
+
 function Update-InterfaceLanguage {
     $L = $Global:LangDict[$Global:CurrentLang]
     
@@ -626,19 +698,9 @@ function Update-InterfaceLanguage {
     $DiagGpuLabel.Text = $L["Gpu"].ToUpper()
     $DiagRamLabel.Text = $L["Ram"].ToUpper()
     
-    # Placeholder pour la barre de recherche
     $TxtSearch.Text = ""
     
-    $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
-    $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConfidentialite"]
-    $NavButtons["Gaming"].Content = "🎮  " + $L["CatGaming"]
-    $NavButtons["Processus"].Content = "💻  " + $L["CatProcessus"]
-    $NavButtons["Timer"].Content = "⏱️  " + $L["CatTimer"]
-    $NavButtons["Power"].Content = "⚡  " + $L["CatPower"]
-    $NavButtons["Services"].Content = "⚙️  " + $L["CatServices"]
-    $NavButtons["Nettoyage"].Content = "🧹  " + $L["CatNettoyage"]
-    $NavButtons["Apps"].Content = "📦  " + $L["CatApps"]
-    
+    Update-SidebarCounters
     Render-Category $Global:LastCategory
     Refresh-LogBoxDisplay
 }
@@ -659,7 +721,32 @@ function Render-Category([string]$Cat) {
             }
         }
         
+        # Gestion de l'affichage groupé pour "Apps"
+        $CurrentGroup = ""
+        
         foreach ($item in $Items) {
+            # Si on est dans "Apps" et qu'on a un sous-groupe, on l'affiche sous forme d'en-tête
+            if ($Cat -eq "Apps" -and $null -ne $item.SubCat) {
+                # Extraction de la langue dans le format "FR=Titre|EN=Title"
+                $subCatParsed = @{}
+                foreach ($pair in ($item.SubCat -split "\|")) {
+                    $parts = $pair -split "="
+                    $subCatParsed[$parts[0]] = $parts[1]
+                }
+                $groupName = $subCatParsed[$Global:CurrentLang]
+                
+                if ($groupName -ne $CurrentGroup) {
+                    $CurrentGroup = $groupName
+                    $Header = New-Object System.Windows.Controls.TextBlock
+                    $Header.Text = "--- $CurrentGroup ---"
+                    $Header.Foreground = Get-Brush "#00FFC8"
+                    $Header.FontSize = 12
+                    $Header.FontWeight = "Bold"
+                    $Header.Margin = "0,15,0,5"
+                    [void]$Panel.Children.Add($Header)
+                }
+            }
+
             $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
             $Brush = Get-Brush $color
 
@@ -695,11 +782,16 @@ function Render-Category([string]$Cat) {
                     }
                     Render-Category $Global:LastCategory
                 }
+                Update-SidebarCounters
             })
-            $Chk.Add_Unchecked({ $Global:CheckStates[$this.Tag] = $false })
+            $Chk.Add_Unchecked({ 
+                $Global:CheckStates[$this.Tag] = $false 
+                Update-SidebarCounters
+            })
             [void]$Panel.Children.Add($Chk)
         }
         
+        # Mise à jour graphique de la sélection active dans la barre latérale
         foreach ($key in $NavButtons.Keys) {
             if ($key -eq $Cat) {
                 $NavButtons[$key].Background = Get-Brush "#181824"
@@ -714,69 +806,66 @@ function Render-Category([string]$Cat) {
     }
 }
 
-# --- RECHERCHE INSTANTANÉE EN TEMPS RÉEL ---
+# --- RECHERCHE INSTANTANÉE ---
 $TxtSearch.Add_TextChanged({
     Render-Category $Global:LastCategory
 })
 
-# --- LOGIQUE DES BOUTONS DE SÉLECTION RAPIDE ---
+# --- BOUTONS DE SÉLECTION RAPIDE ---
 $BtnSelectSafe.Add_Click({
     foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps") { continue }
+        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
         if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
             $Global:CheckStates[$item.Id] = $true
         } else {
             $Global:CheckStates[$item.Id] = $false
         }
     }
-    # Reset du timer sur 1.00 ms (Le plus safe)
     for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[119] = $true
 
-    # Mode Processus : On force uniquement le Mode Allégé (ID 122)
     for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[122] = $true
     
+    Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogCheckSafe"
 })
 
 $BtnSelectMod.Add_Click({
     foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps") { continue }
+        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
         if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
             $Global:CheckStates[$item.Id] = $true
         } else {
             $Global:CheckStates[$item.Id] = $false
         }
     }
-    # Reset du timer sur 0.50 ms (Le standard Gaming)
     for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[116] = $true
 
-    # Mode Processus : On force uniquement le Mode Avancé (ID 123)
     for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[123] = $true
     
+    Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogCheckMod"
 })
 
 $BtnSelectAdv.Add_Click({
     foreach ($item in $Options) {
-        if ($item.Cat -eq "Apps") { continue }
+        if ($item.Cat -eq "Apps" -or $item.Cat -eq "Bloatwares") { continue }
         if (($item.Id -lt 115 -or $item.Id -gt 121) -and ($item.Id -lt 122 -or $item.Id -gt 124)) {
             $Global:CheckStates[$item.Id] = $true
         }
     }
-    # Force la latence expérimentale 0.45 ms
     for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[115] = $true
 
-    # Mode Processus : On force uniquement le Mode Extrême (ID 124)
     for ($i = 122; $i -le 124; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[124] = $true
     
+    Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogCheckAdv"
 })
@@ -786,6 +875,7 @@ $BtnClearAll.Add_Click({
     foreach ($id in $Keys) {
         $Global:CheckStates[$id] = $false
     }
+    Update-SidebarCounters
     Render-Category $Global:LastCategory
     Write-Log "LogClearAll"
 })
