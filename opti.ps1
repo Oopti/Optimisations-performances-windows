@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V11 - 90 TWEAKS, 24 APPS & 7 TIMER RESOLUTION CHOICES
+    OPTI-DYLAN TOOLKIT PRO V11.1 - FIX INTERFACE & TIMER RESOLUTION DÉDIÉ
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -37,7 +37,7 @@ $Global:LangDict = @{
         "Done" = "[TERMINE] Optimisations appliquées !"
         "BoxDone" = "Optimisations appliquées. Redémarre ton PC si nécessaire."
         "CatReseau" = "Réseau & Ping"
-        "CatConf" = "Confidentialité"
+        "CatConfidentialite" = "Confidentialité"
         "CatGaming" = "Gaming & Latence"
         "CatPower" = "Énergie & CPU"
         "CatServices" = "Services Windows"
@@ -56,7 +56,7 @@ $Global:LangDict = @{
         "Done" = "[DONE] Optimizations applied successfully!"
         "BoxDone" = "Optimizations applied. Please restart your PC if needed."
         "CatReseau" = "Network & Ping"
-        "CatConf" = "Privacy"
+        "CatConfidentialite" = "Privacy"
         "CatGaming" = "Gaming & Latency"
         "CatPower" = "Power & CPU"
         "CatServices" = "Windows Services"
@@ -115,7 +115,7 @@ function Set-SystemTimerResolution {
 }
 
 # ============================================================
-# CATALOGUE DE 90 TWEAKS SYSTÈME
+# CATALOGUE DES 90 TWEAKS + OPTIONS TIMER
 # ============================================================
 $Options = @()
 
@@ -170,8 +170,8 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; Label="Augmenter la priorité
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; Label="Désactiver l'alerte de raccourci des touches rémanentes"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; Label="Forcer l'affinité CPU maximale sur les threads d'affichage"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# --- CATEGORIE EXCLUSIVE : TIMER RESOLUTION (7 choix distincts) ---
-$Options += [PSCustomObject]@{Id=115; Cat="Timer"; Label="0.45 ms - Latence Expérimentale (Forçage limite)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
+# --- 4. TIMER RESOLUTION DÉDIÉ (7 Choix distincts) ---
+$Options += [PSCustomObject]@{Id=115; Cat="Timer"; Label="0.45 ms - Latence Expérimentale (Forçage limite bas)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
 $Options += [PSCustomObject]@{Id=116; Cat="Timer"; Label="0.50 ms - Latence Minimale Absolue (Gaming Compétitif)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.50 }}
 $Options += [PSCustomObject]@{Id=117; Cat="Timer"; Label="0.60 ms - Latence Très Basse (Ultra stable)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.60 }}
 $Options += [PSCustomObject]@{Id=118; Cat="Timer"; Label="0.75 ms - Latence Intermédiaire Optimisée"; Risk="safe"; Action={ Set-SystemTimerResolution 0.75 }}
@@ -179,7 +179,7 @@ $Options += [PSCustomObject]@{Id=119; Cat="Timer"; Label="1.00 ms - Latence Stan
 $Options += [PSCustomObject]@{Id=120; Cat="Timer"; Label="2.50 ms - Économie d'Énergie Modérée"; Risk="safe"; Action={ Set-SystemTimerResolution 2.50 }}
 $Options += [PSCustomObject]@{Id=121; Cat="Timer"; Label="5.00 ms - Mode Bureautique / Éco Batterie maximal"; Risk="safe"; Action={ Set-SystemTimerResolution 5.00 }}
 
-# --- 4. ÉNERGIE & PROCESSEUR (15 Tweaks) ---
+# --- 5. ÉNERGIE & PROCESSEUR (15 Tweaks) ---
 $Options += [PSCustomObject]@{Id=46; Cat="Power"; Label="Activer le plan d'alimentation Performances Ultimes"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
 $Options += [PSCustomObject]@{Id=47; Cat="Power"; Label="Désactiver le Core Parking (C-States bloqués)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
 $Options += [PSCustomObject]@{Id=48; Cat="Power"; Label="Désactiver le Power Throttling"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling" "PowerThrottlingOff" 1 }}
@@ -196,7 +196,7 @@ $Options += [PSCustomObject]@{Id=58; Cat="Power"; Label="Désactiver la mise en 
 $Options += [PSCustomObject]@{Id=59; Cat="Power"; Label="Optimiser le refroidissement système sur Actif"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 94d3a615-a899-4ac5-ae2b-e4d8f634367f 1 }}
 $Options += [PSCustomObject]@{Id=60; Cat="Power"; Label="Forcer le plan d'alimentation actif après injection"; Risk="safe"; Action={ powercfg /setactive scheme_current }}
 
-# --- 5. SERVICES WINDOWS INUTILES (15 Tweaks) ---
+# --- 6. SERVICES WINDOWS INUTILES (15 Tweaks) ---
 $Options += [PSCustomObject]@{Id=61; Cat="Services"; Label="Désactiver SysMain / Superfetch (HDD obsolète)"; Risk="moderate"; Action={ Disable-Svc "SysMain" }}
 $Options += [PSCustomObject]@{Id=62; Cat="Services"; Label="Désactiver Windows Search (Indexation en tâche de fond)"; Risk="moderate"; Action={ Disable-Svc "WSearch" }}
 $Options += [PSCustomObject]@{Id=63; Cat="Services"; Label="Désactiver la suite complète des Services Xbox"; Risk="moderate"; Action={ "XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc" | ForEach-Object { Disable-Svc $_ } }}
@@ -213,7 +213,7 @@ $Options += [PSCustomObject]@{Id=73; Cat="Services"; Label="Désactiver Windows 
 $Options += [PSCustomObject]@{Id=74; Cat="Services"; Label="Désactiver le service de rapport d'erreurs (WerSvc)"; Risk="safe"; Action={ Disable-Svc "WerSvc" }}
 $Options += [PSCustomObject]@{Id=75; Cat="Services"; Label="Désactiver le service de partage de connexion Internet (ICS)"; Risk="moderate"; Action={ Disable-Svc "SharedAccess" }}
 
-# --- 6. NETTOYAGE ET RAM (15 Tweaks) ---
+# --- 7. NETTOYAGE ET RAM (15 Tweaks) ---
 $Options += [PSCustomObject]@{Id=76; Cat="Nettoyage"; Label="Vider les fichiers temporaires (%TEMP%)"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=77; Cat="Nettoyage"; Label="Vider la Corbeille de tous les disques"; Risk="safe"; Action={ Clear-RecycleBin -Force -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=78; Cat="Nettoyage"; Label="Supprimer le cache de téléchargement de Windows Update"; Risk="moderate"; Action={ Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Remove-Item "$env:WINDIR\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service wuauserv -ErrorAction SilentlyContinue }}
@@ -230,7 +230,7 @@ $Options += [PSCustomObject]@{Id=88; Cat="Nettoyage"; Label="Nettoyer l'historiq
 $Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; Label="Forcer le vidage de la mémoire RAM en cache"; Risk="safe"; Action={ [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers() }}
 $Options += [PSCustomObject]@{Id=90; Cat="Nettoyage"; Label="Lancer l'utilitaire Cleanmgr en mode automatique silencieux"; Risk="safe"; Action={ Start-Process "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait -WindowStyle Hidden }}
 
-# --- APPLICATIONS PACKAGES (24 Apps) ---
+# --- 8. APPLICATIONS WINGET (24 Apps) ---
 $Options += [PSCustomObject]@{Id=91; Cat="Apps"; Label="Google Chrome"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
 $Options += [PSCustomObject]@{Id=92; Cat="Apps"; Label="Mozilla Firefox"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
 $Options += [PSCustomObject]@{Id=93; Cat="Apps"; Label="Brave Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
@@ -257,7 +257,7 @@ $Options += [PSCustomObject]@{Id=113; Cat="Apps"; Label="Opera GX Gaming Browser
 $Options += [PSCustomObject]@{Id=114; Cat="Apps"; Label="Audacity (Audio Editor)"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF)
+# INTERFACE GRAPHIQUE (WPF) CORRIGÉE
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -358,9 +358,13 @@ $BtnRestore = $Form.FindName("BtnRestore")
 $ComboLang = $Form.FindName("ComboLang")
 
 $NavButtons = @{
-    "Reseau"=$Form.FindName("BtnReseau"); "Confidentialite"=$Form.FindName("BtnConfidentialite")
-    "Gaming"=$Form.FindName("BtnGaming"); "Timer"=$Form.FindName("BtnTimer"); "Power"=$Form.FindName("BtnPower")
-    "Services"=$Form.FindName("BtnServices"); "Nettoyage"=$Form.FindName("BtnNettoyage")
+    "Reseau"=$Form.FindName("BtnReseau")
+    "Confidentialite"=$Form.FindName("BtnConfidentialite")
+    "Gaming"=$Form.FindName("BtnGaming")
+    "Timer"=$Form.FindName("BtnTimer")
+    "Power"=$Form.FindName("BtnPower")
+    "Services"=$Form.FindName("BtnServices")
+    "Nettoyage"=$Form.FindName("BtnNettoyage")
     "Apps"=$Form.FindName("BtnApps")
 }
 
@@ -384,7 +388,7 @@ function Update-InterfaceLanguage {
     $BtnRestore.Content = $L["BtnRestore"]
     
     $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
-    $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConf"]
+    $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConfidentialite"]
     $NavButtons["Gaming"].Content = "🎮  " + $L["CatGaming"]
     $NavButtons["Timer"].Content = "⏱️  " + $L["CatTimer"]
     $NavButtons["Power"].Content = "⚡  " + $L["CatPower"]
@@ -425,7 +429,7 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Système d'exclusion mutuelle pour l'onglet dédié au Timer (IDs de 115 à 121)
+                # Exclusion mutuelle stricte pour les timers (IDs 115 à 121)
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -499,6 +503,7 @@ $BtnApply.Add_Click({
     $BtnApply.IsEnabled = $true
 })
 
+# Lancement
 Update-InterfaceLanguage
-Write-Log "[SYSTEM] Core Engine V11 Online. Dedicated Timer Resolution Category initialized."
+Write-Log "[SYSTEM] Core Engine V11.1 Online. Interface errors resolved perfectly."
 [void]$Form.ShowDialog()
