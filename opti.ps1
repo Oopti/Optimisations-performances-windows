@@ -1,9 +1,7 @@
 <#
     .SYNOPSIS
-        OPTI-DYLAN TOOLKIT - V17.0 (Édition Intégrale)
-        Optimisation avancée et nettoyage pour Windows 10/11.
-    .DESCRIPTION
-        Ce script doit impérativement être exécuté en tant qu'Administrateur.
+        OPTI-DYLAN TOOLKIT - V17.1 (Édition sans bug & Rollback Actif)
+        Optimisation avancée, nettoyage et restauration chirurgicale.
 #>
 
 # ============================================================
@@ -27,7 +25,7 @@ $Global:CurrentLang = "FR"
 
 $Global:LangDict = @{
     "FR" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT - V17.0"
+        "Title" = "OPTI-DYLAN TOOLKIT - V17.1"
         "Subtitle" = "Optimisation en temps réel • Interface réactive"
         "Legend" = "Légende des risques :\nVert = Sûr | Jaune = Modéré | Rouge = Avancé"
         "QuickSelect" = "SÉLECTION RAPIDE"
@@ -38,6 +36,7 @@ $Global:LangDict = @{
         "BtnSaveProfile" = "Sauvegarder profil"
         "BtnLoadProfile" = "Charger profil"
         "BtnRestore" = "Créer Point de Restauration"
+        "BtnRollback" = "Annuler modifications (Rollback)"
         "BtnApply" = "APPLIQUER LA SÉLECTION"
         "RamCleanerTitle" = "NETTOYAGE RAM"
         "RamUsed" = " utilisé"
@@ -59,6 +58,7 @@ $Global:LangDict = @{
         "ProfileSaved" = "Profil de configuration exporté avec succès."
         "ProfileLoaded" = "Profil de configuration chargé et appliqué visuellement."
         "ProfileErr" = "Aucun fichier de profil trouvé sur ce système."
+        "RollbackDone" = "Toutes les valeurs de registre d'origine ont été restaurées !"
         "CatReseau" = "Réseau & Ping"
         "CatConfidentialite" = "Confidentialité"
         "CatGaming" = "Optimisations Jeux"
@@ -71,7 +71,7 @@ $Global:LangDict = @{
         "CatBloatwares" = "Bloatwares"
     }
     "EN" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT - V17.0"
+        "Title" = "OPTI-DYLAN TOOLKIT - V17.1"
         "Subtitle" = "Real-time optimization • Non-blocking GUI"
         "Legend" = "Risk Legend :\nGreen = Safe | Yellow = Moderate | Red = Advanced"
         "QuickSelect" = "QUICK SELECTION"
@@ -82,6 +82,7 @@ $Global:LangDict = @{
         "BtnSaveProfile" = "Save profile"
         "BtnLoadProfile" = "Load profile"
         "BtnRestore" = "Create Restore Point"
+        "BtnRollback" = "Undo Modifications (Rollback)"
         "BtnApply" = "APPLY SELECTED TWEAKS"
         "RamCleanerTitle" = "RAM CLEANING"
         "RamUsed" = " used"
@@ -103,6 +104,7 @@ $Global:LangDict = @{
         "ProfileSaved" = "Configuration profile exported successfully."
         "ProfileLoaded" = "Configuration profile imported and applied to GUI."
         "ProfileErr" = "No profile file found on this system."
+        "RollbackDone" = "All original registry keys restored successfully!"
         "CatReseau" = "Network & Ping"
         "CatConfidentialite" = "Privacy"
         "CatGaming" = "Gaming Tweaks"
@@ -119,6 +121,13 @@ $Global:LangDict = @{
 # Charger les assemblies WPF requis
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
+# Instanciation de l'outil de conversion de couleur (Correction du crash d'affichage !)
+$Global:BrushConverter = New-Object System.Windows.Media.BrushConverter
+
+function Get-Brush([string]$Hex) {
+    return $Global:BrushConverter.ConvertFromString($Hex)
+}
+
 # ============================================================
 # RÉCUPÉRATION DU MATÉRIEL (Diagnostics réels)
 # ============================================================
@@ -127,32 +136,40 @@ $GpuName = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name
 $TotalRamGB = [Math]::Round((Get-CimInstance Win32_PhysicalMemory | Measure-Object -Property Capacity -Sum).Sum / 1GB, 0)
 
 # ============================================================
-# REQUIS ET UTILS DE REGISTRE
+# UTILS DE REGISTRE ET SAUVEGARDE CHIRURGICALE (ROLLBACK)
 # ============================================================
-function Set-Reg([string]$Path, [string]$Name, $Value, [string]$Type = "DWord") {
+$Global:OriginalBackup = @{}
+
+function Set-RegWithBackup([string]$Path, [string]$Name, $Value, [string]$Type = "DWord") {
     $Parent = Split-Path $Path
     if (-not (Test-Path $Parent)) { New-Item -Path $Parent -Force | Out-Null }
     if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
-    
-    if ($Type -eq "DWord") {
-        $Value = [uint32]$Value
+
+    # Sauvegarde de la valeur originale avant modification (pour le Rollback)
+    $OldValue = Get-ItemProperty -Path $Path -Name $Name -ErrorAction SilentlyContinue
+    if ($null -ne $OldValue) {
+        $Global:OriginalBackup["$Path\$Name"] = @{ "Value" = $OldValue.$Name; "Type" = $Type }
+    } else {
+        $Global:OriginalBackup["$Path\$Name"] = @{ "Value" = "DELETE"; "Type" = $Type }
     }
+
+    if ($Type -eq "DWord") { $Value = [uint32]$Value }
     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction SilentlyContinue
 }
 
 function Disable-Svc([string]$SvcName) {
     if (Get-Service -Name $SvcName -ErrorAction SilentlyContinue) {
+        # Sauvegarde de l'état original du service
+        $oldStart = (Get-Service -Name $SvcName).StartType
+        $Global:OriginalBackup["SVC\$SvcName"] = $oldStart
+
         Stop-Service -Name $SvcName -Force -ErrorAction SilentlyContinue
         Set-Service -Name $SvcName -StartupType Disabled -ErrorAction SilentlyContinue
     }
 }
 
-function Get-Brush([string]$Hex) {
-    return [System.Windows.Media.BrushConverter]::ConvertFromString($Hex)
-}
-
 # ============================================================
-# BASE DE DONNÉES DES TWEAKS & ACTIONS AVEC AUTO-CHECK
+# BASE DE DONNÉES DES TWEAKS
 # ============================================================
 $Options = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -163,8 +180,8 @@ $Options.Add([PSCustomObject]@{
     Action={
         $Paths = Get-ChildItem -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces"
         foreach ($p in $Paths) {
-            Set-Reg $p.PSPath "TcpAckFrequency" 1
-            Set-Reg $p.PSPath "TCPNoDelay" 1
+            Set-RegWithBackup $p.PSPath "TcpAckFrequency" 1
+            Set-RegWithBackup $p.PSPath "TCPNoDelay" 1
         }
     }
     Check={
@@ -186,14 +203,14 @@ $Options.Add([PSCustomObject]@{
 $Options.Add([PSCustomObject]@{
     Id=4; Cat="Reseau"; Risk="safe"
     LabelFR="Désactiver la limitation de bande passante réseau réservable (QoS)"; LabelEN="Disable QoS Reserved Bandwidth Limit (Unlocks full pipes)"
-    Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" "NonBestEffortLimit" 0 }
+    Action={ Set-RegWithBackup "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" "NonBestEffortLimit" 0 }
     Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" -Name "NonBestEffortLimit" -ErrorAction SilentlyContinue).NonBestEffortLimit -eq 0 }
 })
 
 $Options.Add([PSCustomObject]@{
     Id=8; Cat="Reseau"; Risk="safe"
     LabelFR="Optimiser l'allocation de la taille mémoire réseau (Taille Max : 3)"; LabelEN="Optimize Network Memory Buffer Size (Set Size to 3)"
-    Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" "Size" 3 }
+    Action={ Set-RegWithBackup "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" "Size" 3 }
     Check={ (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "Size" -ErrorAction SilentlyContinue).Size -eq 3 }
 })
 
@@ -207,13 +224,13 @@ $Options.Add([PSCustomObject]@{
     Check={ (netsh int tcp show global) -match "Receive-Side Scaling State.*enabled" }
 })
 
-# --- INNOVATION : PRIORITISATION RESEAU DES JEUX (Option 10) ---
+# --- PRIORITISATION RESEAU DES JEUX (Option 10) ---
 $Options.Add([PSCustomObject]@{
     Id=10; Cat="Reseau"; Risk="moderate"
     LabelFR="Prioriser le trafic des jeux et désactiver la limitation réseau Windows"; LabelEN="Prioritize Gaming traffic & disable network throttling"
     Action={
-        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "NetworkThrottlingIndex" 0xffffffff
-        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0
+        Set-RegWithBackup "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "NetworkThrottlingIndex" 0xffffffff
+        Set-RegWithBackup "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0
     }
     Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -ErrorAction SilentlyContinue).SystemResponsiveness -eq 0 }
 })
@@ -223,7 +240,7 @@ $Options.Add([PSCustomObject]@{
     Id=15; Cat="Confidentialite"; Risk="safe"
     LabelFR="Désactiver la télémétrie Windows (Expérience utilisateur)"; LabelEN="Disable Windows Diagnostic Telemetry data engines"
     Action={
-        Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0
+        Set-RegWithBackup "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0
         Disable-Svc "DiagTrack"
         Disable-Svc "dmwappushservice"
     }
@@ -234,7 +251,7 @@ $Options.Add([PSCustomObject]@{
 $Options.Add([PSCustomObject]@{
     Id=30; Cat="Gaming"; Risk="safe"
     LabelFR="Activer le mode jeu Windows (Windows Game Mode)"; LabelEN="Enable Native Windows Game Mode execution profiles"
-    Action={ Set-Reg "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" 1 }
+    Action={ Set-RegWithBackup "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" 1 }
     Check={ (Get-ItemProperty -Path "HKCU:\Software\Microsoft\GameBar" -Name "AllowAutoGameMode" -ErrorAction SilentlyContinue).AllowAutoGameMode -eq 1 }
 })
 
@@ -242,8 +259,8 @@ $Options.Add([PSCustomObject]@{
     Id=31; Cat="Gaming"; Risk="safe"
     LabelFR="Désactiver la Game Bar et les enregistrements DVR en arrière-plan"; LabelEN="Disable Windows Game Bar and background DVR capture loops"
     Action={
-        Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" 0
-        Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0
+        Set-RegWithBackup "HKCU:\Software\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" 0
+        Set-RegWithBackup "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0
     }
     Check={ (Get-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -ErrorAction SilentlyContinue).GameDVR_Enabled -eq 0 }
 })
@@ -317,7 +334,7 @@ $Options.Add([PSCustomObject]@{
     Check={ $false }
 })
 
-# --- 9. LOGICIELS UTILES (Avec Groupes / Sous-Catégories) ---
+# --- 9. LOGICIELS UTILES ---
 $Options.Add([PSCustomObject]@{
     Id=90; Cat="Apps"; SubCat="FR=Utilitaires|EN=Utilities"; Risk="safe"
     LabelFR="Installer 7-Zip (Archiver léger)"; LabelEN="Install 7-Zip (Lightweight archiver)"
@@ -344,7 +361,7 @@ $Options.Add([PSCustomObject]@{
 })
 
 # ============================================================
-# DESIGN INTERFACE GRAPHIQUE (WPF) - DESIGN V17.0
+# DESIGN INTERFACE GRAPHIQUE (WPF) - DESIGN V17.1
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -418,7 +435,9 @@ $Options.Add([PSCustomObject]@{
                         <Button Name="BtnSaveProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="0,0,2,0"/>
                         <Button Name="BtnLoadProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="2,0,0,0"/>
                     </UniformGrid>
-                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,12"/>
+                    
+                    <Button Name="BtnRestore" Height="30" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,4"/>
+                    <Button Name="BtnRollback" Height="30" Background="#221616" Foreground="#E74C3C" BorderThickness="0" Margin="0,0,0,12"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,0,0,12" Padding="8" Background="#0C0C12">
                         <StackPanel>
@@ -487,9 +506,9 @@ $Options.Add([PSCustomObject]@{
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Name="RadSvcLevel1" Content="Niveau 1: Basique (380000 Ko)" Foreground="#F5F5FA" Margin="0,0,15,0" IsChecked="True"/>
-                            <RadioButton Name="RadSvcLevel2" Content="Niveau 2: Optimisé (16777216 Ko)" Foreground="#F1C40F" Margin="0,0,15,0"/>
-                            <RadioButton Name="RadSvcLevel3" Content="Niveau 3: Extrême (134217728 Ko)" Foreground="#E74C3C"/>
+                            <RadioButton Name="RadSvcLevel1" Content="Niveau 1: Basique (3.8 Go / 380000 Ko)" Foreground="#F5F5FA" Margin="0,0,15,0" IsChecked="True"/>
+                            <RadioButton Name="RadSvcLevel2" Content="Niveau 2: Optimisé (16 Go / 16777216 Ko)" Foreground="#F1C40F" Margin="0,0,15,0"/>
+                            <RadioButton Name="RadSvcLevel3" Content="Niveau 3: Extrême (128 Go / 134217728 Ko)" Foreground="#E74C3C"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -523,6 +542,7 @@ $TxtLegend = $Form.FindName("TxtLegend")
 $LogBox = $Form.FindName("LogBox")
 $BtnApply = $Form.FindName("BtnApply")
 $BtnRestore = $Form.FindName("BtnRestore")
+$BtnRollback = $Form.FindName("BtnRollback")
 $ComboLang = $Form.FindName("ComboLang")
 $ApplyProgress = $Form.FindName("ApplyProgress")
 
@@ -608,9 +628,14 @@ $BtnSaveProfile.Add_Click({
         if ($RadSvcLevel2.IsChecked) { $SvcLevel = "2" }
         if ($RadSvcLevel3.IsChecked) { $SvcLevel = "3" }
 
+        # Conversion du dictionnaire en hashtable propre pour éviter les erreurs de type en export JSON
+        $StatesTable = @{}
+        foreach ($k in $Global:CheckStates.Keys) { $StatesTable[[string]$k] = $Global:CheckStates[$k] }
+
         $SaveObject = @{
-            "CheckStates" = $Global:CheckStates
+            "CheckStates" = $StatesTable
             "SvcLevel" = $SvcLevel
+            "OriginalBackup" = $Global:OriginalBackup
         }
         $Json = $SaveObject | ConvertTo-Json -Depth 5
         [System.IO.File]::WriteAllText($ProfilePath, $Json)
@@ -635,6 +660,12 @@ $BtnLoadProfile.Add_Click({
                 elseif ($Loaded.SvcLevel -eq "2") { $RadSvcLevel2.IsChecked = $true }
                 elseif ($Loaded.SvcLevel -eq "3") { $RadSvcLevel3.IsChecked = $true }
             }
+            if ($null -ne $Loaded.OriginalBackup) {
+                $Global:OriginalBackup = @{}
+                foreach ($prop in $Loaded.OriginalBackup.PSObject.Properties) {
+                    $Global:OriginalBackup[$prop.Name] = $prop.Value
+                }
+            }
             Render-Category $Global:LastCategory
             Update-SidebarCounters
             Write-Log "ProfileLoaded"
@@ -643,6 +674,46 @@ $BtnLoadProfile.Add_Click({
         }
     } else {
         Write-Log "ProfileErr"
+    }
+})
+
+# ============================================================
+# EXÉCUTION DU ROLLBACK (Restauration chirurgicale)
+# ============================================================
+$BtnRollback.Add_Click({
+    if ($Global:OriginalBackup.Count -eq 0) {
+        Write-Log "[INFO] Aucune modification antérieure enregistrée dans le profil." $false
+        return
+    }
+
+    try {
+        foreach ($key in $Global:OriginalBackup.Keys) {
+            if ($key.StartsWith("SVC\")) {
+                $svcName = $key.Substring(4)
+                $origStart = $Global:OriginalBackup[$key]
+                Set-Service -Name $svcName -StartupType $origStart -ErrorAction SilentlyContinue
+                Write-Log "[ROLLBACK] Service $svcName réinitialisé en $origStart" $false
+            } else {
+                # Restauration d'une clé de registre
+                $path = Split-Path $key
+                $name = Split-Path $key -Leaf
+                $data = $Global:OriginalBackup[$key]
+
+                if ($data.Value -eq "DELETE") {
+                    Remove-ItemProperty -Path $path -Name $name -ErrorAction SilentlyContinue
+                    Write-Log "[ROLLBACK] Suppression de la clé ajoutée : $key" $false
+                } else {
+                    $val = $data.Value
+                    $type = $data.Type
+                    if ($type -eq "DWord") { $val = [uint32]$val }
+                    Set-ItemProperty -Path $path -Name $name -Value $val -Type $type -Force -ErrorAction SilentlyContinue
+                    Write-Log "[ROLLBACK] Restauration : $key -> $val" $false
+                }
+            }
+        }
+        Write-Log "RollbackDone"
+    } catch {
+        Write-Log "[ERR] Échec durant la phase de rollback : $($_.Exception.Message)" $false
     }
 })
 
@@ -715,6 +786,7 @@ function Update-InterfaceLanguage {
     $TxtLegend.Text = $L["Legend"]
     $BtnApply.Content = $L["BtnApply"]
     $BtnRestore.Content = $L["BtnRestore"]
+    $BtnRollback.Content = $L["BtnRollback"]
     
     $TxtQuickSelect.Text = $L["QuickSelect"]
     $BtnSelectSafe.Content = $L["BtnSelectSafe"]
@@ -968,7 +1040,7 @@ $Worker.Add_DoWork({
     elseif ($using:RadSvcLevel3.IsChecked) { $SvcValue = 134217728 }
 
     try {
-        Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $SvcValue
+        Set-RegWithBackup "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $SvcValue
         $Worker.ReportProgress($pct, "SvcHost")
     } catch {
         $Worker.ReportProgress($pct, "SvcHostErr")
