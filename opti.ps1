@@ -1,6 +1,6 @@
 <#
     .SYNOPSIS
-        OPTI-DYLAN TOOLKIT - V16.0 (Édition Ultime Asynchrone)
+        OPTI-DYLAN TOOLKIT - V17.0 (Édition Intégrale)
         Optimisation avancée et nettoyage pour Windows 10/11.
     .DESCRIPTION
         Ce script doit impérativement être exécuté en tant qu'Administrateur.
@@ -27,7 +27,7 @@ $Global:CurrentLang = "FR"
 
 $Global:LangDict = @{
     "FR" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT - V16.0"
+        "Title" = "OPTI-DYLAN TOOLKIT - V17.0"
         "Subtitle" = "Optimisation en temps réel • Interface réactive"
         "Legend" = "Légende des risques :\nVert = Sûr | Jaune = Modéré | Rouge = Avancé"
         "QuickSelect" = "SÉLECTION RAPIDE"
@@ -71,7 +71,7 @@ $Global:LangDict = @{
         "CatBloatwares" = "Bloatwares"
     }
     "EN" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT - V16.0"
+        "Title" = "OPTI-DYLAN TOOLKIT - V17.0"
         "Subtitle" = "Real-time optimization • Non-blocking GUI"
         "Legend" = "Risk Legend :\nGreen = Safe | Yellow = Moderate | Red = Advanced"
         "QuickSelect" = "QUICK SELECTION"
@@ -120,7 +120,7 @@ $Global:LangDict = @{
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 # ============================================================
-# RECUPERATION DU MATERIEL (Diagnostics réels)
+# RÉCUPÉRATION DU MATÉRIEL (Diagnostics réels)
 # ============================================================
 $CpuName = (Get-CimInstance Win32_Processor).Name.Trim()
 $GpuName = (Get-CimInstance Win32_VideoController | Select-Object -First 1).Name.Trim()
@@ -135,7 +135,6 @@ function Set-Reg([string]$Path, [string]$Name, $Value, [string]$Type = "DWord") 
     if (-not (Test-Path $Path)) { New-Item -Path $Path -Force | Out-Null }
     
     if ($Type -eq "DWord") {
-        # S'assurer que c'est un entier propre
         $Value = [uint32]$Value
     }
     Set-ItemProperty -Path $Path -Name $Name -Value $Value -Type $Type -Force -ErrorAction SilentlyContinue
@@ -193,19 +192,30 @@ $Options.Add([PSCustomObject]@{
 
 $Options.Add([PSCustomObject]@{
     Id=8; Cat="Reseau"; Risk="safe"
-    LabelFR="Optimiser l'allocation de la taille mémoire réseau (Registre corrigé)"; LabelEN="Optimize Network Memory Buffer Size (Fixed Registry Tweak)"
+    LabelFR="Optimiser l'allocation de la taille mémoire réseau (Taille Max : 3)"; LabelEN="Optimize Network Memory Buffer Size (Set Size to 3)"
     Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" "Size" 3 }
     Check={ (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\LanmanServer\Parameters" -Name "Size" -ErrorAction SilentlyContinue).Size -eq 3 }
 })
 
 $Options.Add([PSCustomObject]@{
     Id=9; Cat="Reseau"; Risk="safe"
-    LabelFR="Forcer l'optimisation moderne de l'auto-tuning TCP (Restauration RSS)"; LabelEN="Enable Modern TCP Auto-Tuning Optimization (RSS & LSO)"
+    LabelFR="Forcer l'optimisation moderne de l'auto-tuning TCP (RSS)"; LabelEN="Enable Modern TCP Auto-Tuning Optimization (RSS)"
     Action={
         netsh int tcp set global autotuninglevel=normal
         netsh int tcp set global rss=enabled
     }
     Check={ (netsh int tcp show global) -match "Receive-Side Scaling State.*enabled" }
+})
+
+# --- INNOVATION : PRIORITISATION RESEAU DES JEUX (Option 10) ---
+$Options.Add([PSCustomObject]@{
+    Id=10; Cat="Reseau"; Risk="moderate"
+    LabelFR="Prioriser le trafic des jeux et désactiver la limitation réseau Windows"; LabelEN="Prioritize Gaming traffic & disable network throttling"
+    Action={
+        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "NetworkThrottlingIndex" 0xffffffff
+        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0
+    }
+    Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" -Name "SystemResponsiveness" -ErrorAction SilentlyContinue).SystemResponsiveness -eq 0 }
 })
 
 # --- 2. CONFIDENTIALITÉ & TÉLÉMÉTRIE ---
@@ -242,19 +252,19 @@ $Options.Add([PSCustomObject]@{
 $Options.Add([PSCustomObject]@{
     Id=115; Cat="Timer"; Risk="advanced"
     LabelFR="Timer Resolution : Bloquer à 0.5 ms (Latence Minimale Extrême)"; LabelEN="Timer Resolution: Lock to 0.5 ms (Maximum latency reduction)"
-    Action={ [Win32Timer]::NtSetTimerResolution(5000, $true, [ref]0) | Out-Null }
+    Action={ $Global:DesiredTimerResolution = 5000 }
     Check={ $Global:CheckStates[115] }
 })
 $Options.Add([PSCustomObject]@{
     Id=116; Cat="Timer"; Risk="moderate"
     LabelFR="Timer Resolution : Bloquer à 0.75 ms (Profil de Latence Réduite)"; LabelEN="Timer Resolution: Lock to 0.75 ms (Smooth gaming balance)"
-    Action={ [Win32Timer]::NtSetTimerResolution(7500, $true, [ref]0) | Out-Null }
+    Action={ $Global:DesiredTimerResolution = 7500 }
     Check={ $Global:CheckStates[116] }
 })
 $Options.Add([PSCustomObject]@{
     Id=119; Cat="Timer"; Risk="safe"
     LabelFR="Timer Resolution : Bloquer à 1.0 ms (Profil Standard Stable)"; LabelEN="Timer Resolution: Lock to 1.0 ms (Stable generic layout)"
-    Action={ [Win32Timer]::NtSetTimerResolution(10000, $true, [ref]0) | Out-Null }
+    Action={ $Global:DesiredTimerResolution = 10000 }
     Check={ $Global:CheckStates[119] }
 })
 
@@ -307,6 +317,21 @@ $Options.Add([PSCustomObject]@{
     Check={ $false }
 })
 
+# --- 9. LOGICIELS UTILES (Avec Groupes / Sous-Catégories) ---
+$Options.Add([PSCustomObject]@{
+    Id=90; Cat="Apps"; SubCat="FR=Utilitaires|EN=Utilities"; Risk="safe"
+    LabelFR="Installer 7-Zip (Archiver léger)"; LabelEN="Install 7-Zip (Lightweight archiver)"
+    Action={ Start-Process "winget" -ArgumentList "install -e --id 7zip.7zip" -Wait -WindowStyle Hidden }
+    Check={ $false }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=91; Cat="Apps"; SubCat="FR=Navigateurs|EN=Browsers"; Risk="safe"
+    LabelFR="Installer Google Chrome"; LabelEN="Install Google Chrome Browser"
+    Action={ Start-Process "winget" -ArgumentList "install -e --id Google.Chrome" -Wait -WindowStyle Hidden }
+    Check={ $false }
+})
+
 # --- 10. BLOATWARES WINDOWS ---
 $Options.Add([PSCustomObject]@{
     Id=128; Cat="Bloatwares"; Risk="safe"
@@ -319,7 +344,7 @@ $Options.Add([PSCustomObject]@{
 })
 
 # ============================================================
-# DESIGN INTERFACE GRAPHIQUE (WPF) - DESIGN V16.0
+# DESIGN INTERFACE GRAPHIQUE (WPF) - DESIGN V17.0
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -462,9 +487,9 @@ $Options.Add([PSCustomObject]@{
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Orientation="Horizontal">
-                            <RadioButton Name="RadSvcLevel1" Content="Niveau 1: Basique (3.8 Go)" Foreground="#F5F5FA" Margin="0,0,15,0" IsChecked="True"/>
-                            <RadioButton Name="RadSvcLevel2" Content="Niveau 2: Optimisé (16 Go)" Foreground="#F1C40F" Margin="0,0,15,0"/>
-                            <RadioButton Name="RadSvcLevel3" Content="Niveau 3: Extrême (128 Go)" Foreground="#E74C3C"/>
+                            <RadioButton Name="RadSvcLevel1" Content="Niveau 1: Basique (380000 Ko)" Foreground="#F5F5FA" Margin="0,0,15,0" IsChecked="True"/>
+                            <RadioButton Name="RadSvcLevel2" Content="Niveau 2: Optimisé (16777216 Ko)" Foreground="#F1C40F" Margin="0,0,15,0"/>
+                            <RadioButton Name="RadSvcLevel3" Content="Niveau 3: Extrême (134217728 Ko)" Foreground="#E74C3C"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -549,6 +574,7 @@ $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
+$Global:DesiredTimerResolution = 0
 
 # ============================================================
 # NETTOYAGE ET MISE À JOUR DE LA RAM RÉELLE
@@ -714,7 +740,7 @@ function Update-InterfaceLanguage {
 }
 
 # ============================================================
-# ALGORITHME DE RENDU ET RECHERCHE FLUIDE
+# ALGORITHME DE RENDU ET RECHERCHE AVEC TRADUCTION SOUS-CATÉGORIES
 # ============================================================
 function Render-Category([string]$Cat) {
     try {
@@ -737,7 +763,30 @@ function Render-Category([string]$Cat) {
             }
         }
         
+        $CurrentGroup = ""
+
         foreach ($item in $Items) {
+            # Tri et création des en-têtes de sous-catégories (par exemple pour Apps)
+            if ($null -ne $item.SubCat) {
+                $subCatParsed = @{}
+                foreach ($pair in ($item.SubCat -split "\|")) {
+                    $parts = $pair -split "="
+                    $subCatParsed[$parts[0]] = $parts[1]
+                }
+                $groupName = $subCatParsed[$Global:CurrentLang]
+                
+                if ($groupName -ne $CurrentGroup) {
+                    $CurrentGroup = $groupName
+                    $Header = New-Object System.Windows.Controls.TextBlock
+                    $Header.Text = "--- $CurrentGroup ---"
+                    $Header.Foreground = Get-Brush "#00FFC8"
+                    $Header.FontSize = 12
+                    $Header.FontWeight = "Bold"
+                    $Header.Margin = "0,15,0,5"
+                    [void]$Panel.Children.Add($Header)
+                }
+            }
+
             $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
             $Brush = Get-Brush $color
 
@@ -801,7 +850,7 @@ function Start-AutoCheck {
                     $Global:CheckStates[$item.Id] = $true
                 }
             } catch {
-                # Ignorer les exceptions de l'auto-check
+                # Silencieux
             }
         }
     }
@@ -886,6 +935,20 @@ $BtnRestore.Add_Click({
 })
 
 # ============================================================
+# TRAVAIL DE FOND PERSISTANT (Maintien du Timer Resolution)
+# ============================================================
+$Global:TimerThread = [System.Threading.Thread]::new({
+    while ($true) {
+        if ($Global:DesiredTimerResolution -gt 0) {
+            [Win32Timer]::NtSetTimerResolution($Global:DesiredTimerResolution, $true, [ref]0) | Out-Null
+        }
+        [System.Threading.Thread]::Sleep(1000)
+    }
+})
+$Global:TimerThread.IsBackground = $true
+$Global:TimerThread.Start()
+
+# ============================================================
 # EXÉCUTION ASYNCHRONIQUE (ANTI-FREEZE)
 # ============================================================
 $Worker = New-Object System.ComponentModel.BackgroundWorker
@@ -900,7 +963,7 @@ $Worker.Add_DoWork({
     $currentStep++
     $pct = [int](($currentStep / $totalSteps) * 100)
     
-    $SvcValue = 3800000
+    $SvcValue = 380000
     if ($using:RadSvcLevel2.IsChecked) { $SvcValue = 16777216 }
     elseif ($using:RadSvcLevel3.IsChecked) { $SvcValue = 134217728 }
 
@@ -911,18 +974,17 @@ $Worker.Add_DoWork({
         $Worker.ReportProgress($pct, "SvcHostErr")
     }
 
-    # 2. TRAITEMENT DES TWEAKS SELECTIONNES
+    # 2. TRAITEMENT DES TWEAKS SÉLECTIONNÉS
     foreach ($item in $selected) {
         $currentStep++
         $pct = [int](($currentStep / $totalSteps) * 100)
         try {
-            # Execution de l'action PowerShell
             & $item.Action
             $Worker.ReportProgress($pct, "OK|$($item.Id)")
         } catch {
             $Worker.ReportProgress($pct, "ERR|$($item.Id)")
         }
-        [System.Threading.Thread]::Sleep(50) # Légère pause pour l'animation
+        [System.Threading.Thread]::Sleep(50)
     }
 })
 
@@ -982,6 +1044,11 @@ $BtnApply.Add_Click({
 # EXPORT DES LOGS ET FERMETURE PROPRE
 # ============================================================
 $Form.Add_Closed({
+    # Arrêt du thread de maintien du timer
+    if ($null -ne $Global:TimerThread) {
+        $Global:TimerThread.Abort()
+    }
+
     # Écriture du rapport de logs sur le Bureau à la fermeture
     $DesktopPath = [Environment]::GetFolderPath("Desktop")
     $ReportFile = Join-Path $DesktopPath "opti_dylan_report.txt"
@@ -989,7 +1056,7 @@ $Form.Add_Closed({
         $ReportText = @()
         $ReportText += "=================================================="
         $ReportText += "        RAPPORT D'OPTIMISATION OPTI-DYLAN         "
-        $ReportText += "=================================================="
+        $ReportText += "================================================--"
         $ReportText += "Date : $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
         $ReportText += "Configuration : $CpuName | $GpuName | $TotalRamGB Go"
         $ReportText += "--------------------------------------------------"
@@ -1003,7 +1070,7 @@ $Form.Add_Closed({
         }
         [System.IO.File]::WriteAllLines($ReportFile, $ReportText)
     } catch {
-        # Échoue silencieusement si les droits d'écriture manquent
+        # Silencieux
     }
 })
 
