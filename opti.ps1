@@ -49,6 +49,11 @@ function Install-WingetApp {
     if ($p.ExitCode -ne 0) { throw "winget a retourne le code $($p.ExitCode)" }
 }
 
+function Get-Brush {
+    param([string]$Hex)
+    return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex)
+}
+
 # ============================================================
 # CATALOGUE DES OPTIONS - TOUT EST REEL, RIEN N'EST DECORATIF
 # Risk : safe (blanc) / moderate (jaune) / advanced (rouge)
@@ -358,7 +363,7 @@ function Render-Category([string]$Cat) {
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         foreach ($item in $Items) {
             $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} default {"#F5F5FA"} }
-            $Brush = [System.Windows.Media.ColorConverter]::ConvertFromString($color)
+            $Brush = Get-Brush $color
 
             $Lbl = New-Object System.Windows.Controls.TextBlock
             $Lbl.Text = $item.Label
@@ -378,11 +383,11 @@ function Render-Category([string]$Cat) {
         }
         foreach ($key in $NavButtons.Keys) {
             if ($key -eq $Cat) {
-                $NavButtons[$key].Background = [System.Windows.Media.ColorConverter]::ConvertFromString("#181824")
-                $NavButtons[$key].Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString("#00FFC8")
+                $NavButtons[$key].Background = Get-Brush "#181824"
+                $NavButtons[$key].Foreground = Get-Brush "#00FFC8"
             } else {
                 $NavButtons[$key].Background = [System.Windows.Media.Brushes]::Transparent
-                $NavButtons[$key].Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString("#A0A0B4")
+                $NavButtons[$key].Foreground = Get-Brush "#A0A0B4"
             }
         }
     } catch {
@@ -394,7 +399,6 @@ $AllNavButtons = @($NavButtons["Reseau"], $NavButtons["Confidentialite"], $NavBu
 
 $NavClickHandler = {
     param($sender, $e)
-    Write-Log "[DEBUG] Clic recu sur : $($sender.Tag)"
     Render-Category $sender.Tag
 }
 
