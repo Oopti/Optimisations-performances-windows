@@ -1,11 +1,8 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V10 - 90 TWEAKS, 24 APPS & TIMER RESOLUTION CONTROL
+    OPTI-DYLAN TOOLKIT PRO V11 - 90 TWEAKS, 24 APPS & 7 TIMER RESOLUTION CHOICES
 #>
 
-# ============================================================
-# AUTO-ELEVATION (relance en admin si besoin)
-# ============================================================
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     exit
@@ -14,7 +11,6 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 
-# Import de l'API pour modifier la résolution du Timer système
 $TimerResolutionCode = @"
 using System;
 using System.Runtime.InteropServices;
@@ -27,7 +23,7 @@ public class TimerResolution {
 Add-Type -TypeDefinition $TimerResolutionCode -ErrorAction SilentlyContinue
 
 # ============================================================
-# DICTIONNAIRE DE TRADUCTION (FRANÇAIS / ENGLISH)
+# DICTIONNAIRE DE TRADUCTION
 # ============================================================
 $Global:LangDict = @{
     "FR" = @{
@@ -46,6 +42,7 @@ $Global:LangDict = @{
         "CatPower" = "Énergie & CPU"
         "CatServices" = "Services Windows"
         "CatNettoyage" = "Nettoyage & Ram"
+        "CatTimer" = "Timer Resolution"
         "CatApps" = "Apps (Winget)"
     }
     "EN" = @{
@@ -64,6 +61,7 @@ $Global:LangDict = @{
         "CatPower" = "Power & CPU"
         "CatServices" = "Windows Services"
         "CatNettoyage" = "Cleanup & Ram"
+        "CatTimer" = "Timer Resolution"
         "CatApps" = "Apps (Winget)"
     }
 }
@@ -93,9 +91,7 @@ function Disable-Svc {
 
 function Install-WingetApp {
     param([string]$Id, [string]$AppName)
-    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
-        throw "winget introuvable."
-    }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "winget introuvable." }
     Write-Log "[WINGET] Téléchargement et installation de : $AppName ($Id)..."
     $p = Start-Process -FilePath "winget" -ArgumentList "install --id $Id -e --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -ne 0) { throw "winget a échoué avec le code $($p.ExitCode)" }
@@ -108,19 +104,18 @@ function Get-Brush {
 
 function Set-SystemTimerResolution {
     param([double]$Milliseconds)
-    # Conversion en unités de 100 nanosecondes (0.5ms = 5000)
     $val = [uint32]($Milliseconds * 10000)
     $current = [uint32]0
     $res = [TimerResolution]::NtSetTimerResolution($val, $true, [ref]$current)
     if ($res -eq 0) {
-        Write-Log "[TIMER] Résolution du timer système forcée à : $Milliseconds ms (Actuel: $($current / 10000) ms)"
+        Write-Log "[TIMER] Résolution forcée à : $Milliseconds ms (Retour noyau : $($current / 10000) ms)"
     } else {
-        Write-Log "[WARN] Impossible de modifier la résolution du timer (Code: $res)"
+        Write-Log "[WARN] Échec du changement de timer (Code: $res)"
     }
 }
 
 # ============================================================
-# CATALOGUE DE 90 OPTIONS ET TWEAKS SYSTÈME RÉELS
+# CATALOGUE DE 90 TWEAKS SYSTÈME
 # ============================================================
 $Options = @()
 
@@ -175,9 +170,14 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; Label="Augmenter la priorité
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; Label="Désactiver l'alerte de raccourci des touches rémanentes"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; Label="Forcer l'affinité CPU maximale sur les threads d'affichage"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# -- TIMER RESOLUTION OPTIONS DANS GAMING --
-$Options += [PSCustomObject]@{Id=115; Cat="Gaming"; Label="Timer Resolution : Forcer 0.5 ms (Latence Minimale - Gaming Extrême)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.5 }}
-$Options += [PSCustomObject]@{Id=116; Cat="Gaming"; Label="Timer Resolution : Fixer à 1.0 ms (Latence Standard - Équilibré)"; Risk="safe"; Action={ Set-SystemTimerResolution 1.0 }}
+# --- CATEGORIE EXCLUSIVE : TIMER RESOLUTION (7 choix distincts) ---
+$Options += [PSCustomObject]@{Id=115; Cat="Timer"; Label="0.45 ms - Latence Expérimentale (Forçage limite)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
+$Options += [PSCustomObject]@{Id=116; Cat="Timer"; Label="0.50 ms - Latence Minimale Absolue (Gaming Compétitif)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.50 }}
+$Options += [PSCustomObject]@{Id=117; Cat="Timer"; Label="0.60 ms - Latence Très Basse (Ultra stable)"; Risk="safe"; Action={ Set-SystemTimerResolution 0.60 }}
+$Options += [PSCustomObject]@{Id=118; Cat="Timer"; Label="0.75 ms - Latence Intermédiaire Optimisée"; Risk="safe"; Action={ Set-SystemTimerResolution 0.75 }}
+$Options += [PSCustomObject]@{Id=119; Cat="Timer"; Label="1.00 ms - Latence Standard Windows Équilibrée"; Risk="safe"; Action={ Set-SystemTimerResolution 1.00 }}
+$Options += [PSCustomObject]@{Id=120; Cat="Timer"; Label="2.50 ms - Économie d'Énergie Modérée"; Risk="safe"; Action={ Set-SystemTimerResolution 2.50 }}
+$Options += [PSCustomObject]@{Id=121; Cat="Timer"; Label="5.00 ms - Mode Bureautique / Éco Batterie maximal"; Risk="safe"; Action={ Set-SystemTimerResolution 5.00 }}
 
 # --- 4. ÉNERGIE & PROCESSEUR (15 Tweaks) ---
 $Options += [PSCustomObject]@{Id=46; Cat="Power"; Label="Activer le plan d'alimentation Performances Ultimes"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
@@ -230,7 +230,7 @@ $Options += [PSCustomObject]@{Id=88; Cat="Nettoyage"; Label="Nettoyer l'historiq
 $Options += [PSCustomObject]@{Id=89; Cat="Nettoyage"; Label="Forcer le vidage de la mémoire RAM en cache"; Risk="safe"; Action={ [System.GC]::Collect(); [System.GC]::WaitForPendingFinalizers() }}
 $Options += [PSCustomObject]@{Id=90; Cat="Nettoyage"; Label="Lancer l'utilitaire Cleanmgr en mode automatique silencieux"; Risk="safe"; Action={ Start-Process "cleanmgr.exe" -ArgumentList "/sagerun:1" -Wait -WindowStyle Hidden }}
 
-# --- MULTITUDE D'APPS À TÉLÉCHARGER (WINGET) (24 Applications) ---
+# --- APPLICATIONS PACKAGES (24 Apps) ---
 $Options += [PSCustomObject]@{Id=91; Cat="Apps"; Label="Google Chrome"; Risk="safe"; Action={ Install-WingetApp "Google.Chrome" "Google Chrome" }}
 $Options += [PSCustomObject]@{Id=92; Cat="Apps"; Label="Mozilla Firefox"; Risk="safe"; Action={ Install-WingetApp "Mozilla.Firefox" "Mozilla Firefox" }}
 $Options += [PSCustomObject]@{Id=93; Cat="Apps"; Label="Brave Browser"; Risk="safe"; Action={ Install-WingetApp "Brave.Brave" "Brave Browser" }}
@@ -308,6 +308,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; Label="Audacity (Audio Editor)
                 <Button Name="BtnReseau" Tag="Reseau" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                 <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                 <Button Name="BtnGaming" Tag="Gaming" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                <Button Name="BtnTimer" Tag="Timer" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                 <Button Name="BtnPower" Tag="Power" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                 <Button Name="BtnServices" Tag="Services" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
                 <Button Name="BtnNettoyage" Tag="Nettoyage" Height="36" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
@@ -343,11 +344,9 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; Label="Audacity (Audio Editor)
 </Window>
 "@
 
-# Chargement du moteur WPF
 $Reader = New-Object System.Xml.XmlNodeReader $XAML
 $Form = [Windows.Markup.XamlReader]::Load($Reader)
 
-# Récupération des composants de l'interface
 $Panel = $Form.FindName("OptionsPanel")
 $TxtTitle = $Form.FindName("TxtTitle")
 $TxtMainTitle = $Form.FindName("TxtMainTitle")
@@ -360,24 +359,21 @@ $ComboLang = $Form.FindName("ComboLang")
 
 $NavButtons = @{
     "Reseau"=$Form.FindName("BtnReseau"); "Confidentialite"=$Form.FindName("BtnConfidentialite")
-    "Gaming"=$Form.FindName("BtnGaming"); "Power"=$Form.FindName("BtnPower")
+    "Gaming"=$Form.FindName("BtnGaming"); "Timer"=$Form.FindName("BtnTimer"); "Power"=$Form.FindName("BtnPower")
     "Services"=$Form.FindName("BtnServices"); "Nettoyage"=$Form.FindName("BtnNettoyage")
     "Apps"=$Form.FindName("BtnApps")
 }
 
-# Initialisation des états pour l'ensemble des éléments
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
 $Global:LastCategory = "Reseau"
 
-# Fonctions d'interface
 function Write-Log([string]$Text) {
     $LogBox.AppendText(">> $Text`n")
     $LogBox.ScrollToEnd()
     [System.Windows.Forms.Application]::DoEvents()
 }
 
-# Traduction dynamique complète
 function Update-InterfaceLanguage {
     $L = $Global:LangDict[$Global:CurrentLang]
     
@@ -387,10 +383,10 @@ function Update-InterfaceLanguage {
     $BtnApply.Content = $L["BtnApply"]
     $BtnRestore.Content = $L["BtnRestore"]
     
-    # Traduction des boutons
     $NavButtons["Reseau"].Content = "🌐  " + $L["CatReseau"]
     $NavButtons["Confidentialite"].Content = "🛡️  " + $L["CatConf"]
     $NavButtons["Gaming"].Content = "🎮  " + $L["CatGaming"]
+    $NavButtons["Timer"].Content = "⏱️  " + $L["CatTimer"]
     $NavButtons["Power"].Content = "⚡  " + $L["CatPower"]
     $NavButtons["Services"].Content = "⚙️  " + $L["CatServices"]
     $NavButtons["Nettoyage"].Content = "🧹  " + $L["CatNettoyage"]
@@ -405,7 +401,7 @@ function Render-Category([string]$Cat) {
         $Panel.Children.Clear()
         $L = $Global:LangDict[$Global:CurrentLang]
         
-        $TxtTitle.Text = $L["Cat" + ($Cat.Replace("Confidentialite","Conf").Replace("Reseau","Reseau"))].ToUpper()
+        $TxtTitle.Text = $L["Cat" + $Cat].ToUpper()
         
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         foreach ($item in $Items) {
@@ -429,13 +425,11 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Empêcher de cocher deux résolutions de timer différentes en même temps
-                if ($id -eq 115) { 
-                    $Global:CheckStates[116] = $false
-                    Render-Category $Global:LastCategory
-                }
-                elseif ($id -eq 116) { 
-                    $Global:CheckStates[115] = $false
+                # Système d'exclusion mutuelle pour l'onglet dédié au Timer (IDs de 115 à 121)
+                if ($id -ge 115 -and $id -le 121) {
+                    for ($i = 115; $i -le 121; $i++) {
+                        if ($i -ne $id) { $Global:CheckStates[$i] = $false }
+                    }
                     Render-Category $Global:LastCategory
                 }
             })
@@ -457,27 +451,18 @@ function Render-Category([string]$Cat) {
     }
 }
 
-# Liaison des clics boutons de navigation
 foreach ($key in $NavButtons.Keys) {
     $b = $NavButtons[$key]
     if ($null -ne $b) {
-        $b.Add_Click({
-            Render-Category $this.Tag
-        })
+        $b.Add_Click({ Render-Category $this.Tag })
     }
 }
 
-# Événement de changement de langue
 $ComboLang.Add_SelectionChanged({
-    if ($ComboLang.SelectedIndex -eq 0) {
-        $Global:CurrentLang = "FR"
-    } else {
-        $Global:CurrentLang = "EN"
-    }
+    if ($ComboLang.SelectedIndex -eq 0) { $Global:CurrentLang = "FR" } else { $Global:CurrentLang = "EN" }
     Update-InterfaceLanguage
 })
 
-# Clic Point de Restauration
 $BtnRestore.Add_Click({
     $L = $Global:LangDict[$Global:CurrentLang]
     Write-Log "[SYSTEM] Windows Restore Point..."
@@ -489,7 +474,6 @@ $BtnRestore.Add_Click({
     }
 })
 
-# Clic Application des Tweaks et Installation
 $BtnApply.Add_Click({
     $L = $Global:LangDict[$Global:CurrentLang]
     $BtnApply.IsEnabled = $false
@@ -515,7 +499,6 @@ $BtnApply.Add_Click({
     $BtnApply.IsEnabled = $true
 })
 
-# Démarrage
 Update-InterfaceLanguage
-Write-Log "[SYSTEM] Core Engine V10 Online. Timer Resolution sub-system loaded."
+Write-Log "[SYSTEM] Core Engine V11 Online. Dedicated Timer Resolution Category initialized."
 [void]$Form.ShowDialog()
