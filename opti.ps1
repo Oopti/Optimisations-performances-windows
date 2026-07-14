@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V12.2 - FIX LAYOUT & LIVE TRANSLATION
+    OPTI-DYLAN TOOLKIT PRO V12.3 - SMART QUICK SELECT
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -51,9 +51,9 @@ $Global:LangDict = @{
         "BtnSelectAdv" = "Cocher Tout (Avancé)"
         "BtnClearAll" = "Tout Décocher"
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.2 En Ligne. Traduction Live active."
-        "LogCheckSafe" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' cochés."
-        "LogCheckMod" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' & 'Modéré' cochés."
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.3 En Ligne. Sélection intelligente active."
+        "LogCheckSafe" = "[UI] Sélection Auto : Uniquement 'Sans Risque' cochés. Modéré/Avancé décochés."
+        "LogCheckMod" = "[UI] Sélection Auto : Uniquement 'Sans Risque' & 'Modéré' cochés. Avancé décochés."
         "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
         "LogClearAll" = "[UI] Réinitialisation : Toutes les cases décochées."
         "LogRestoreStart" = "[SYSTEM] Création du point de restauration Windows..."
@@ -84,9 +84,9 @@ $Global:LangDict = @{
         "BtnSelectAdv" = "Check All (Advanced)"
         "BtnClearAll" = "Clear All Checkboxes"
         # Logs
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.2 Online. Live translation active."
-        "LogCheckSafe" = "[UI] Auto-Check: Checked all 'Safe' tweaks."
-        "LogCheckMod" = "[UI] Auto-Check: Checked all 'Safe' & 'Moderate' tweaks."
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.3 Online. Smart selection active."
+        "LogCheckSafe" = "[UI] Auto-Check: Only 'Safe' tweaks checked. Moderate/Advanced cleared."
+        "LogCheckMod" = "[UI] Auto-Check: Only 'Safe' & 'Moderate' checked. Advanced cleared."
         "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks."
         "LogClearAll" = "[UI] Reset: Unchecked all boxes."
         "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
@@ -290,7 +290,7 @@ $Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="O
 $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF) - CORRECTION DE LA SIDEBAR (HEIGHT 860)
+# INTERFACE GRAPHIQUE (WPF) - DESIGN V12.3
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -532,15 +532,21 @@ function Render-Category([string]$Cat) {
     }
 }
 
-# --- LOGIQUE DES BOUTONS DE SÉLECTION RAPIDE ---
+# --- LOGIQUE INTELLIGENTE DES BOUTONS DE SÉLECTION RAPIDE ---
 $BtnSelectSafe.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
+        # Si on clique sur Safe, on coche le safe, et on DECOCHE impérativement le reste
         if ($item.Risk -eq "safe" -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
             $Global:CheckStates[$item.Id] = $true
+        } else {
+            $Global:CheckStates[$item.Id] = $false
         }
     }
+    # Reset du timer sur 1.00 ms (Le plus safe)
+    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[119] = $true
+    
     Render-Category $Global:LastCategory
     Write-Log "LogCheckSafe"
 })
@@ -548,11 +554,17 @@ $BtnSelectSafe.Add_Click({
 $BtnSelectMod.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
+        # Si on clique sur Modéré, on coche Safe + Modéré, et on DECOCHE impérativement l'Advanced
         if (($item.Risk -eq "safe" -or $item.Risk -eq "moderate") -and ($item.Id -lt 115 -or $item.Id -gt 121)) {
             $Global:CheckStates[$item.Id] = $true
+        } else {
+            $Global:CheckStates[$item.Id] = $false
         }
     }
+    # Reset du timer sur 0.50 ms (Le standard Gaming)
+    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[116] = $true
+    
     Render-Category $Global:LastCategory
     Write-Log "LogCheckMod"
 })
@@ -560,11 +572,15 @@ $BtnSelectMod.Add_Click({
 $BtnSelectAdv.Add_Click({
     foreach ($item in $Options) {
         if ($item.Cat -eq "Apps") { continue }
+        # On coche tout
         if ($item.Id -lt 115 -or $item.Id -gt 121) {
             $Global:CheckStates[$item.Id] = $true
         }
     }
+    # Force la latence expérimentale 0.45 ms
+    for ($i = 115; $i -le 121; $i++) { $Global:CheckStates[$i] = $false }
     $Global:CheckStates[115] = $true
+    
     Render-Category $Global:LastCategory
     Write-Log "LogCheckAdv"
 })
