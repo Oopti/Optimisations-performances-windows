@@ -1,6 +1,6 @@
 #requires -Version 5.1
 <#
-    OPTI-DYLAN TOOLKIT PRO V12.1 - LIVE DEBUG TRANSLATION & PROCESS ADDON
+    OPTI-DYLAN TOOLKIT PRO V12.2 - FIX LAYOUT & LIVE TRANSLATION
 #>
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -40,6 +40,7 @@ $Global:LangDict = @{
         "CatConfidentialite" = "Confidentialité"
         "CatGaming" = "Gaming & Latence"
         "CatProcessus" = "Processus Windows"
+        "CatTimer" = "Timer Resolution"
         "CatPower" = "Énergie & CPU"
         "CatServices" = "Services Windows"
         "CatNettoyage" = "Nettoyage & Ram"
@@ -49,11 +50,11 @@ $Global:LangDict = @{
         "BtnSelectMod" = "Cocher Tout (Modéré)"
         "BtnSelectAdv" = "Cocher Tout (Avancé)"
         "BtnClearAll" = "Tout Décocher"
-        # Logs traduits
-        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.1 En Ligne. Traduction Live du Debug active."
-        "LogCheckSafe" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' cochés (Apps ignorées)."
-        "LogCheckMod" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' & 'Modéré' cochés (Apps ignorées)."
-        "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés (Apps ignorées)."
+        # Logs
+        "LogEngineOnline" = "[SYSTEM] Moteur Toolkit V12.2 En Ligne. Traduction Live active."
+        "LogCheckSafe" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' cochés."
+        "LogCheckMod" = "[UI] Sélection Auto : Tous les tweaks 'Sans Risque' & 'Modéré' cochés."
+        "LogCheckAdv" = "[UI] Sélection Auto : Absolument TOUS les tweaks cochés."
         "LogClearAll" = "[UI] Réinitialisation : Toutes les cases décochées."
         "LogRestoreStart" = "[SYSTEM] Création du point de restauration Windows..."
         "LogRestoreOk" = "[OK] Point de restauration système créé."
@@ -72,6 +73,7 @@ $Global:LangDict = @{
         "CatConfidentialite" = "Privacy"
         "CatGaming" = "Gaming & Latency"
         "CatProcessus" = "Windows Processes"
+        "CatTimer" = "Timer Resolution"
         "CatPower" = "Power & CPU"
         "CatServices" = "Windows Services"
         "CatNettoyage" = "Cleanup & Ram"
@@ -81,11 +83,11 @@ $Global:LangDict = @{
         "BtnSelectMod" = "Check All (Moderate)"
         "BtnSelectAdv" = "Check All (Advanced)"
         "BtnClearAll" = "Clear All Checkboxes"
-        # Logs traduits
-        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.1 Online. Live Debug translation active."
-        "LogCheckSafe" = "[UI] Auto-Check: Checked all 'Safe' tweaks (Apps ignored)."
-        "LogCheckMod" = "[UI] Auto-Check: Checked all 'Safe' & 'Moderate' tweaks (Apps ignored)."
-        "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks (Apps ignored)."
+        # Logs
+        "LogEngineOnline" = "[SYSTEM] Toolkit Engine V12.2 Online. Live translation active."
+        "LogCheckSafe" = "[UI] Auto-Check: Checked all 'Safe' tweaks."
+        "LogCheckMod" = "[UI] Auto-Check: Checked all 'Safe' & 'Moderate' tweaks."
+        "LogCheckAdv" = "[UI] Auto-Check: Checked absolutely ALL tweaks."
         "LogClearAll" = "[UI] Reset: Unchecked all boxes."
         "LogRestoreStart" = "[SYSTEM] Creating Windows Restore Point..."
         "LogRestoreOk" = "[OK] System Restore Point created successfully."
@@ -141,7 +143,7 @@ function Set-SystemTimerResolution {
 }
 
 # ============================================================
-# CATALOGUE DES TWEAKS + TRADUCTIONS INTÉGRÉES
+# CATALOGUE DES TWEAKS
 # ============================================================
 $Options = @()
 
@@ -196,9 +198,9 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorit
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Gaming"; LabelFR="Forcer l'affinité CPU max sur le thread d'affichage"; LabelEN="Force maximum core hardware alignment for display layout"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "ProtectionMode" 1 }}
 
-# --- 4. PROCESSUS WINDOWS (3 Niveaux de Puissance) ---
+# --- 4. PROCESSUS WINDOWS ---
 $Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE ALLEGE] Tuer les processus de tracking basiques & bloatwares"; LabelEN="[LIGHT MODE] Terminate basic tracking background processes"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0 }}
-$Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE AVANCE] Aligner l'arborescence des services hôtes (Splitting & Isolation RAM)"; LabelEN="[ADVANCED MODE] Split & isolate host processes tree structure (SvcHost Split)"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
+$Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE AVANCE] Aligner l'arborescence des services hôtes (Splitting & Isolation RAM)"; LabelEN="[ADVANCED MODE] Split & isolate host processes tree structure"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
 $Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTREME] Clôturer agressivement les processus de maintenance et d'indexation système"; LabelEN="[EXTREME MODE] Aggressively terminate indexing and maintenance background tasks"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
 
 # --- 5. TIMER RESOLUTION DÉDIÉ ---
@@ -251,7 +253,7 @@ $Options += [PSCustomObject]@{Id=78; Cat="Nettoyage"; LabelFR="Supprimer le cach
 $Options += [PSCustomObject]@{Id=79; Cat="Nettoyage"; LabelFR="Purger l'historique des rapports d'erreurs Windows"; LabelEN="Clear out local Windows Error Reporting archive dumps folders"; Risk="safe"; Action={ Remove-Item "$env:ALLUSERSPROFILE\Microsoft\Windows\WER\*" -Recurse -Force -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=80; Cat="Nettoyage"; LabelFR="Nettoyer les composants WinSxS via DISM"; LabelEN="Force deep WinSxS component storage optimization runs via DISM"; Risk="advanced"; Action={ Start-Process "dism.exe" -ArgumentList "/online /Cleanup-Image /StartComponentCleanup" -Wait -WindowStyle Hidden }}
 $Options += [PSCustomObject]@{Id=81; Cat="Nettoyage"; LabelFR="Vider le dossier Prefetch de Windows"; LabelEN="Purge prefetch operational memory directory data stores"; Risk="moderate"; Action={ Remove-Item "$env:WINDIR\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue }}
-$Options += [PSCustomObject]@{Id=82; Cat="Nettoyage"; LabelFR="Vider les fichiers de cache des navigateurs (si fermés)"; LabelEN="Clear out Google Chrome internal profile caches structures"; Risk="safe"; Action={ Remove-Item "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache\*" -Recurse -Force -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=82; Cat="Nettoyage"; LabelFR="Vider les fichiers de cache des navigateurs"; LabelEN="Clear out Google Chrome internal profile caches structures"; Risk="safe"; Action={ Remove-Item "$env:LOCALAPPDATA\Google\Chrome\User Data\Default\Cache\*" -Recurse -Force -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=83; Cat="Nettoyage"; LabelFR="Optimiser et défragmenter les disques SSD (Trim)"; LabelEN="Invoke structural hardware layout storage pass (Trim engine)"; Risk="safe"; Action={ Optimize-Volume -DriveLetter C -Defrag -Verbose -ErrorAction SilentlyContinue }}
 $Options += [PSCustomObject]@{Id=84; Cat="Nettoyage"; LabelFR="Désactiver l'historique de fiabilité Windows"; LabelEN="Disable system reliability history monitoring tracking engines"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Reliability" "TimeStampInterval" 0 }}
 $Options += [PSCustomObject]@{Id=85; Cat="Nettoyage"; LabelFR="Limiter l'historique récent d'Explorer"; LabelEN="Disable tracing loops of recent files logs items inside Explorer"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" "ShowRecent" 0 }}
@@ -288,12 +290,12 @@ $Options += [PSCustomObject]@{Id=113; Cat="Apps"; LabelFR="Opera GX"; LabelEN="O
 $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="Audacity Multitrack Audio Recorder And Editor"; Risk="safe"; Action={ Install-WingetApp "Audacity.Audacity" "Audacity" }}
 
 # ============================================================
-# INTERFACE GRAPHIQUE (WPF)
+# INTERFACE GRAPHIQUE (WPF) - CORRECTION DE LA SIDEBAR (HEIGHT 860)
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="OPTI-DYLAN TOOLKIT" Height="840" Width="1060"
+        Title="OPTI-DYLAN TOOLKIT" Height="860" Width="1060"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
     <Window.Resources>
         <Style TargetType="CheckBox">
@@ -323,7 +325,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
     </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="240"/>
+            <ColumnDefinition Width="245"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
         
@@ -337,17 +339,17 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
                         <TextBlock Name="TxtLegend" Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap"/>
                     </Border>
                     
-                    <Button Name="BtnReseau" Tag="Reseau" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnGaming" Tag="Gaming" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnProcessus" Tag="Processus" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnTimer" Tag="Timer" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnPower" Tag="Power" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnServices" Tag="Services" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnNettoyage" Tag="Nettoyage" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
-                    <Button Name="BtnApps" Tag="Apps" Height="34" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0"/>
+                    <Button Name="BtnReseau" Tag="Reseau" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnConfidentialite" Tag="Confidentialite" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnGaming" Tag="Gaming" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnProcessus" Tag="Processus" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnTimer" Tag="Timer" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnPower" Tag="Power" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnServices" Tag="Services" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnNettoyage" Tag="Nettoyage" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnApps" Tag="Apps" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     
-                    <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,10,0,10" Padding="8">
+                    <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
                         <StackPanel>
                             <TextBlock Name="TxtQuickSelect" FontSize="10" FontWeight="Bold" Foreground="#00FFC8" Margin="0,0,0,6" HorizontalAlignment="Center"/>
                             <Button Name="BtnSelectSafe" Height="25" Background="#161622" Foreground="#F5F5FA" FontSize="11" BorderThickness="0" Margin="0,2"/>
@@ -357,7 +359,7 @@ $Options += [PSCustomObject]@{Id=114; Cat="Apps"; LabelFR="Audacity"; LabelEN="A
                         </StackPanel>
                     </Border>
 
-                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,2,0,10"/>
+                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,12"/>
                     
                     <TextBlock Text="LANGUAGE / LANGUE" FontSize="9" Foreground="#505060" Margin="5,0,0,2" HorizontalAlignment="Left"/>
                     <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black">
@@ -419,7 +421,6 @@ $NavButtons = @{
     "Apps"=$Form.FindName("BtnApps")
 }
 
-# Conserver l'historique des clés de logs pour pouvoir les retraduire à la volée !
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
 $Global:CheckStates = @{}
 foreach ($o in $Options) { $Global:CheckStates[$o.Id] = $false }
@@ -473,7 +474,7 @@ function Update-InterfaceLanguage {
     $NavButtons["Apps"].Content = "📦  " + $L["CatApps"]
     
     Render-Category $Global:LastCategory
-    Refresh-LogBoxDisplay  # Traduction à la volée instantanée de la console Debug !
+    Refresh-LogBoxDisplay
 }
 
 function Render-Category([string]$Cat) {
@@ -506,7 +507,6 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Exclusivité pour les profils de Timer Resolution
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -626,7 +626,7 @@ $BtnApply.Add_Click({
     $BtnApply.IsEnabled = $true
 })
 
-# Initialisation du log de démarrage
+# Lancement
 $Global:LogHistory.Add("LogEngineOnline")
 Update-InterfaceLanguage
 [void]$Form.ShowDialog()
