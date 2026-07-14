@@ -582,12 +582,13 @@ $ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
 
 $btnSaveProfile.add_Click({
     try {
-        # Extrait proprement l'état des cases (ID = True/False) sans inclure les objets graphiques lourds
         $SaveData = @{}
         foreach ($opt in $Options) {
             $chkName = "chk_$($opt.Id)"
-            if ($null -ne $global:$chkName) {
-                $SaveData[$opt.Id.ToString()] = [bool]$global:$chkName.IsChecked
+            # Version corrigée avec les accolades pour éviter l'erreur de jeton
+            if ($null -ne (Get-Variable -Name $chkName -Scope Global -ErrorAction SilentlyContinue)) {
+                $chkObj = Get-Variable -Name $chkName -Scope Global -ValueOnly
+                $SaveData[$opt.Id.ToString()] = [bool]$chkObj.IsChecked
             }
         }
         $JsonData = ConvertTo-Json $SaveData -Depth 2
@@ -610,8 +611,9 @@ $btnLoadProfile.add_Click({
         
         foreach ($opt in $Options) {
             $chkName = "chk_$($opt.Id)"
-            if ($null -ne $global:$chkName -and $LoadedData.ContainsKey($opt.Id.ToString())) {
-                $global:$chkName.IsChecked = [bool]$LoadedData[$opt.Id.ToString()]
+            if ($LoadedData.ContainsKey($opt.Id.ToString()) -and (Get-Variable -Name $chkName -Scope Global -ErrorAction SilentlyContinue)) {
+                $chkObj = Get-Variable -Name $chkName -Scope Global -ValueOnly
+                $chkObj.IsChecked = [bool]$LoadedData[$opt.Id.ToString()]
             }
         }
         $LogBox.AppendText(">> " + $Global:LangDict[$Global:CurrentLang]["ProfileLoaded"] + "`n")
@@ -621,6 +623,7 @@ $btnLoadProfile.add_Click({
         $LogBox.AppendText(">> [ERR] Erreur chargement : $_`n")
     }
 })
+
 # ============================================================
 # SÉLECTION DE LA VALEUR DE SVCHOST
 # ============================================================
