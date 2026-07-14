@@ -356,12 +356,19 @@ function Render-Category([string]$Cat) {
     $TxtTitle.Text = $Cat.ToUpper()
     $Items = $Options | Where-Object { $_.Cat -eq $Cat }
     foreach ($item in $Items) {
+        $color = switch ($item.Risk) { "safe" {"#F5F5FA"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} }
+        $Brush = [System.Windows.Media.ColorConverter]::ConvertFromString($color)
+
+        $Lbl = New-Object System.Windows.Controls.TextBlock
+        $Lbl.Text = $item.Label
+        $Lbl.Foreground = $Brush
+        $Lbl.FontSize = 13
+        $Lbl.TextWrapping = "Wrap"
+        $Lbl.VerticalAlignment = "Center"
+
         $Chk = New-Object System.Windows.Controls.CheckBox
-        $Chk.Content = $item.Label
-        $color = switch ($item.Risk) { "safe" {"#DCDCE6"} "moderate" {"#F1C40F"} "advanced" {"#E74C3C"} }
-        $Chk.Foreground = [System.Windows.Media.ColorConverter]::ConvertFromString($color)
+        $Chk.Content = $Lbl
         $Chk.Margin = "0,7,0,7"
-        $Chk.FontSize = 13
         $Chk.Tag = $item.Id
         $Chk.IsChecked = $Global:CheckStates[$item.Id]
         $Chk.Add_Checked({ $Global:CheckStates[$this.Tag] = $true })
