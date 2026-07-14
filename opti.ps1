@@ -207,6 +207,45 @@ $Options += [PSCustomObject]@{Id=42; Cat="Apps"; Label="Steam"; Risk="safe"; Act
 $Options += [PSCustomObject]@{Id=43; Cat="Apps"; Label="VLC Media Player"; Risk="safe"; Action={ Install-WingetApp "VideoLAN.VLC" }}
 $Options += [PSCustomObject]@{Id=44; Cat="Apps"; Label="7-Zip"; Risk="safe"; Action={ Install-WingetApp "7zip.7zip" }}
 $Options += [PSCustomObject]@{Id=45; Cat="Apps"; Label="Epic Games Launcher"; Risk="safe"; Action={ Install-WingetApp "EpicGames.EpicGamesLauncher" }}
+$Options += [PSCustomObject]@{Id=46; Cat="Apps"; Label="Visual Studio Code"; Risk="safe"; Action={ Install-WingetApp "Microsoft.VisualStudioCode" }}
+$Options += [PSCustomObject]@{Id=47; Cat="Apps"; Label="Notepad++"; Risk="safe"; Action={ Install-WingetApp "Notepad++.Notepad++" }}
+
+# --- GAMING (suite) ---
+$Options += [PSCustomObject]@{Id=48; Cat="Gaming"; Label="Menus et animations instantanes (latence percue plus basse)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Control Panel\Desktop" "MenuShowDelay" "0" "String"
+    Set-Reg "HKCU:\Control Panel\Desktop\WindowMetrics" "MinAnimate" "0" "String"
+}}
+
+# --- POWER (avance) ---
+$Options += [PSCustomObject]@{Id=49; Cat="Power"; Label="Desactiver HPET + Dynamic Tick (latence timer, teste avant/apres)"; Risk="advanced"; Action={
+    bcdedit /deletevalue useplatformclock | Out-Null
+    bcdedit /set disabledynamictick yes | Out-Null
+}}
+$Options += [PSCustomObject]@{Id=50; Cat="Power"; Label="Desactiver les mitigations CPU Spectre/Meltdown (reduit la securite)"; Risk="advanced"; Action={
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3
+}}
+
+# --- SERVICES (suite) ---
+$Options += [PSCustomObject]@{Id=51; Cat="Services"; Label="Windows Biometric Service (dis non si Windows Hello)"; Risk="moderate"; Action={
+    Disable-Svc "WbioSrvc"
+}}
+$Options += [PSCustomObject]@{Id=52; Cat="Services"; Label="Service de carte a puce (Smart Card)"; Risk="safe"; Action={
+    Disable-Svc "SCardSvr"
+}}
+$Options += [PSCustomObject]@{Id=53; Cat="Services"; Label="Clavier tactile / saisie manuscrite (TabletInputService)"; Risk="safe"; Action={
+    Disable-Svc "TabletInputService"
+}}
+
+# --- CONFIDENTIALITE (suite) ---
+$Options += [PSCustomObject]@{Id=54; Cat="Confidentialite"; Label="Retirer OneDrive du demarrage (dis non si tu l'utilises)"; Risk="moderate"; Action={
+    Remove-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" "OneDrive"
+}}
+
+# --- RESEAU (suite) ---
+$Options += [PSCustomObject]@{Id=55; Cat="Reseau"; Label="Reinitialiser l'auto-tuning TCP a un niveau normal"; Risk="safe"; Action={
+    netsh int tcp set global autotuninglevel=normal | Out-Null
+}}
 
 # ============================================================
 # INTERFACE GRAPHIQUE (WPF)
@@ -216,6 +255,32 @@ $Options += [PSCustomObject]@{Id=45; Cat="Apps"; Label="Epic Games Launcher"; Ri
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="OPTI-DYLAN TOOLKIT" Height="780" Width="1040"
         WindowStartupLocation="CenterScreen" Background="#0A0A0E" ResizeMode="CanMinimize">
+    <Window.Resources>
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="#DCDCE6"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <StackPanel Orientation="Horizontal">
+                            <Border x:Name="Box" Width="18" Height="18" Background="#181824" BorderBrush="#3A3A4A" BorderThickness="1" CornerRadius="3" Margin="0,0,10,0" VerticalAlignment="Center">
+                                <Path x:Name="CheckMark" Data="M 2 7 L 6.5 12 L 15 2" Stroke="#00FFC8" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Visibility="Collapsed"/>
+                            </Border>
+                            <ContentPresenter VerticalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                        </StackPanel>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="CheckMark" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#00FFC8"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="#00FFC8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="230"/>
@@ -352,6 +417,6 @@ $BtnApply.Add_Click({
     $BtnApply.IsEnabled = $true
 })
 
-Write-Log "[SYSTEM] OPTI-DYLAN pret. $($Options.Count) actions reelles disponibles."
+Write-Log "[SYSTEM] OPTI-DYLAN pret. $($Options.Count) actions reelles disponibles. Interface corrigee."
 Render-Category "Reseau"
 [void]$Form.ShowDialog()
