@@ -1,7 +1,7 @@
 <#
     .SYNOPSIS
-        OPTI-DYLAN TOOLKIT - V17.1 (Édition sans bug & Rollback Actif)
-        Optimisation avancée, nettoyage et restauration chirurgicale.
+        OPTI-DYLAN TOOLKIT - V17.5 (Édition Complète & Sans Compromis)
+        Optimisation avancée, gestion de profils, nettoyage en temps réel et Rollback Chirurgical.
 #>
 
 # ============================================================
@@ -25,7 +25,7 @@ $Global:CurrentLang = "FR"
 
 $Global:LangDict = @{
     "FR" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT - V17.1"
+        "Title" = "OPTI-DYLAN TOOLKIT - V17.5"
         "Subtitle" = "Optimisation en temps réel • Interface réactive"
         "Legend" = "Légende des risques :\nVert = Sûr | Jaune = Modéré | Rouge = Avancé"
         "QuickSelect" = "SÉLECTION RAPIDE"
@@ -71,7 +71,7 @@ $Global:LangDict = @{
         "CatBloatwares" = "Bloatwares"
     }
     "EN" = @{
-        "Title" = "OPTI-DYLAN TOOLKIT - V17.1"
+        "Title" = "OPTI-DYLAN TOOLKIT - V17.5"
         "Subtitle" = "Real-time optimization • Non-blocking GUI"
         "Legend" = "Risk Legend :\nGreen = Safe | Yellow = Moderate | Red = Advanced"
         "QuickSelect" = "QUICK SELECTION"
@@ -159,17 +159,15 @@ function Set-RegWithBackup([string]$Path, [string]$Name, $Value, [string]$Type =
 
 function Disable-Svc([string]$SvcName) {
     if (Get-Service -Name $SvcName -ErrorAction SilentlyContinue) {
-        # Sauvegarde de l'état original du service
         $oldStart = (Get-Service -Name $SvcName).StartType
         $Global:OriginalBackup["SVC\$SvcName"] = $oldStart
-
         Stop-Service -Name $SvcName -Force -ErrorAction SilentlyContinue
         Set-Service -Name $SvcName -StartupType Disabled -ErrorAction SilentlyContinue
     }
 }
 
 # ============================================================
-# BASE DE DONNÉES DES TWEAKS
+# BASE DE DONNÉES MASSIVE DES TWEAKS (V17.5)
 # ============================================================
 $Options = [System.Collections.Generic.List[PSCustomObject]]::new()
 
@@ -187,8 +185,8 @@ $Options.Add([PSCustomObject]@{
     Check={
         $Paths = Get-ChildItem -Path "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" -ErrorAction SilentlyContinue
         if ($Paths) {
-            $val1 = Get-ItemProperty -Path $Paths[0].PSPath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue
-            $val1.TcpAckFrequency -eq 1
+            $val = Get-ItemProperty -Path $Paths[0].PSPath -Name "TcpAckFrequency" -ErrorAction SilentlyContinue
+            $val.TcpAckFrequency -eq 1
         } else { $false }
     }
 })
@@ -201,10 +199,29 @@ $Options.Add([PSCustomObject]@{
 })
 
 $Options.Add([PSCustomObject]@{
+    Id=3; Cat="Reseau"; Risk="safe"
+    LabelFR="Optimiser MTU sur l'interface principale (Standard : 1500)"; LabelEN="Optimize MTU configuration on active network adapter (1500)"
+    Action={
+        $interface = Get-NetAdapter | Where-Object { $_.Status -eq "Up" } | Select-Object -First 1
+        if ($interface) {
+            netsh interface ipv4 set subinterface $interface.InterfaceIndex mtu=1500 store=persistent
+        }
+    }
+    Check={ $true }
+})
+
+$Options.Add([PSCustomObject]@{
     Id=4; Cat="Reseau"; Risk="safe"
     LabelFR="Désactiver la limitation de bande passante réseau réservable (QoS)"; LabelEN="Disable QoS Reserved Bandwidth Limit (Unlocks full pipes)"
     Action={ Set-RegWithBackup "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" "NonBestEffortLimit" 0 }
     Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Psched" -Name "NonBestEffortLimit" -ErrorAction SilentlyContinue).NonBestEffortLimit -eq 0 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=5; Cat="Reseau"; Risk="moderate"
+    LabelFR="Forcer le protocole de congestion TCP vers CTCP (Moins de pertes)"; LabelEN="Force Congestion Provider to CTCP (Reduces packet loss)"
+    Action={ netsh int tcp set global congestionprovider=ctcp }
+    Check={ (netsh int tcp show global) -match "Congestion Provider.*ctcp" }
 })
 
 $Options.Add([PSCustomObject]@{
@@ -224,7 +241,6 @@ $Options.Add([PSCustomObject]@{
     Check={ (netsh int tcp show global) -match "Receive-Side Scaling State.*enabled" }
 })
 
-# --- PRIORITISATION RESEAU DES JEUX (Option 10) ---
 $Options.Add([PSCustomObject]@{
     Id=10; Cat="Reseau"; Risk="moderate"
     LabelFR="Prioriser le trafic des jeux et désactiver la limitation réseau Windows"; LabelEN="Prioritize Gaming traffic & disable network throttling"
@@ -247,6 +263,34 @@ $Options.Add([PSCustomObject]@{
     Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" -Name "AllowTelemetry" -ErrorAction SilentlyContinue).AllowTelemetry -eq 0 }
 })
 
+$Options.Add([PSCustomObject]@{
+    Id=16; Cat="Confidentialite"; Risk="safe"
+    LabelFR="Désactiver l'identifiant de publicité Windows"; LabelEN="Disable Windows Advertising ID for privacy"
+    Action={
+        Set-RegWithBackup "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0
+    }
+    Check={ (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" -Name "Enabled" -ErrorAction SilentlyContinue).Enabled -eq 0 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=17; Cat="Confidentialite"; Risk="safe"
+    LabelFR="Désactiver Cortana et la recherche Bing dans le menu Démarrer"; LabelEN="Disable Cortana and Bing web search in Start Menu"
+    Action={
+        Set-RegWithBackup "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" "BingSearchEnabled" 0
+        Set-RegWithBackup "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" "CanCortanaBeEnabled" 0
+    }
+    Check={ (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Search" -Name "BingSearchEnabled" -ErrorAction SilentlyContinue).BingSearchEnabled -eq 0 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=18; Cat="Confidentialite"; Risk="safe"
+    LabelFR="Désactiver l'historique d'activité Windows (Timeline)"; LabelEN="Disable Windows Activity History tracking (Timeline)"
+    Action={
+        Set-RegWithBackup "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "PublishUserActivities" 0
+    }
+    Check={ (Get-ItemProperty -Path "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" -Name "PublishUserActivities" -ErrorAction SilentlyContinue).PublishUserActivities -eq 0 }
+})
+
 # --- 3. JEUX (GAMING) ---
 $Options.Add([PSCustomObject]@{
     Id=30; Cat="Gaming"; Risk="safe"
@@ -263,6 +307,33 @@ $Options.Add([PSCustomObject]@{
         Set-RegWithBackup "HKCU:\System\GameConfigStore" "GameDVR_Enabled" 0
     }
     Check={ (Get-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_Enabled" -ErrorAction SilentlyContinue).GameDVR_Enabled -eq 0 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=32; Cat="Gaming"; Risk="moderate"
+    LabelFR="Forcer l'accélération matérielle GPU (HAGS)"; LabelEN="Force GPU Hardware Accelerated Scheduling (HAGS)"
+    Action={
+        Set-RegWithBackup "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "HwSchMode" 2
+    }
+    Check={ (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" -Name "HwSchMode" -ErrorAction SilentlyContinue).HwSchMode -eq 2 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=33; Cat="Gaming"; Risk="safe"
+    LabelFR="Désactiver les optimisations plein écran (FSE) globalement"; LabelEN="Disable Fullscreen Optimizations (FSE) globally for games"
+    Action={
+        Set-RegWithBackup "HKCU:\System\GameConfigStore" "GameDVR_FSEBehaviorMode" 2
+    }
+    Check={ (Get-ItemProperty -Path "HKCU:\System\GameConfigStore" -Name "GameDVR_FSEBehaviorMode" -ErrorAction SilentlyContinue).GameDVR_FSEBehaviorMode -eq 2 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=34; Cat="Gaming"; Risk="safe"
+    LabelFR="Optimiser la taille du cache des Shaders DirectX"; LabelEN="Optimize DirectX Shader Cache allocation size"
+    Action={
+        Set-RegWithBackup "HKLM:\SOFTWARE\Microsoft\DirectX" "MaxShaderCacheSize" 104857600
+    }
+    Check={ $true }
 })
 
 # --- 5. TIMER RESOLUTION ---
@@ -304,6 +375,22 @@ $Options.Add([PSCustomObject]@{
     Check={ $true }
 })
 
+$Options.Add([PSCustomObject]@{
+    Id=48; Cat="Power"; Risk="safe"
+    LabelFR="Désactiver la suspension sélective USB (Évite les coupures souris/casque)"; LabelEN="Disable USB Selective Suspend (Prevents mouse/headset disconnects)"
+    Action={
+        powercfg /setacvalueindex scheme_current sub_usb 4f971e89-eebd-4455-a8de-9e59040e7347 0
+    }
+    Check={ $true }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=49; Cat="Power"; Risk="safe"
+    LabelFR="Désactiver l'hibernation Windows (Libère plusieurs Go de stockage)"; LabelEN="Disable Windows Hibernation mode (Saves several GB of disk space)"
+    Action={ powercfg -h off }
+    Check={ $true }
+})
+
 # --- 7. SERVICES WINDOWS INUTILES ---
 $Options.Add([PSCustomObject]@{
     Id=61; Cat="Services"; Risk="moderate"
@@ -319,11 +406,59 @@ $Options.Add([PSCustomObject]@{
     Check={ (Get-Service -Name "WSearch" -ErrorAction SilentlyContinue).StartType -eq "Disabled" }
 })
 
+$Options.Add([PSCustomObject]@{
+    Id=63; Cat="Services"; Risk="safe"
+    LabelFR="Désactiver le service de Registre à distance (Sécurité renforcée)"; LabelEN="Disable Remote Registry service (Improves local security)"
+    Action={ Disable-Svc "RemoteRegistry" }
+    Check={ (Get-Service -Name "RemoteRegistry" -ErrorAction SilentlyContinue).StartType -eq "Disabled" }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=64; Cat="Services"; Risk="moderate"
+    LabelFR="Désactiver le Spouleur d'impression (Sauf si imprimante requise)"; LabelEN="Disable Print Spooler (Recommended unless you own a printer)"
+    Action={ Disable-Svc "Spooler" }
+    Check={ (Get-Service -Name "Spooler" -ErrorAction SilentlyContinue).StartType -eq "Disabled" }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=65; Cat="Services"; Risk="safe"
+    LabelFR="Désactiver les services de Téléphonie & Fax obsolètes"; LabelEN="Disable legacy Telephony and Fax services"
+    Action={
+        Disable-Svc "TapiSrv"
+        Disable-Svc "Fax"
+    }
+    Check={ $true }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=66; Cat="Services"; Risk="safe"
+    LabelFR="Désactiver le gestionnaire de cartes téléchargées (MapsBroker)"; LabelEN="Disable Downloaded Maps Manager background service (MapsBroker)"
+    Action={ Disable-Svc "MapsBroker" }
+    Check={ (Get-Service -Name "MapsBroker" -ErrorAction SilentlyContinue).StartType -eq "Disabled" }
+})
+
 # --- 8. NETTOYAGE ET RAM ---
 $Options.Add([PSCustomObject]@{
     Id=76; Cat="Nettoyage"; Risk="safe"
     LabelFR="Vider les fichiers temporaires (%TEMP%)"; LabelEN="Purge user environment temp dump files structures (%TEMP%)"
     Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }
+    Check={ $false }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=77; Cat="Nettoyage"; Risk="safe"
+    LabelFR="Nettoyer le dossier Prefetch et les fichiers journaux .log"; LabelEN="Clean Prefetch folder and purge continuous debug logs"
+    Action={
+        Remove-Item "$env:SystemRoot\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item "$env:SystemRoot\*.log" -Force -ErrorAction SilentlyContinue
+    }
+    Check={ $false }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=78; Cat="Nettoyage"; Risk="safe"
+    LabelFR="Vider le cache DNS (Améliore la résolution d'adresse)"; LabelEN="Flush DNS Resolver Cache (Improves address resolution latency)"
+    Action={ ipconfig /flushdns }
     Check={ $false }
 })
 
@@ -349,6 +484,20 @@ $Options.Add([PSCustomObject]@{
     Check={ $false }
 })
 
+$Options.Add([PSCustomObject]@{
+    Id=92; Cat="Apps"; SubCat="FR=Gaming|EN=Gaming"; Risk="safe"
+    LabelFR="Installer Discord"; LabelEN="Install Discord chat client"
+    Action={ Start-Process "winget" -ArgumentList "install -e --id Discord.Discord" -Wait -WindowStyle Hidden }
+    Check={ $false }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=93; Cat="Apps"; SubCat="FR=Gaming|EN=Gaming"; Risk="safe"
+    LabelFR="Installer Steam"; LabelEN="Install Steam launcher client"
+    Action={ Start-Process "winget" -ArgumentList "install -e --id Valve.Steam" -Wait -WindowStyle Hidden }
+    Check={ $false }
+})
+
 # --- 10. BLOATWARES WINDOWS ---
 $Options.Add([PSCustomObject]@{
     Id=128; Cat="Bloatwares"; Risk="safe"
@@ -360,8 +509,26 @@ $Options.Add([PSCustomObject]@{
     Check={ -not (Test-Path "$env:LocalAppData\Microsoft\OneDrive") }
 })
 
+$Options.Add([PSCustomObject]@{
+    Id=129; Cat="Bloatwares"; Risk="safe"
+    LabelFR="Désactiver les Widgets d'actualités Windows"; LabelEN="Disable Windows News and Interests (Widgets UI panel)"
+    Action={
+        Set-RegWithBackup "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" "ShellFeedsTaskbarViewMode" 2
+    }
+    Check={ (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" -Name "ShellFeedsTaskbarViewMode" -ErrorAction SilentlyContinue).ShellFeedsTaskbarViewMode -eq 2 }
+})
+
+$Options.Add([PSCustomObject]@{
+    Id=130; Cat="Bloatwares"; Risk="moderate"
+    LabelFR="Désinstaller la stub Recall & Microsoft Copilot"; LabelEN="Remove Microsoft Copilot integration structures"
+    Action={
+        Set-RegWithBackup "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" 1
+    }
+    Check={ (Get-ItemProperty -Path "HKCU:\Software\Policies\Microsoft\Windows\WindowsCopilot" -Name "TurnOffWindowsCopilot" -ErrorAction SilentlyContinue).TurnOffWindowsCopilot -eq 1 }
+})
+
 # ============================================================
-# DESIGN INTERFACE GRAPHIQUE (WPF) - DESIGN V17.1
+# DESIGN INTERFACE GRAPHIQUE (WPF)
 # ============================================================
 [xml]$XAML = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -530,7 +697,7 @@ $Options.Add([PSCustomObject]@{
 </Window>
 "@
 
-# Chargement du XAML dans le moteur PowerShell
+# Chargement du XAML
 $Reader = New-Object System.Xml.XmlNodeReader $XAML
 $Form = [Windows.Markup.XamlReader]::Load($Reader)
 
@@ -628,7 +795,6 @@ $BtnSaveProfile.Add_Click({
         if ($RadSvcLevel2.IsChecked) { $SvcLevel = "2" }
         if ($RadSvcLevel3.IsChecked) { $SvcLevel = "3" }
 
-        # Conversion du dictionnaire en hashtable propre pour éviter les erreurs de type en export JSON
         $StatesTable = @{}
         foreach ($k in $Global:CheckStates.Keys) { $StatesTable[[string]$k] = $Global:CheckStates[$k] }
 
@@ -819,7 +985,6 @@ function Render-Category([string]$Cat) {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
         
-        # Afficher la boîte SvcHost uniquement dans "Processus"
         if ($Cat -eq "Processus") {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
         } else {
@@ -838,7 +1003,6 @@ function Render-Category([string]$Cat) {
         $CurrentGroup = ""
 
         foreach ($item in $Items) {
-            # Tri et création des en-têtes de sous-catégories (par exemple pour Apps)
             if ($null -ne $item.SubCat) {
                 $subCatParsed = @{}
                 foreach ($pair in ($item.SubCat -split "\|")) {
@@ -879,7 +1043,6 @@ function Render-Category([string]$Cat) {
                 $id = $this.Tag
                 $Global:CheckStates[$id] = $true 
                 
-                # Exclusivités Timer (IDs 115 à 121)
                 if ($id -ge 115 -and $id -le 121) {
                     for ($i = 115; $i -le 121; $i++) {
                         if ($i -ne $id) { $Global:CheckStates[$i] = $false }
@@ -1116,19 +1279,18 @@ $BtnApply.Add_Click({
 # EXPORT DES LOGS ET FERMETURE PROPRE
 # ============================================================
 $Form.Add_Closed({
-    # Arrêt du thread de maintien du timer
     if ($null -ne $Global:TimerThread) {
         $Global:TimerThread.Abort()
     }
 
-    # Écriture du rapport de logs sur le Bureau à la fermeture
+    # Écriture automatique du rapport de logs sur le Bureau à la fermeture
     $DesktopPath = [Environment]::GetFolderPath("Desktop")
     $ReportFile = Join-Path $DesktopPath "opti_dylan_report.txt"
     try {
         $ReportText = @()
         $ReportText += "=================================================="
         $ReportText += "        RAPPORT D'OPTIMISATION OPTI-DYLAN         "
-        $ReportText += "================================================--"
+        $ReportText += "=================================================="
         $ReportText += "Date : $(Get-Date -Format 'dd/MM/yyyy HH:mm:ss')"
         $ReportText += "Configuration : $CpuName | $GpuName | $TotalRamGB Go"
         $ReportText += "--------------------------------------------------"
