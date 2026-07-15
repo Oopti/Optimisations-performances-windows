@@ -168,6 +168,9 @@ function Disable-Svc {
 function Install-WingetApp {
     param([string]$Id, [string]$AppName)
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw "winget introuvable." }
+    if (-not (Test-Connection -ComputerName "8.8.8.8" -Count 1 -Quiet -ErrorAction SilentlyContinue)) {
+        throw "Pas de connexion Internet detectee, installation annulee."
+    }
     Write-Log "[WINGET] Téléchargement & Installation : $AppName ($Id)..." $false
     $p = Start-Process -FilePath "winget" -ArgumentList "install --id $Id -e --silent --accept-package-agreements --accept-source-agreements" -Wait -PassThru -WindowStyle Hidden
     if ($p.ExitCode -ne 0) { throw "winget a échoué avec le code $($p.ExitCode)" }
@@ -218,6 +221,13 @@ $Options += [PSCustomObject]@{Id=12; Cat="Reseau"; LabelFR="Désactiver l'Heuris
 $Options += [PSCustomObject]@{Id=13; Cat="Reseau"; LabelFR="Configurer l'Auto-Tuning TCP sur Normal"; LabelEN="Set TCP Auto-Tuning Level to Normal"; Risk="safe"; Action={ netsh int tcp set global autotuninglevel=normal | Out-Null }}
 $Options += [PSCustomObject]@{Id=14; Cat="Reseau"; LabelFR="Activer RSS (Receive Side Scaling)"; LabelEN="Enable RSS (Receive Side Scaling)"; Risk="safe"; Action={ netsh int tcp set global rss=enabled | Out-Null }}
 $Options += [PSCustomObject]@{Id=15; Cat="Reseau"; LabelFR="Désactiver l'économie d'énergie de la carte réseau"; LabelEN="Disable network adapter Energy Efficient Ethernet"; Risk="moderate"; Action={ Get-NetAdapter | Set-NetAdapterAdvancedProperty -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled" -ErrorAction SilentlyContinue }}
+$Options += [PSCustomObject]@{Id=148; Cat="Reseau"; LabelFR="Détecter et optimiser automatiquement la carte réseau active (au lieu de toutes les cartes)"; LabelEN="Auto-detect and optimize only the active network adapter (instead of all adapters)"; Risk="safe"; Action={
+    $Adapter = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+    if ($null -eq $Adapter) { throw "Aucune carte reseau active detectee." }
+    Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName "Energy Efficient Ethernet" -DisplayValue "Disabled" -ErrorAction SilentlyContinue
+    Set-NetAdapterAdvancedProperty -Name $Adapter.Name -DisplayName "Interrupt Moderation" -DisplayValue "Disabled" -ErrorAction SilentlyContinue
+    Set-NetAdapterRss -Name $Adapter.Name -Enabled $true -ErrorAction SilentlyContinue
+}}
 
 # --- 2. CONFIDENTIALITÉ & TÉLÉMÉTRIE ---
 $Options += [PSCustomObject]@{Id=16; Cat="Confidentialite"; LabelFR="Désactiver DiagTrack (Expériences utilisateurs connectés)"; LabelEN="Disable DiagTrack (Connected User Experiences and Telemetry)"; Risk="safe"; Action={ Disable-Svc "DiagTrack" }}
@@ -255,10 +265,15 @@ $Options += [PSCustomObject]@{Id=43; Cat="Gaming"; LabelFR="Augmenter la priorit
 $Options += [PSCustomObject]@{Id=44; Cat="Gaming"; LabelFR="Désactiver l'alerte de raccourci des touches rémanentes"; LabelEN="Disable Sticky Keys annoying trigger shortcut popups"; Risk="safe"; Action={ Set-Reg "HKCU:\Control Panel\Accessibility\StickyKeys" "Flags" "506" "String" }}
 $Options += [PSCustomObject]@{Id=142; Cat="Gaming"; LabelFR="Empêcher le redémarrage forcé après une mise à jour"; LabelEN="Prevent forced auto-restart after Windows Update while logged in"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" "NoAutoRebootWithLoggedOnUsers" 1 }}
 
-# --- 4. GESTION DE RAM & SVCHOST ---
-$Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[MODE STANDARD] Isolation automatique par Windows (3.5 Go max par service)"; LabelEN="[STANDARD MODE] Let Windows handle service splitting rules natively"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 380000 }}
-$Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[MODE ALLÉGÉ] Isoler les processus hôtes pour soulager l'utilisation RAM"; LabelEN="[LIGHT WEIGHT] Reduce svchost instance spawning parameters"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 0x3800000 }}
-$Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[MODE EXTRÊME] Forcer la compression et clôturer l'indexation"; LabelEN="[EXTREME MODE] Turn off background document content scanning structures"; Risk="advanced"; Action={ Disable-Svc "wuauserv"; Disable-Svc "WSearch" }}
+# --- 4. GESTION DE RAM & SVCHOST (systeme a 3 niveaux) ---
+$Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[NIVEAU 1 - BASIQUE] Regroupement leger des svchost.exe (seuil 3.8 Go)"; LabelEN="[LEVEL 1 - BASIC] Light svchost.exe grouping (3.8 GB threshold)"; Risk="safe"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 3984588 }}
+$Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[NIVEAU 2 - OPTIMISE] Regroupement agressif (seuil 16 Go) + coupe telemetrie/diagnostic"; LabelEN="[LEVEL 2 - OPTIMIZED] Aggressive grouping (16 GB threshold) + disable telemetry/diagnostics"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 16777216; Disable-Svc "DiagTrack"; Disable-Svc "dmwappushservice"; Disable-Svc "WerSvc" }}
+$Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[NIVEAU 3 - EXTREME] Regroupement total (seuil 128 Go) + gel des services secondaires + coupe Widgets"; LabelEN="[LEVEL 3 - EXTREME] Total grouping (128 GB threshold) + freeze secondary services + disable Widgets"; Risk="advanced"; Action={
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 134217728
+    "DiagTrack","dmwappushservice","WerSvc","SysMain","WSearch","PcaSvc","MapsBroker","lfsvc","RemoteRegistry","Fax","WidgetsService" | ForEach-Object { Disable-Svc $_ }
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests" 0
+}}
 
 # --- 5. TIMER RESOLUTION ---
 $Options += [PSCustomObject]@{Id=115; Cat="Timer"; LabelFR="0.45 ms - Latence Expérimentale (Forçage limite bas)"; LabelEN="0.45 ms - Experimental Latency (Force strict hardware floor)"; Risk="advanced"; Action={ Set-SystemTimerResolution 0.45 }}
@@ -345,6 +360,13 @@ $Options += [PSCustomObject]@{Id=133; Cat="Bloatwares"; LabelFR="Désinstaller M
 $Options += [PSCustomObject]@{Id=137; Cat="Bloatwares"; LabelFR="Retirer 'Actualités et champs d'intérêt' (News/Widgets Barre des tâches)"; LabelEN="Disable News and Interests taskbar widget feed"; Risk="safe"; Action={ Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds" "ShellFeedsTaskbarViewMode" 2 }}
 $Options += [PSCustomObject]@{Id=138; Cat="Bloatwares"; LabelFR="Désinstaller l'éditeur vidéo Clipchamp"; LabelEN="Uninstall Microsoft Clipchamp Video Editor app"; Risk="safe"; Action={ Uninstall-Appx "Clipchamp" }}
 $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller Paint 3D"; LabelEN="Uninstall Paint 3D Microsoft Package"; Risk="safe"; Action={ Uninstall-Appx "MSPaint" }}
+$Options += [PSCustomObject]@{Id=145; Cat="Bloatwares"; LabelFR="Désinstaller Microsoft Copilot"; LabelEN="Uninstall Microsoft Copilot"; Risk="safe"; Action={ Uninstall-Appx "Microsoft.Copilot"; Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot" "TurnOffWindowsCopilot" 1 }}
+$Options += [PSCustomObject]@{Id=146; Cat="Bloatwares"; LabelFR="Désinstaller les Widgets (icône Actualités barre des tâches)"; LabelEN="Uninstall Windows Widgets (taskbar News icon)"; Risk="safe"; Action={ Uninstall-Appx "MicrosoftWindows.Client.WebExperience"; Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" 0; Disable-Svc "WidgetsService" }}
+$Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Recall (Windows 11 24H2+, si présent)"; LabelEN="Disable Recall (Windows 11 24H2+, if present)"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI" "DisableAIDataAnalysis" 1
+    $feature = Get-WindowsOptionalFeature -Online -FeatureName "Recall" -ErrorAction SilentlyContinue
+    if ($null -ne $feature) { Disable-WindowsOptionalFeature -Online -FeatureName "Recall" -NoRestart -ErrorAction SilentlyContinue | Out-Null }
+}}
 
 # ============================================================
 # INTERFACE GRAPHIQUE (WPF) - DESIGN V15.1
@@ -445,7 +467,7 @@ $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller P
         
         <Grid Grid.Column="1" Margin="20">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="55"/>   </Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="Auto"/> <RowDefinition Height="55"/>   </Grid.RowDefinitions>
             
             <Border Grid.Row="0" Background="#101016" CornerRadius="5" Padding="12" Margin="0,0,0,15" BorderBrush="#1C1C28" BorderThickness="1">
                 <Grid>
@@ -506,7 +528,12 @@ $Options += [PSCustomObject]@{Id=139; Cat="Bloatwares"; LabelFR="Désinstaller P
             <TextBox Name="LogBox" Grid.Row="4" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
                      FontFamily="Consolas" FontSize="11" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
             
-            <Button Name="BtnApply" Grid.Row="5" Margin="0,15,0,0"
+            <Grid Grid.Row="5" Margin="0,10,0,0">
+                <ProgressBar Name="ProgressBarApply" Height="18" Minimum="0" Maximum="1" Value="0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"/>
+                <TextBlock Name="TxtProgressLabel" Text="" Foreground="#0A0A0E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Grid>
+            
+            <Button Name="BtnApply" Grid.Row="6" Margin="0,10,0,0"
                     Background="#00FFC8" Foreground="#0A0A0E" FontWeight="Bold" FontSize="13" BorderThickness="0"/>
         </Grid>
     </Grid>
@@ -523,6 +550,8 @@ $TxtSubtitle = $Form.FindName("TxtSubtitle")
 $TxtLegend = $Form.FindName("TxtLegend")
 $LogBox = $Form.FindName("LogBox")
 $BtnApply = $Form.FindName("BtnApply")
+$ProgressBarApply = $Form.FindName("ProgressBarApply")
+$TxtProgressLabel = $Form.FindName("TxtProgressLabel")
 $BtnRestore = $Form.FindName("BtnRestore")
 $ComboLang = $Form.FindName("ComboLang")
 
@@ -576,6 +605,88 @@ $Global:SelectedSvcHostValue = "380000" # Valeur par défaut de Windows
 $Global:LastCategory = "Reseau"
 
 # ============================================================
+# RUNSPACE EN ARRIÈRE-PLAN (exécution asynchrone des tweaks)
+# ============================================================
+# On ouvre UN SEUL runspace de fond, reutilise sequentiellement pour chaque
+# tweak. Ca evite de figer l'interface WPF pendant les operations lentes
+# (winget, DISM, netsh) sans la complexite d'un vrai pool multi-thread.
+$Global:BgRunspace = [runspacefactory]::CreateRunspace()
+$Global:BgRunspace.Open()
+
+# On recupere le code source reel de nos fonctions utilitaires pour les
+# injecter telles quelles dans le runspace de fond (elles n'existent pas
+# la-bas par defaut). Write-Log est remplace par une version muette car
+# le LogBox WPF ne peut etre touche que depuis le thread de l'interface.
+$Global:BgFunctionsText = @"
+function Set-Reg { $((Get-Command Set-Reg).Definition) }
+function Remove-Reg { $((Get-Command Remove-Reg).Definition) }
+function Disable-Svc { $((Get-Command Disable-Svc).Definition) }
+function Install-WingetApp { $((Get-Command Install-WingetApp).Definition) }
+function Uninstall-Appx { $((Get-Command Uninstall-Appx).Definition) }
+function Set-SystemTimerResolution { $((Get-Command Set-SystemTimerResolution).Definition) }
+function Write-Log { param(`$k, `$s = `$false) }
+"@
+
+$Global:ApplyQueue = [System.Collections.Generic.Queue[object]]::new()
+$Global:ApplyTotal = 0
+$Global:ApplyDone = 0
+$Global:CurrentPS = $null
+$Global:CurrentAsync = $null
+
+$ApplyTimer = New-Object System.Windows.Threading.DispatcherTimer
+$ApplyTimer.Interval = [TimeSpan]::FromMilliseconds(150)
+$ApplyTimer.Add_Tick({
+    # Un tweak est deja en cours d'execution en arriere-plan : on regarde s'il est termine.
+    if ($null -ne $Global:CurrentPS) {
+        if ($Global:CurrentAsync.IsCompleted) {
+            $item = $Global:CurrentItem
+            $label = if ($Global:CurrentLang -eq "FR") { $item.LabelFR } else { $item.LabelEN }
+            try {
+                $Global:CurrentPS.EndInvoke($Global:CurrentAsync) | Out-Null
+                if ($Global:CurrentPS.HadErrors) {
+                    $errText = ($Global:CurrentPS.Streams.Error | Select-Object -First 1).ToString()
+                    $LogBox.AppendText(">> [ECHEC] $label -> $errText`n")
+                } else {
+                    $LogBox.AppendText(">> [OK] $label`n")
+                }
+            } catch {
+                $LogBox.AppendText(">> [ECHEC] $label -> $($_.Exception.Message)`n")
+            }
+            $Global:CurrentPS.Dispose()
+            $Global:CurrentPS = $null
+            $Global:CurrentAsync = $null
+            $Global:ApplyDone++
+            $ProgressBarApply.Value = $Global:ApplyDone
+            $TxtProgressLabel.Text = "$($Global:ApplyDone) / $($Global:ApplyTotal)"
+            $LogBox.ScrollToEnd()
+        } else {
+            return # toujours en cours, on attend le prochain tick
+        }
+    }
+
+    # Rien en cours : on lance le prochain tweak de la file, s'il y en a un.
+    if ($Global:ApplyQueue.Count -gt 0) {
+        $next = $Global:ApplyQueue.Dequeue()
+        $Global:CurrentItem = $next
+        $scriptText = $Global:BgFunctionsText + "`n" + $next.Action.ToString()
+        $ps = [PowerShell]::Create()
+        $ps.Runspace = $Global:BgRunspace
+        [void]$ps.AddScript($scriptText)
+        $Global:CurrentPS = $ps
+        $Global:CurrentAsync = $ps.BeginInvoke()
+    } elseif ($Global:ApplyTotal -gt 0) {
+        # File vide et rien en cours : on a fini.
+        $ApplyTimer.Stop()
+        $L = $Global:LangDict[$Global:CurrentLang]
+        $LogBox.AppendText(">> $($L["Done"])`n")
+        $LogBox.ScrollToEnd()
+        [System.Windows.MessageBox]::Show($L["BoxDone"], "OPTI-DYLAN")
+        $BtnApply.IsEnabled = $true
+        $Global:ApplyTotal = 0
+    }
+})
+
+# ============================================================
 # NETTOYAGE ET MISE À JOUR DE LA RAM REELLE
 # ============================================================
 $RamTimer = New-Object System.Windows.Threading.DispatcherTimer
@@ -599,7 +710,9 @@ $BtnCleanRam.Add_Click({
 # ============================================================
 # LOGIQUE ET REPARATION DE LA SAUVEGARDE DES PROFILS
 # ============================================================
-$ProfilePath = Join-Path $PSScriptRoot "opti_profile.json"
+$ProfileDir = Join-Path $env:APPDATA "OPTI-DYLAN"
+if (-not (Test-Path $ProfileDir)) { New-Item -Path $ProfileDir -ItemType Directory -Force | Out-Null }
+$ProfilePath = Join-Path $ProfileDir "opti_profile.json"
 
 $BtnSaveProfile.Add_Click({
     try {
@@ -984,41 +1097,56 @@ $BtnRestore.Add_Click({
 
 $BtnApply.Add_Click({
     $L = $Global:LangDict[$Global:CurrentLang]
-    $BtnApply.IsEnabled = $false
     $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
     
     if ($selected.Count -eq 0 -and $Global:SelectedSvcHostValue -eq "380000") {
         [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
-        $BtnApply.IsEnabled = $true
         return
     }
     
+    $BtnApply.IsEnabled = $false
     $LogBox.AppendText(">> " + ($L["Exec"] -f $selected.Count) + "`n")
     
-    # 1. APPLICATION DU TWEAK RAM SVCHOST INDÉPENDANT
+    # 1. APPLICATION DU TWEAK RAM SVCHOST INDÉPENDANT (rapide, reste synchrone)
     try {
-        Write-Log "[RAM] Application de la configuration SvcHost à $Global:SelectedSvcHostValue Ko..." $false
         Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $Global:SelectedSvcHostValue
         $LogBox.AppendText(">> [OK] SvcHostSplitThresholdInKB paramétré à $Global:SelectedSvcHostValue Ko`n")
     } catch {
         $LogBox.AppendText(">> [ECHEC] Configuration SvcHostSplitThresholdInKB`n")
     }
-    
-    # 2. APPLICATION DES TWEAKS SÉLECTIONNÉS
-    foreach ($item in $selected) {
-        try {
-            & $item.Action
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [OK] $($item.LabelFR)`n") } else { $LogBox.AppendText(">> [OK] $($item.LabelEN)`n") }
-        } catch {
-            if ($Global:CurrentLang -eq "FR") { $LogBox.AppendText(">> [ECHEC] $($item.LabelFR) -> $($_.Exception.Message)`n") } else { $LogBox.AppendText(">> [FAILED] $($item.LabelEN) -> $($_.Exception.Message)`n") }
-        }
-        $LogBox.ScrollToEnd()
-        [System.Windows.Forms.Application]::DoEvents()
-    }
-    $LogBox.AppendText(">> $($L["Done"])`n")
     $LogBox.ScrollToEnd()
-    [System.Windows.MessageBox]::Show($L["BoxDone"], "OPTI-DYLAN")
-    $BtnApply.IsEnabled = $true
+    
+    # 2. FILE D'ATTENTE ASYNCHRONE POUR LES TWEAKS SÉLECTIONNÉS
+    # Chaque tweak tourne dans le runspace de fond via BeginInvoke ; le timer
+    # ApplyTimer verifie l'avancement toutes les 150ms sans jamais bloquer
+    # le thread de l'interface, meme si un tweak (DISM, winget...) est long.
+    $Global:ApplyQueue.Clear()
+    foreach ($item in $selected) { $Global:ApplyQueue.Enqueue($item) }
+    $Global:ApplyTotal = $selected.Count
+    $Global:ApplyDone = 0
+    $ProgressBarApply.Maximum = [Math]::Max(1, $selected.Count)
+    $ProgressBarApply.Value = 0
+    $TxtProgressLabel.Text = "0 / $($selected.Count)"
+    $ApplyTimer.Start()
+})
+
+# ============================================================
+# EXPORT AUTOMATIQUE DU LOG A LA FERMETURE
+# ============================================================
+$Form.Add_Closing({
+    try {
+        if ($null -ne $Global:CurrentPS) { $Global:CurrentPS.Dispose() }
+        if ($null -ne $Global:BgRunspace) { $Global:BgRunspace.Close() }
+    } catch {}
+    try {
+        $L = $Global:LangDict[$Global:CurrentLang]
+        $lines = foreach ($k in $Global:LogHistory) { if ($L.ContainsKey($k)) { $L[$k] } else { $k } }
+        $reportName = "opti_dylan_report_" + (Get-Date -Format "yyyyMMdd_HHmmss") + ".txt"
+        $reportPath = Join-Path ([Environment]::GetFolderPath("Desktop")) $reportName
+        [System.IO.File]::WriteAllLines($reportPath, [string[]]$lines)
+    } catch {
+        # Echec silencieux : on ne bloque jamais la fermeture du programme pour ca.
+    }
 })
 
 # Lancement initial
