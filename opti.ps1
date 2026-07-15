@@ -226,6 +226,139 @@ function Set-SystemTimerResolution {
 }
 
 # ============================================================
+# TIMER RESOLUTION PERSISTANT (installation en 1 clic)
+# ============================================================
+# Compile un mini .exe autonome (quelques Ko) qui ne fait qu'une chose :
+# tenir la resolution du timer via NtSetTimerResolution puis dormir
+# indefiniment. Enregistre comme tache planifiee au demarrage de session,
+# invisible, pour que le reglage reste actif meme sans OPTI-DYLAN ouvert.
+$Global:TimerTaskName = "OPTI-DYLAN-TimerResolution"
+$Global:TimerInstallDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
+$Global:TimerExePath = Join-Path $Global:TimerInstallDir "TimerResolutionService.exe"
+
+function Install-PersistentTimerResolution {
+    param([double]$Milliseconds = 0.5)
+
+    if (-not (Test-Path $Global:TimerInstallDir)) {
+        New-Item -Path $Global:TimerInstallDir -ItemType Directory -Force | Out-Null
+    }
+
+    $csharpSource = @'
+using System;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public class Program {
+    [DllImport("ntdll.dll")]
+    public static extern int NtSetTimerResolution(uint DesiredResolution, bool SetResolution, out uint CurrentResolution);
+
+    public static void Main(string[] args) {
+        uint desired = 5000;
+        if (args.Length > 0) { uint.TryParse(args[0], out desired); }
+        uint current;
+        NtSetTimerResolution(desired, true, out current);
+        while (true) { Thread.Sleep(60000); }
+    }
+}
+'@
+
+    # Recompile a chaque installation pour repartir d'un binaire propre.
+    if (Test-Path $Global:TimerExePath) {
+        Get-Process -Name "TimerResolutionService" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 300
+        Remove-Item $Global:TimerExePath -Force -ErrorAction SilentlyContinue
+    }
+
+    Add-Type -TypeDefinition $csharpSource -OutputType ConsoleApplication -OutputAssembly $Global:TimerExePath -ErrorAction Stop
+
+    $val = [int]($Milliseconds * 10000)
+
+    Unregister-ScheduledTask -TaskName $Global:TimerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    $action = New-ScheduledTaskAction -Execute $Global:TimerExePath -Argument "$val"
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+
+    Register-ScheduledTask -TaskName $Global:TimerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+
+    # Lance immediatement, sans attendre la prochaine connexion Windows.
+    Start-ScheduledTask -TaskName $Global:TimerTaskName
+}
+
+function Uninstall-PersistentTimerResolution {
+    Unregister-ScheduledTask -TaskName $Global:TimerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Get-Process -Name "TimerResolutionService" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 300
+    Remove-Item $Global:TimerExePath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-PersistentTimerResolutionInstalled {
+    $task = Get-ScheduledTask -TaskName $Global:TimerTaskName -ErrorAction SilentlyContinue
+    return ($null -ne $task)
+}
+
+# ============================================================
+# SERVICE TIMER RESOLUTION PERSISTANT (survit à la fermeture de
+# OPTI-DYLAN et aux redémarrages, via une tâche planifiée)
+# ============================================================
+$Global:TimerTaskName = "OPTI-DYLAN-TimerResolution"
+$Global:TimerServiceDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
+$Global:TimerServiceScript = Join-Path $Global:TimerServiceDir "TimerResService.ps1"
+
+function Install-TimerResolutionService {
+    param([double]$Ms)
+    if (-not (Test-Path $Global:TimerServiceDir)) { New-Item -Path $Global:TimerServiceDir -ItemType Directory -Force | Out-Null }
+
+    # Petit script autonome : applique la resolution puis la reaffirme
+    # toutes les 60s (certains pilotes/apps la reinitialisent), en boucle
+    # infinie invisible. C'est LUI qui tourne en fond, pas OPTI-DYLAN.
+    $ServiceContent = @"
+param([double]`$Ms = $Ms)
+`$code = @'
+using System;
+using System.Runtime.InteropServices;
+public class TimerResolution {
+    [DllImport("ntdll.dll", SetLastError = true)]
+    public static extern int NtSetTimerResolution(uint DesiredResolution, bool SetResolution, out uint CurrentResolution);
+}
+'@
+Add-Type -TypeDefinition `$code -ErrorAction SilentlyContinue
+`$val = [uint32](`$Ms * 10000)
+`$cur = [uint32]0
+while (`$true) {
+    [TimerResolution]::NtSetTimerResolution(`$val, `$true, [ref]`$cur) | Out-Null
+    Start-Sleep -Seconds 60
+}
+"@
+    [System.IO.File]::WriteAllText($Global:TimerServiceScript, $ServiceContent)
+
+    # Retire une eventuelle ancienne tache avant de recreer (permet de
+    # changer la valeur en ms sans laisser deux taches actives).
+    Unregister-ScheduledTask -TaskName $Global:TimerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($Global:TimerServiceScript)`""
+    $Trigger = New-ScheduledTaskTrigger -AtLogOn
+    $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
+    $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBattery -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+    Register-ScheduledTask -TaskName $Global:TimerTaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
+
+    # Le lance aussi tout de suite (pas besoin d'attendre la prochaine connexion)
+    Start-Process "powershell.exe" -ArgumentList "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($Global:TimerServiceScript)`"" -WindowStyle Hidden
+}
+
+function Uninstall-TimerResolutionService {
+    Unregister-ScheduledTask -TaskName $Global:TimerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -match "TimerResService\.ps1" } | ForEach-Object {
+        Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Test-TimerResolutionServiceInstalled {
+    return $null -ne (Get-ScheduledTask -TaskName $Global:TimerTaskName -ErrorAction SilentlyContinue)
+}
+
+# ============================================================
 # CATALOGUE DES TWEAKS (V15.1)
 # ============================================================
 $Options = @()
@@ -959,6 +1092,86 @@ function Render-Category([string]$Cat) {
             $WarnTxt.TextWrapping = "Wrap"
             $WarnBox.Child = $WarnTxt
             [void]$Panel.Children.Add($WarnBox)
+
+            $PersistBox = New-Object System.Windows.Controls.Border
+            $PersistBox.Background = Get-Brush "#0F1F1B"
+            $PersistBox.BorderBrush = Get-Brush "#00FFC8"
+            $PersistBox.BorderThickness = "1"
+            $PersistBox.CornerRadius = "5"
+            $PersistBox.Padding = "12"
+            $PersistBox.Margin = "0,0,0,15"
+            $PersistStack = New-Object System.Windows.Controls.StackPanel
+
+            $PersistTitle = New-Object System.Windows.Controls.TextBlock
+            $isInstalled = Test-PersistentTimerResolutionInstalled
+            if ($isInstalled) {
+                $PersistTitle.Text = if ($Global:CurrentLang -eq "FR") { "✅ Timer Resolution persistant : ACTIF (tâche planifiée au démarrage)" } else { "✅ Persistent Timer Resolution: ACTIVE (scheduled task at logon)" }
+            } else {
+                $PersistTitle.Text = if ($Global:CurrentLang -eq "FR") { "Timer Resolution persistant : non installé" } else { "Persistent Timer Resolution: not installed" }
+            }
+            $PersistTitle.Foreground = Get-Brush "#00FFC8"
+            $PersistTitle.FontSize = 12
+            $PersistTitle.FontWeight = "Bold"
+            $PersistTitle.Margin = "0,0,0,6"
+            [void]$PersistStack.Children.Add($PersistTitle)
+
+            $PersistDesc = New-Object System.Windows.Controls.TextBlock
+            $PersistDesc.Text = if ($Global:CurrentLang -eq "FR") { "Installe un petit programme (compilé automatiquement) lancé à chaque connexion Windows pour garder la résolution active en permanence, sans avoir besoin d'ouvrir OPTI-DYLAN. Utilise la valeur cochée ci-dessous (0.50 ms par défaut si aucune case cochée)." } else { "Installs a small auto-compiled program launched at every Windows logon to keep the resolution active permanently, without needing OPTI-DYLAN open. Uses the checked value below (0.50 ms by default if none checked)." }
+            $PersistDesc.Foreground = Get-Brush "#A0A0A0"
+            $PersistDesc.FontSize = 11
+            $PersistDesc.TextWrapping = "Wrap"
+            $PersistDesc.Margin = "0,0,0,10"
+            [void]$PersistStack.Children.Add($PersistDesc)
+
+            $BtnRow = New-Object System.Windows.Controls.StackPanel
+            $BtnRow.Orientation = "Horizontal"
+
+            $BtnInstallPersist = New-Object System.Windows.Controls.Button
+            $BtnInstallPersist.Content = if ($Global:CurrentLang -eq "FR") { "Installer (persistant)" } else { "Install (persistent)" }
+            $BtnInstallPersist.Height = 28
+            $BtnInstallPersist.Width = 160
+            $BtnInstallPersist.Margin = "0,0,10,0"
+            $BtnInstallPersist.Background = Get-Brush "#00FFC8"
+            $BtnInstallPersist.Foreground = Get-Brush "#0A0A0E"
+            $BtnInstallPersist.FontWeight = "Bold"
+            $BtnInstallPersist.BorderThickness = "0"
+            $BtnInstallPersist.Add_Click({
+                $chosenId = 115..119 | Where-Object { $Global:CheckStates[$_] -eq $true } | Select-Object -First 1
+                $msMap = @{115=0.45;116=0.50;117=0.60;118=0.75;119=1.00}
+                $ms = if ($chosenId) { $msMap[$chosenId] } else { 0.50 }
+                try {
+                    Install-PersistentTimerResolution -Milliseconds $ms
+                    $LogBox.AppendText(">> [OK] Timer Resolution persistant installé à $ms ms (tâche planifiée au démarrage de session)`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Installation Timer Resolution persistant -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Timer"
+            })
+            [void]$BtnRow.Children.Add($BtnInstallPersist)
+
+            $BtnUninstallPersist = New-Object System.Windows.Controls.Button
+            $BtnUninstallPersist.Content = if ($Global:CurrentLang -eq "FR") { "Désinstaller" } else { "Uninstall" }
+            $BtnUninstallPersist.Height = 28
+            $BtnUninstallPersist.Width = 120
+            $BtnUninstallPersist.Background = Get-Brush "#221616"
+            $BtnUninstallPersist.Foreground = Get-Brush "#E74C3C"
+            $BtnUninstallPersist.BorderThickness = "0"
+            $BtnUninstallPersist.Add_Click({
+                try {
+                    Uninstall-PersistentTimerResolution
+                    $LogBox.AppendText(">> [OK] Timer Resolution persistant désinstallé`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Désinstallation Timer Resolution persistant -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Timer"
+            })
+            [void]$BtnRow.Children.Add($BtnUninstallPersist)
+
+            [void]$PersistStack.Children.Add($BtnRow)
+            $PersistBox.Child = $PersistStack
+            [void]$Panel.Children.Add($PersistBox)
         }
         
         $filter = $TxtSearch.Text.Trim()
