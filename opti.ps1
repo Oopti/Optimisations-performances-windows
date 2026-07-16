@@ -16,6 +16,11 @@
     - Ajout de 5 nouveaux tweaks reels (Ids 140 a 144).
 #>
 
+# ============================================================
+# ICONE DE L'APPLICATION (encodee en base64, un seul fichier a gerer)
+# ============================================================
+$Global:IconBase64 = "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"
+
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     Start-Process powershell -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`""
     exit
@@ -115,6 +120,8 @@ $Global:LangDict = @{
         "CatApps" = "Applications"
         "CatBloatwares" = "Bloatwares Windows"
         "CatExtreme" = "Performance Extrême"
+        "CatInnovations" = "Innovations"
+        "InnovationsWarning" = "Ici : un démon qui bascule automatiquement le plan d'alimentation quand tu lances un jeu en plein écran, un benchmark rapide pour mesurer l'impact de tes tweaks, et des correctifs de cache. Rien de risqué, juste des idées qu'on ne trouve pas ailleurs."
         "ExtremeWarning" = "Ces réglages utilisent des techniques kernel avancées (API non documentées, fichier hosts, démon en fond). Ils sont efficaces mais réservés à ceux qui veulent aller très loin — lis bien chaque description avant de cocher."
         "QuickSelect" = "SELECTION RAPIDE"
         "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
@@ -165,6 +172,8 @@ $Global:LangDict = @{
         "CatApps" = "Applications"
         "CatBloatwares" = "Windows Bloatwares"
         "CatExtreme" = "Extreme Performance"
+        "CatInnovations" = "Innovations"
+        "InnovationsWarning" = "Here: a daemon that auto-switches your power plan when a game goes fullscreen, a quick benchmark to measure your tweaks' real impact, and cache fixes. Nothing risky, just ideas you won't find elsewhere."
         "ExtremeWarning" = "These tweaks use advanced kernel techniques (undocumented APIs, hosts file, background daemon). They're effective but meant for those who want to go all the way — read each description carefully before checking."
         "QuickSelect" = "QUICK SELECTION"
         "BtnSelectSafe" = "Check All (Safe Only)"
@@ -265,6 +274,43 @@ function Get-Brush {
     return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex)
 }
 
+# ============================================================
+# INNOVATION #2 : MINI-BENCHMARK INTÉGRÉ
+# ============================================================
+# Mesure rapide CPU / Disque / RAM pour voir l'impact réel des tweaks,
+# avant/après. Prend quelques secondes, aucune installation externe.
+function Invoke-QuickBenchmark {
+    $results = [ordered]@{}
+
+    # --- CPU : boucle de calcul, on mesure le temps pour un nombre fixe d'itérations ---
+    $cpuTime = Measure-Command {
+        $x = 0
+        for ($i = 0; $i -lt 15000000; $i++) { $x += ($i % 7) }
+    }
+    $results["cpu_ms"] = [Math]::Round($cpuTime.TotalMilliseconds, 0)
+
+    # --- Disque : écriture/lecture d'un fichier de 100 Mo dans %TEMP% ---
+    $testFile = Join-Path $env:TEMP "opti_dylan_bench.tmp"
+    $sizeMB = 100
+    $data = New-Object byte[] ($sizeMB * 1MB)
+    (New-Object Random).NextBytes($data)
+    try {
+        $writeTime = Measure-Command { [System.IO.File]::WriteAllBytes($testFile, $data) }
+        $readTime = Measure-Command { [System.IO.File]::ReadAllBytes($testFile) | Out-Null }
+        $results["write_mbs"] = [Math]::Round($sizeMB / [Math]::Max($writeTime.TotalSeconds, 0.001), 1)
+        $results["read_mbs"] = [Math]::Round($sizeMB / [Math]::Max($readTime.TotalSeconds, 0.001), 1)
+    } finally {
+        Remove-Item $testFile -Force -ErrorAction SilentlyContinue
+    }
+
+    # --- RAM : etat actuel ---
+    $os = Get-CimInstance Win32_OperatingSystem
+    $results["ram_pct"] = [Math]::Round((($os.TotalVisibleMemorySize - $os.FreePhysicalMemory) / $os.TotalVisibleMemorySize) * 100, 0)
+    $results["ram_free_gb"] = [Math]::Round($os.FreePhysicalMemory / 1MB, 1)
+
+    return $results
+}
+
 function Test-TweakApplied {
     # Verifie si un tweak est deja applique sur la machine. Ne fonctionne que
     # pour les tweaks annotes CheckType="Reg" ou CheckType="Svc" (les tweaks
@@ -344,7 +390,7 @@ public class Program {
         Remove-Item $Global:TimerExePath -Force -ErrorAction SilentlyContinue
     }
 
-    Add-Type -TypeDefinition $csharpSource -OutputType ConsoleApplication -OutputAssembly $Global:TimerExePath -ErrorAction Stop
+    Add-Type -TypeDefinition $csharpSource -OutputType WindowsApplication -OutputAssembly $Global:TimerExePath -ErrorAction Stop
 
     $val = [int]($Milliseconds * 10000)
 
@@ -435,7 +481,7 @@ public class Program {
         Remove-Item $Global:PrioExePath -Force -ErrorAction SilentlyContinue
     }
 
-    Add-Type -TypeDefinition $csharpSource -OutputType ConsoleApplication -OutputAssembly $Global:PrioExePath -ErrorAction Stop
+    Add-Type -TypeDefinition $csharpSource -OutputType WindowsApplication -OutputAssembly $Global:PrioExePath -ErrorAction Stop
 
     Unregister-ScheduledTask -TaskName $Global:PrioTaskName -Confirm:$false -ErrorAction SilentlyContinue
 
@@ -458,6 +504,162 @@ function Uninstall-ProcessPriorityDaemon {
 function Test-ProcessPriorityDaemonInstalled {
     $task = Get-ScheduledTask -TaskName $Global:PrioTaskName -ErrorAction SilentlyContinue
     return ($null -ne $task)
+}
+
+# ============================================================
+# INNOVATION #1 : SMART POWER SWITCHER
+# ============================================================
+# Démon qui détecte automatiquement quand une fenêtre passe en plein écran
+# (donc probablement un jeu) et bascule le plan d'alimentation sur
+# "Performances élevées" tout seul, puis revient sur "Équilibré" dès que
+# tu retournes sur le bureau. Utilise les GUID standards Windows (constants
+# sur toutes les machines), pas besoin de dupliquer un plan personnalisé.
+$Global:SmartPowerTaskName = "OPTI-DYLAN-SmartPower"
+$Global:SmartPowerInstallDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
+$Global:SmartPowerExePath = Join-Path $Global:SmartPowerInstallDir "SmartPowerDaemon.exe"
+
+function Install-SmartPowerDaemon {
+    if (-not (Test-Path $Global:SmartPowerInstallDir)) {
+        New-Item -Path $Global:SmartPowerInstallDir -ItemType Directory -Force | Out-Null
+    }
+
+    $csharpSource = @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public class Program {
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int nIndex);
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct RECT { public int Left, Top, Right, Bottom; }
+
+    const string SCHEME_BALANCED = "381b4222-f694-41f0-9685-ff5bb260df2e";
+    const string SCHEME_HIGHPERF = "8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c";
+    static bool weSwitched = false;
+
+    static void SetScheme(string guid) {
+        try {
+            var psi = new ProcessStartInfo("powercfg.exe", "/setactive " + guid);
+            psi.CreateNoWindow = true;
+            psi.UseShellExecute = false;
+            psi.WindowStyle = ProcessWindowStyle.Hidden;
+            using (var p = Process.Start(psi)) { p.WaitForExit(); }
+        } catch { }
+    }
+
+    static bool IsForegroundFullscreen() {
+        try {
+            IntPtr hWnd = GetForegroundWindow();
+            if (hWnd == IntPtr.Zero) return false;
+            RECT r;
+            if (!GetWindowRect(hWnd, out r)) return false;
+            int screenW = GetSystemMetrics(0);
+            int screenH = GetSystemMetrics(1);
+            int w = r.Right - r.Left;
+            int h = r.Bottom - r.Top;
+            return (w >= screenW && h >= screenH);
+        } catch { return false; }
+    }
+
+    public static void Main(string[] args) {
+        while (true) {
+            bool fs = IsForegroundFullscreen();
+            if (fs && !weSwitched) {
+                SetScheme(SCHEME_HIGHPERF);
+                weSwitched = true;
+            } else if (!fs && weSwitched) {
+                SetScheme(SCHEME_BALANCED);
+                weSwitched = false;
+            }
+            Thread.Sleep(3000);
+        }
+    }
+}
+'@
+
+    if (Test-Path $Global:SmartPowerExePath) {
+        Get-Process -Name "SmartPowerDaemon" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 300
+        Remove-Item $Global:SmartPowerExePath -Force -ErrorAction SilentlyContinue
+    }
+
+    Add-Type -TypeDefinition $csharpSource -OutputType WindowsApplication -OutputAssembly $Global:SmartPowerExePath -ErrorAction Stop
+
+    Unregister-ScheduledTask -TaskName $Global:SmartPowerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    $action = New-ScheduledTaskAction -Execute $Global:SmartPowerExePath
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+
+    Register-ScheduledTask -TaskName $Global:SmartPowerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Start-ScheduledTask -TaskName $Global:SmartPowerTaskName
+}
+
+function Uninstall-SmartPowerDaemon {
+    Unregister-ScheduledTask -TaskName $Global:SmartPowerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Get-Process -Name "SmartPowerDaemon" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 300
+    Remove-Item $Global:SmartPowerExePath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-SmartPowerDaemonInstalled {
+    $task = Get-ScheduledTask -TaskName $Global:SmartPowerTaskName -ErrorAction SilentlyContinue
+    return ($null -ne $task)
+}
+
+# ============================================================
+# RACCOURCI BUREAU (appli lançable en 1 double-clic, icône dédiée)
+# ============================================================
+# Copie le script vers un emplacement fixe + cree un .lnk sur le Bureau
+# qui lance PowerShell en mode cache (aucune console visible), avec
+# l'icone integree ci-dessus. C'est un vrai raccourci Windows, pas un
+# .exe compile, mais l'experience utilisateur est identique : double-clic,
+# icone dediee, pas de fenetre noire qui clignote.
+$Global:AppInstallDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
+$Global:AppScriptPath = Join-Path $Global:AppInstallDir "OPTI-DYLAN.ps1"
+$Global:AppIconPath = Join-Path $Global:AppInstallDir "icon.ico"
+
+function Install-DesktopShortcut {
+    if (-not (Test-Path $Global:AppInstallDir)) {
+        New-Item -Path $Global:AppInstallDir -ItemType Directory -Force | Out-Null
+    }
+
+    $iconBytes = [Convert]::FromBase64String($Global:IconBase64)
+    [System.IO.File]::WriteAllBytes($Global:AppIconPath, $iconBytes)
+
+    if ($PSCommandPath) {
+        Copy-Item -Path $PSCommandPath -Destination $Global:AppScriptPath -Force
+    } elseif (-not (Test-Path $Global:AppScriptPath)) {
+        throw "Impossible de localiser le fichier du script. Lance OPTI-DYLAN depuis un .ps1 enregistré sur ton disque (pas via une commande en ligne) avant de créer le raccourci."
+    }
+
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcutPath = Join-Path $desktopPath "OPTI-DYLAN.lnk"
+    $wsh = New-Object -ComObject WScript.Shell
+    $shortcut = $wsh.CreateShortcut($shortcutPath)
+    $shortcut.TargetPath = "powershell.exe"
+    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Global:AppScriptPath`""
+    $shortcut.IconLocation = $Global:AppIconPath
+    $shortcut.WorkingDirectory = $Global:AppInstallDir
+    $shortcut.Description = "OPTI-DYLAN Toolkit"
+    $shortcut.Save()
+}
+
+function Uninstall-DesktopShortcut {
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcutPath = Join-Path $desktopPath "OPTI-DYLAN.lnk"
+    Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-DesktopShortcutInstalled {
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcutPath = Join-Path $desktopPath "OPTI-DYLAN.lnk"
+    return (Test-Path $shortcutPath)
 }
 
 # ============================================================
@@ -589,13 +791,13 @@ $Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[NIVEAU 1 - BASI
 $Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[NIVEAU 2 - OPTIMISE] Regroupement agressif (seuil 16 Go) + coupe telemetrie/diagnostic"; LabelEN="[LEVEL 2 - OPTIMIZED] Aggressive grouping (16 GB threshold) + disable telemetry/diagnostics"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 16777216; Disable-Svc "DiagTrack"; Disable-Svc "dmwappushservice"; Disable-Svc "WerSvc" }}
 $Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[NIVEAU 3 - EXTREME] Regroupement total (seuil 128 Go) + gel des services secondaires + coupe Widgets"; LabelEN="[LEVEL 3 - EXTREME] Total grouping (128 GB threshold) + freeze secondary services + disable Widgets"; Risk="advanced"; Action={
     $failedParts = @()
-    try { Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 134217728 } catch { $failedParts += "SvcHost" }
-    "DiagTrack","dmwappushservice","WerSvc","SysMain","WSearch","PcaSvc","MapsBroker","lfsvc","RemoteRegistry","Fax","WidgetsService" | ForEach-Object {
-        try { Disable-Svc $_ } catch { $failedParts += $_ }
+    try { Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 134217728 } catch { $failedParts += "SvcHost ($($_.Exception.Message))" }
+    foreach ($svcName in @("DiagTrack","dmwappushservice","WerSvc","SysMain","WSearch","PcaSvc","MapsBroker","lfsvc","RemoteRegistry","Fax","WidgetsService")) {
+        try { Disable-Svc $svcName } catch { $failedParts += "$svcName ($($_.Exception.Message))" }
     }
-    try { Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" 0 } catch { $failedParts += "TaskbarDa" }
-    try { Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests" 0 } catch { $failedParts += "Widgets" }
-    if ($failedParts.Count -gt 0) { throw "Applique partiellement, echec sur : $($failedParts -join ', ')" }
+    try { Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" 0 } catch { $failedParts += "TaskbarDa ($($_.Exception.Message))" }
+    try { Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests" 0 } catch { $failedParts += "Widgets ($($_.Exception.Message))" }
+    if ($failedParts.Count -gt 0) { throw "Applique partiellement, echec sur : $($failedParts -join ' | ')" }
 }}
 
 # --- 5. TIMER RESOLUTION ---
@@ -686,7 +888,13 @@ $Options += [PSCustomObject]@{Id=110; Cat="Apps"; SubCat="FR=Communication & Mul
 $Options += [PSCustomObject]@{Id=111; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
 
 # --- 11. PERFORMANCE EXTRÊME (techniques kernel avancées) ---
-$Options += [PSCustomObject]@{Id=148; Cat="Extreme"; LabelFR="Désactiver la compression mémoire Windows (libère du CPU, coûte de la RAM)"; LabelEN="Disable Windows Memory Compression (frees CPU, costs RAM)"; Risk="moderate"; Action={ Disable-MMAgent -mc }}
+$Options += [PSCustomObject]@{Id=155; Cat="Extreme"; LabelFR="Désactiver la compression mémoire Windows (libère du CPU, coûte de la RAM)"; LabelEN="Disable Windows Memory Compression (frees CPU, costs RAM)"; Risk="moderate"; Action={
+    try {
+        Disable-MMAgent -mc -ErrorAction Stop
+    } catch {
+        throw "Ce réglage dépend du service SysMain — s'il est désactivé (tweak SysMain coché), ce réglage ne peut pas s'appliquer. Décoche SysMain si tu veux garder celui-ci."
+    }
+}}
 $Options += [PSCustomObject]@{Id=149; Cat="Extreme"; LabelFR="Forcer l'exécution des tâches de maintenance Windows (ProcessIdleTasks)"; LabelEN="Force execution of Windows idle maintenance tasks (ProcessIdleTasks)"; Risk="safe"; Action={ Start-Process "rundll32.exe" -ArgumentList "advapi32.dll,ProcessIdleTasks" -Wait -WindowStyle Hidden }}
 $Options += [PSCustomObject]@{Id=150; Cat="Extreme"; LabelFR="Purger la Standby List (technique kernel non documentée, comme RAMMap)"; LabelEN="Purge the Standby List (undocumented kernel technique, like RAMMap)"; Risk="advanced"; Action={
     $result = [MemoryTools]::EmptyStandbyList()
@@ -701,16 +909,51 @@ $Options += [PSCustomObject]@{Id=151; Cat="Extreme"; LabelFR="Bloquer les serveu
         "corpext.msitadfs.glbdns2.microsoft.com","compatexchange.cloudapp.net","cs1.wpc.v0cdn.net",
         "statsfe2.ws.microsoft.com","feedback.windows.com","feedback.search.microsoft.com"
     )
-    $current = Get-Content $hostsPath -Raw -ErrorAction SilentlyContinue
-    if ($null -eq $current) { $current = "" }
-    $added = 0
-    foreach ($d in $domains) {
-        if ($current -notmatch [regex]::Escape($d)) {
-            Add-Content -Path $hostsPath -Value "0.0.0.0 $d" -ErrorAction Stop
-            $added++
+    $lastError = $null
+    $success = $false
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try {
+            $current = Get-Content $hostsPath -Raw -ErrorAction Stop
+            if ($null -eq $current) { $current = "" }
+            $toAdd = $domains | Where-Object { $current -notmatch [regex]::Escape($_) } | ForEach-Object { "0.0.0.0 $_" }
+            if ($toAdd.Count -gt 0) {
+                [System.IO.File]::AppendAllLines($hostsPath, [string[]]$toAdd)
+            }
+            $success = $true
+            break
+        } catch {
+            $lastError = $_.Exception.Message
+            Start-Sleep -Milliseconds 700
         }
     }
-    if ($added -eq 0) { } # deja tout bloque, rien a faire, on ne considere pas ca comme un echec
+    if (-not $success) {
+        throw "Fichier hosts verrouillé après 5 tentatives (antivirus ou autre logiciel l'utilise) : $lastError"
+    }
+}}
+
+# --- 12. INNOVATIONS ---
+$Options += [PSCustomObject]@{Id=156; Cat="Innovations"; LabelFR="Vider les caches de shaders DirectX/GPU (corrige les micro-saccades)"; LabelEN="Clear DirectX/GPU shader caches (fixes micro-stutters)"; Risk="safe"; Action={
+    $paths = @(
+        "$env:LOCALAPPDATA\D3DSCache",
+        "$env:LOCALAPPDATA\NVIDIA\DXCache",
+        "$env:LOCALAPPDATA\NVIDIA\GLCache",
+        "$env:LOCALAPPDATA\AMD\DxCache",
+        "$env:LOCALAPPDATA\AMD\DxcCache"
+    )
+    $cleaned = 0
+    foreach ($p in $paths) {
+        if (Test-Path $p) {
+            Remove-Item "$p\*" -Recurse -Force -ErrorAction SilentlyContinue
+            $cleaned++
+        }
+    }
+    if ($cleaned -eq 0) { throw "Aucun cache de shaders trouvé sur cette machine (normal si aucun jeu n'a encore tourné)" }
+}}
+$Options += [PSCustomObject]@{Id=157; Cat="Innovations"; LabelFR="Reconstruire le cache d'icônes Windows (corrige les icônes cassées)"; LabelEN="Rebuild Windows icon cache (fixes broken icons)"; Risk="safe"; Action={
+    Stop-Process -Name "explorer" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+    Get-ChildItem "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -Force -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+    Start-Process "explorer.exe"
 }}
 
 
@@ -806,6 +1049,7 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                     <Button Name="BtnApps" Tag="Apps" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnBloatwares" Tag="Bloatwares" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnExtreme" Tag="Extreme" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnInnovations" Tag="Innovations" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
                         <StackPanel>
@@ -821,7 +1065,8 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                         <Button Name="BtnSaveProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="0,0,2,0"/>
                         <Button Name="BtnLoadProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="2,0,0,0"/>
                     </UniformGrid>
-                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,12"/>
+                    <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,8"/>
+                    <Button Name="BtnShortcut" Height="32" Background="#161622" Foreground="#FF6EC7" BorderThickness="0" Margin="0,0,0,12"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,0,0,12" Padding="8" Background="#0C0C12">
                         <StackPanel>
@@ -931,6 +1176,7 @@ $BtnApply = $Form.FindName("BtnApply")
 $ProgressBarApply = $Form.FindName("ProgressBarApply")
 $TxtProgressLabel = $Form.FindName("TxtProgressLabel")
 $BtnRestore = $Form.FindName("BtnRestore")
+$BtnShortcut = $Form.FindName("BtnShortcut")
 $ComboLang = $Form.FindName("ComboLang")
 
 $TxtQuickSelect = $Form.FindName("TxtQuickSelect")
@@ -975,6 +1221,7 @@ $NavButtons = @{
     "Apps"=$Form.FindName("BtnApps")
     "Bloatwares"=$Form.FindName("BtnBloatwares")
     "Extreme"=$Form.FindName("BtnExtreme")
+    "Innovations"=$Form.FindName("BtnInnovations")
 }
 
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
@@ -1232,6 +1479,7 @@ function Update-SidebarCounters {
             "Apps" { $L["CatApps"] }
             "Bloatwares" { $L["CatBloatwares"] }
             "Extreme" { $L["CatExtreme"] }
+            "Innovations" { $L["CatInnovations"] }
         }
         $emoji = switch ($key) {
             "Reseau" { "🌐" }
@@ -1245,12 +1493,21 @@ function Update-SidebarCounters {
             "Apps" { "📦" }
             "Bloatwares" { "🗑️" }
             "Extreme" { "🔥" }
+            "Innovations" { "🚀" }
         }
         if ($count -gt 0) {
             $NavButtons[$key].Content = "$emoji  $catTitle ($count)"
         } else {
             $NavButtons[$key].Content = "$emoji  $catTitle"
         }
+    }
+}
+
+function Update-ShortcutButtonLabel {
+    if (Test-DesktopShortcutInstalled) {
+        $BtnShortcut.Content = if ($Global:CurrentLang -eq "FR") { "✅ Raccourci Bureau créé" } else { "✅ Desktop shortcut created" }
+    } else {
+        $BtnShortcut.Content = if ($Global:CurrentLang -eq "FR") { "🖥️ Créer un raccourci Bureau" } else { "🖥️ Create Desktop Shortcut" }
     }
 }
 
@@ -1262,6 +1519,7 @@ function Update-InterfaceLanguage {
     $TxtLegend.Text = $L["Legend"]
     $BtnApply.Content = $L["BtnApply"]
     $BtnRestore.Content = $L["BtnRestore"]
+    Update-ShortcutButtonLabel
     
     $TxtQuickSelect.Text = $L["QuickSelect"]
     $BtnSelectSafe.Content = $L["BtnSelectSafe"]
@@ -1495,6 +1753,154 @@ function Render-Category([string]$Cat) {
             [void]$Panel.Children.Add($PrioBox)
         }
 
+        if ($Cat -eq "Innovations") {
+            $L = $Global:LangDict[$Global:CurrentLang]
+
+            $InfoBox = New-Object System.Windows.Controls.Border
+            $InfoBox.Background = Get-Brush "#0C1A22"
+            $InfoBox.BorderBrush = Get-Brush "#3AA0FF"
+            $InfoBox.BorderThickness = "1"
+            $InfoBox.CornerRadius = "5"
+            $InfoBox.Padding = "10"
+            $InfoBox.Margin = "0,0,0,12"
+            $InfoTxt = New-Object System.Windows.Controls.TextBlock
+            $InfoTxt.Text = $L["InnovationsWarning"]
+            $InfoTxt.Foreground = Get-Brush "#3AA0FF"
+            $InfoTxt.FontSize = 11
+            $InfoTxt.TextWrapping = "Wrap"
+            $InfoBox.Child = $InfoTxt
+            [void]$Panel.Children.Add($InfoBox)
+
+            # --- Bloc Benchmark ---
+            $BenchBox = New-Object System.Windows.Controls.Border
+            $BenchBox.Background = Get-Brush "#0F1F1B"
+            $BenchBox.BorderBrush = Get-Brush "#00FFC8"
+            $BenchBox.BorderThickness = "1"
+            $BenchBox.CornerRadius = "5"
+            $BenchBox.Padding = "12"
+            $BenchBox.Margin = "0,0,0,15"
+            $BenchStack = New-Object System.Windows.Controls.StackPanel
+
+            $BenchTitle = New-Object System.Windows.Controls.TextBlock
+            $BenchTitle.Text = if ($Global:CurrentLang -eq "FR") { "📊 Benchmark rapide (CPU / Disque / RAM)" } else { "📊 Quick benchmark (CPU / Disk / RAM)" }
+            $BenchTitle.Foreground = Get-Brush "#00FFC8"
+            $BenchTitle.FontSize = 12
+            $BenchTitle.FontWeight = "Bold"
+            $BenchTitle.Margin = "0,0,0,6"
+            [void]$BenchStack.Children.Add($BenchTitle)
+
+            $BenchDesc = New-Object System.Windows.Controls.TextBlock
+            $BenchDesc.Text = if ($Global:CurrentLang -eq "FR") { "Mesure la vitesse CPU, la vitesse disque (lecture/écriture) et l'état de la RAM en quelques secondes. Lance-le avant et après tes tweaks pour voir la différence réelle, en chiffres." } else { "Measures CPU speed, disk speed (read/write) and RAM state in a few seconds. Run it before and after your tweaks to see the real difference, in numbers." }
+            $BenchDesc.Foreground = Get-Brush "#A0A0A0"
+            $BenchDesc.FontSize = 11
+            $BenchDesc.TextWrapping = "Wrap"
+            $BenchDesc.Margin = "0,0,0,10"
+            [void]$BenchStack.Children.Add($BenchDesc)
+
+            $BtnBench = New-Object System.Windows.Controls.Button
+            $BtnBench.Content = if ($Global:CurrentLang -eq "FR") { "Lancer le benchmark" } else { "Run benchmark" }
+            $BtnBench.Height = 28
+            $BtnBench.Width = 160
+            $BtnBench.Background = Get-Brush "#00FFC8"
+            $BtnBench.Foreground = Get-Brush "#0A0A0E"
+            $BtnBench.FontWeight = "Bold"
+            $BtnBench.BorderThickness = "0"
+            $BtnBench.Add_Click({
+                $LogBox.AppendText(">> [BENCHMARK] Test en cours (quelques secondes)...`n")
+                $LogBox.ScrollToEnd()
+                [System.Windows.Forms.Application]::DoEvents()
+                try {
+                    $r = Invoke-QuickBenchmark
+                    $LogBox.AppendText(">> [BENCHMARK] CPU : $($r.cpu_ms) ms | Disque écriture : $($r.write_mbs) Mo/s | Disque lecture : $($r.read_mbs) Mo/s | RAM utilisée : $($r.ram_pct)% (libre : $($r.ram_free_gb) Go)`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Benchmark -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+            })
+            [void]$BenchStack.Children.Add($BtnBench)
+
+            $BenchBox.Child = $BenchStack
+            [void]$Panel.Children.Add($BenchBox)
+
+            # --- Bloc Smart Power Switcher ---
+            $SpBox = New-Object System.Windows.Controls.Border
+            $SpBox.Background = Get-Brush "#1A1F0F"
+            $SpBox.BorderBrush = Get-Brush "#C6FF3A"
+            $SpBox.BorderThickness = "1"
+            $SpBox.CornerRadius = "5"
+            $SpBox.Padding = "12"
+            $SpBox.Margin = "0,0,0,15"
+            $SpStack = New-Object System.Windows.Controls.StackPanel
+
+            $SpTitle = New-Object System.Windows.Controls.TextBlock
+            $isSpInstalled = Test-SmartPowerDaemonInstalled
+            if ($isSpInstalled) {
+                $SpTitle.Text = if ($Global:CurrentLang -eq "FR") { "✅ Smart Power Switcher : ACTIF" } else { "✅ Smart Power Switcher: ACTIVE" }
+            } else {
+                $SpTitle.Text = if ($Global:CurrentLang -eq "FR") { "Smart Power Switcher : non installé" } else { "Smart Power Switcher: not installed" }
+            }
+            $SpTitle.Foreground = Get-Brush "#C6FF3A"
+            $SpTitle.FontSize = 12
+            $SpTitle.FontWeight = "Bold"
+            $SpTitle.Margin = "0,0,0,6"
+            [void]$SpStack.Children.Add($SpTitle)
+
+            $SpDesc = New-Object System.Windows.Controls.TextBlock
+            $SpDesc.Text = if ($Global:CurrentLang -eq "FR") { "Détecte automatiquement quand une fenêtre passe en plein écran (donc probablement un jeu) et bascule le plan d'alimentation sur Performances Élevées tout seul. Revient sur Équilibré dès que tu retournes sur le bureau. Zéro action de ta part." } else { "Automatically detects when a window goes fullscreen (likely a game) and switches your power plan to High Performance on its own. Reverts to Balanced as soon as you're back on the desktop. Zero effort on your part." }
+            $SpDesc.Foreground = Get-Brush "#A0A0A0"
+            $SpDesc.FontSize = 11
+            $SpDesc.TextWrapping = "Wrap"
+            $SpDesc.Margin = "0,0,0,10"
+            [void]$SpStack.Children.Add($SpDesc)
+
+            $SpBtnRow = New-Object System.Windows.Controls.StackPanel
+            $SpBtnRow.Orientation = "Horizontal"
+
+            $BtnInstallSp = New-Object System.Windows.Controls.Button
+            $BtnInstallSp.Content = if ($Global:CurrentLang -eq "FR") { "Installer le démon" } else { "Install daemon" }
+            $BtnInstallSp.Height = 28
+            $BtnInstallSp.Width = 160
+            $BtnInstallSp.Margin = "0,0,10,0"
+            $BtnInstallSp.Background = Get-Brush "#C6FF3A"
+            $BtnInstallSp.Foreground = Get-Brush "#0A0A0E"
+            $BtnInstallSp.FontWeight = "Bold"
+            $BtnInstallSp.BorderThickness = "0"
+            $BtnInstallSp.Add_Click({
+                try {
+                    Install-SmartPowerDaemon
+                    $LogBox.AppendText(">> [OK] Smart Power Switcher installé et lancé`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Installation Smart Power Switcher -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Innovations"
+            })
+            [void]$SpBtnRow.Children.Add($BtnInstallSp)
+
+            $BtnUninstallSp = New-Object System.Windows.Controls.Button
+            $BtnUninstallSp.Content = if ($Global:CurrentLang -eq "FR") { "Désinstaller" } else { "Uninstall" }
+            $BtnUninstallSp.Height = 28
+            $BtnUninstallSp.Width = 120
+            $BtnUninstallSp.Background = Get-Brush "#221616"
+            $BtnUninstallSp.Foreground = Get-Brush "#E74C3C"
+            $BtnUninstallSp.BorderThickness = "0"
+            $BtnUninstallSp.Add_Click({
+                try {
+                    Uninstall-SmartPowerDaemon
+                    $LogBox.AppendText(">> [OK] Smart Power Switcher désinstallé`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Désinstallation Smart Power Switcher -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Innovations"
+            })
+            [void]$SpBtnRow.Children.Add($BtnUninstallSp)
+
+            [void]$SpStack.Children.Add($SpBtnRow)
+            $SpBox.Child = $SpStack
+            [void]$Panel.Children.Add($SpBox)
+        }
+
         $filter = $TxtSearch.Text.Trim()
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         
@@ -1678,6 +2084,17 @@ $BtnRestore.Add_Click({
     } catch {
         Write-Log "[WARN] $($_.Exception.Message)" $false
     }
+})
+
+$BtnShortcut.Add_Click({
+    try {
+        Install-DesktopShortcut
+        $LogBox.AppendText(">> [OK] Raccourci Bureau créé — double-clique dessus la prochaine fois, plus besoin de PowerShell.`n")
+    } catch {
+        $LogBox.AppendText(">> [ECHEC] Création du raccourci -> $($_.Exception.Message)`n")
+    }
+    $LogBox.ScrollToEnd()
+    Update-ShortcutButtonLabel
 })
 
 $BtnApply.Add_Click({
