@@ -35,6 +35,61 @@ public class TimerResolution {
 "@
 Add-Type -TypeDefinition $TimerResolutionCode -ErrorAction SilentlyContinue
 
+$MemoryToolsCode = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class MemoryTools {
+    [DllImport("ntdll.dll")]
+    static extern int NtSetSystemInformation(int SystemInformationClass, IntPtr SystemInformation, int SystemInformationLength);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool LookupPrivilegeValue(string lpSystemName, string lpName, out LUID lpLuid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    static extern bool AdjustTokenPrivileges(IntPtr TokenHandle, bool DisableAllPrivileges, ref TOKEN_PRIVILEGES NewState, uint BufferLength, IntPtr PreviousState, IntPtr ReturnLength);
+
+    [DllImport("kernel32.dll")]
+    static extern IntPtr GetCurrentProcess();
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct LUID { public uint LowPart; public int HighPart; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct TOKEN_PRIVILEGES { public uint PrivilegeCount; public LUID Luid; public uint Attributes; }
+
+    const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
+    const uint TOKEN_QUERY = 0x0008;
+    const uint SE_PRIVILEGE_ENABLED = 0x0002;
+
+    static bool EnablePrivilege(string privilege) {
+        IntPtr hToken;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out hToken)) return false;
+        LUID luid;
+        if (!LookupPrivilegeValue(null, privilege, out luid)) return false;
+        TOKEN_PRIVILEGES tp = new TOKEN_PRIVILEGES();
+        tp.PrivilegeCount = 1;
+        tp.Luid = luid;
+        tp.Attributes = SE_PRIVILEGE_ENABLED;
+        return AdjustTokenPrivileges(hToken, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+    }
+
+    public static int EmptyStandbyList() {
+        if (!EnablePrivilege("SeProfileSingleProcessPrivilege")) { return -1; }
+        int command = 4; // MemoryPurgeStandbyList
+        IntPtr ptr = Marshal.AllocHGlobal(sizeof(int));
+        Marshal.WriteInt32(ptr, command);
+        int result = NtSetSystemInformation(80, ptr, sizeof(int));
+        Marshal.FreeHGlobal(ptr);
+        return result;
+    }
+}
+"@
+Add-Type -TypeDefinition $MemoryToolsCode -ErrorAction SilentlyContinue
+
 # ============================================================
 # DICTIONNAIRE DE TRADUCTION DE L'INTERFACE ET DES LOGS
 # ============================================================
@@ -59,6 +114,8 @@ $Global:LangDict = @{
         "CatNettoyage" = "Nettoyage & Ram"
         "CatApps" = "Applications"
         "CatBloatwares" = "Bloatwares Windows"
+        "CatExtreme" = "Performance Extrême"
+        "ExtremeWarning" = "Ces réglages utilisent des techniques kernel avancées (API non documentées, fichier hosts, démon en fond). Ils sont efficaces mais réservés à ceux qui veulent aller très loin — lis bien chaque description avant de cocher."
         "QuickSelect" = "SELECTION RAPIDE"
         "BtnSelectSafe" = "Cocher Tout (Sans Risque)"
         "BtnSelectMod" = "Cocher Tout (Modéré)"
@@ -107,6 +164,8 @@ $Global:LangDict = @{
         "CatNettoyage" = "Cleanup & Ram"
         "CatApps" = "Applications"
         "CatBloatwares" = "Windows Bloatwares"
+        "CatExtreme" = "Extreme Performance"
+        "ExtremeWarning" = "These tweaks use advanced kernel techniques (undocumented APIs, hosts file, background daemon). They're effective but meant for those who want to go all the way — read each description carefully before checking."
         "QuickSelect" = "QUICK SELECTION"
         "BtnSelectSafe" = "Check All (Safe Only)"
         "BtnSelectMod" = "Check All (Moderate)"
@@ -180,9 +239,25 @@ function Install-WingetApp {
 
 function Uninstall-Appx {
     param([string]$NamePattern)
-    Write-Log "[BLOATWARE] Suppression de : $NamePattern..." $false
-    Get-AppxPackage -AllUsers -Name "*$NamePattern*" | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
-    Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -match $NamePattern } | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+    $removed = 0
+    $errors = @()
+
+    $pkgs = Get-AppxPackage -AllUsers -Name "*$NamePattern*" -ErrorAction SilentlyContinue
+    foreach ($pkg in $pkgs) {
+        try { Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction Stop; $removed++ }
+        catch { $errors += $_.Exception.Message }
+    }
+
+    $provisioned = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -match $NamePattern }
+    foreach ($prov in $provisioned) {
+        try { Remove-AppxProvisionedPackage -Online -PackageName $prov.PackageName -ErrorAction Stop; $removed++ }
+        catch { $errors += $_.Exception.Message }
+    }
+
+    if ($removed -eq 0 -and $errors.Count -gt 0) {
+        throw "Suppression AppX échouée : $($errors[0])"
+    }
+    return $removed
 }
 
 function Get-Brush {
@@ -295,6 +370,93 @@ function Uninstall-PersistentTimerResolution {
 
 function Test-PersistentTimerResolutionInstalled {
     $task = Get-ScheduledTask -TaskName $Global:TimerTaskName -ErrorAction SilentlyContinue
+    return ($null -ne $task)
+}
+
+# ============================================================
+# DÉMON DE PRIORITÉ DE PROCESSUS (surveille et boost le premier plan)
+# ============================================================
+# Compile un mini .exe qui surveille en continu quelle fenetre est au
+# premier plan et met automatiquement son processus en priorite Haute,
+# sauf pour une liste d'exclusion (explorer, shell, nos propres services).
+# Installe via tache planifiee au demarrage de session, meme principe que
+# le Timer Resolution persistant.
+$Global:PrioTaskName = "OPTI-DYLAN-PriorityDaemon"
+$Global:PrioInstallDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
+$Global:PrioExePath = Join-Path $Global:PrioInstallDir "ProcessPriorityDaemon.exe"
+
+function Install-ProcessPriorityDaemon {
+    if (-not (Test-Path $Global:PrioInstallDir)) {
+        New-Item -Path $Global:PrioInstallDir -ItemType Directory -Force | Out-Null
+    }
+
+    $csharpSource = @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
+
+public class Program {
+    [DllImport("user32.dll")]
+    static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")]
+    static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+
+    static string[] skipList = { "explorer", "SearchHost", "ShellExperienceHost", "TextInputHost", "dwm", "StartMenuExperienceHost", "TimerResolutionService", "ProcessPriorityDaemon" };
+
+    public static void Main(string[] args) {
+        int lastPid = -1;
+        while (true) {
+            try {
+                IntPtr hWnd = GetForegroundWindow();
+                uint pid;
+                GetWindowThreadProcessId(hWnd, out pid);
+                if (pid != 0 && (int)pid != lastPid) {
+                    lastPid = (int)pid;
+                    Process p = Process.GetProcessById((int)pid);
+                    bool skip = false;
+                    foreach (var s in skipList) {
+                        if (p.ProcessName.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0) { skip = true; break; }
+                    }
+                    if (!skip) {
+                        try { p.PriorityClass = ProcessPriorityClass.High; } catch { }
+                    }
+                }
+            } catch { }
+            Thread.Sleep(2000);
+        }
+    }
+}
+'@
+
+    if (Test-Path $Global:PrioExePath) {
+        Get-Process -Name "ProcessPriorityDaemon" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 300
+        Remove-Item $Global:PrioExePath -Force -ErrorAction SilentlyContinue
+    }
+
+    Add-Type -TypeDefinition $csharpSource -OutputType ConsoleApplication -OutputAssembly $Global:PrioExePath -ErrorAction Stop
+
+    Unregister-ScheduledTask -TaskName $Global:PrioTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    $action = New-ScheduledTaskAction -Execute $Global:PrioExePath
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+
+    Register-ScheduledTask -TaskName $Global:PrioTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Start-ScheduledTask -TaskName $Global:PrioTaskName
+}
+
+function Uninstall-ProcessPriorityDaemon {
+    Unregister-ScheduledTask -TaskName $Global:PrioTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Get-Process -Name "ProcessPriorityDaemon" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 300
+    Remove-Item $Global:PrioExePath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-ProcessPriorityDaemonInstalled {
+    $task = Get-ScheduledTask -TaskName $Global:PrioTaskName -ErrorAction SilentlyContinue
     return ($null -ne $task)
 }
 
@@ -426,10 +588,14 @@ $Options += [PSCustomObject]@{Id=142; Cat="Gaming"; LabelFR="Empêcher le redém
 $Options += [PSCustomObject]@{Id=122; Cat="Processus"; LabelFR="[NIVEAU 1 - BASIQUE] Regroupement leger des svchost.exe (seuil 3.8 Go)"; LabelEN="[LEVEL 1 - BASIC] Light svchost.exe grouping (3.8 GB threshold)"; Risk="safe"; CheckType="Reg"; CheckPath="HKLM:\SYSTEM\CurrentControlSet\Control"; CheckName="SvcHostSplitThresholdInKB"; CheckValue=3984588; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 3984588 }}
 $Options += [PSCustomObject]@{Id=123; Cat="Processus"; LabelFR="[NIVEAU 2 - OPTIMISE] Regroupement agressif (seuil 16 Go) + coupe telemetrie/diagnostic"; LabelEN="[LEVEL 2 - OPTIMIZED] Aggressive grouping (16 GB threshold) + disable telemetry/diagnostics"; Risk="moderate"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 16777216; Disable-Svc "DiagTrack"; Disable-Svc "dmwappushservice"; Disable-Svc "WerSvc" }}
 $Options += [PSCustomObject]@{Id=124; Cat="Processus"; LabelFR="[NIVEAU 3 - EXTREME] Regroupement total (seuil 128 Go) + gel des services secondaires + coupe Widgets"; LabelEN="[LEVEL 3 - EXTREME] Total grouping (128 GB threshold) + freeze secondary services + disable Widgets"; Risk="advanced"; Action={
-    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 134217728
-    "DiagTrack","dmwappushservice","WerSvc","SysMain","WSearch","PcaSvc","MapsBroker","lfsvc","RemoteRegistry","Fax","WidgetsService" | ForEach-Object { Disable-Svc $_ }
-    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" 0
-    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests" 0
+    $failedParts = @()
+    try { Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" 134217728 } catch { $failedParts += "SvcHost" }
+    "DiagTrack","dmwappushservice","WerSvc","SysMain","WSearch","PcaSvc","MapsBroker","lfsvc","RemoteRegistry","Fax","WidgetsService" | ForEach-Object {
+        try { Disable-Svc $_ } catch { $failedParts += $_ }
+    }
+    try { Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarDa" 0 } catch { $failedParts += "TaskbarDa" }
+    try { Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests" 0 } catch { $failedParts += "Widgets" }
+    if ($failedParts.Count -gt 0) { throw "Applique partiellement, echec sur : $($failedParts -join ', ')" }
 }}
 
 # --- 5. TIMER RESOLUTION ---
@@ -440,7 +606,14 @@ $Options += [PSCustomObject]@{Id=118; Cat="Timer"; LabelFR="0.75 ms - Latence In
 $Options += [PSCustomObject]@{Id=119; Cat="Timer"; LabelFR="1.00 ms - Latence Standard Windows Équilibrée"; LabelEN="1.00 ms - Default Balanced Windows OS timer tick rate"; Risk="safe"; Action={ Set-SystemTimerResolution 1.00 }}
 
 # --- 6. ÉNERGIE & PROCESSEUR ---
-$Options += [PSCustomObject]@{Id=46; Cat="Power"; LabelFR="Activer le plan d'alimentation Performances Ultimes"; LabelEN="Unlock and apply Ultimate Performance power scheme"; Risk="safe"; Action={ $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61; $guid = ($out -split "\s+")[3]; powercfg /setactive $guid }}
+$Options += [PSCustomObject]@{Id=46; Cat="Power"; LabelFR="Activer le plan d'alimentation Performances Ultimes"; LabelEN="Unlock and apply Ultimate Performance power scheme"; Risk="safe"; Action={
+    $out = powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61
+    if ($out -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+        powercfg /setactive $Matches[1]
+    } else {
+        throw "Impossible d'extraire le GUID du plan cree (sortie powercfg: $out)"
+    }
+}}
 $Options += [PSCustomObject]@{Id=47; Cat="Power"; LabelFR="Désactiver le Core Parking (C-States bloqués)"; LabelEN="Disable CPU Core Parking (Locks minimum active logical cores)"; Risk="safe"; Action={ powercfg /setacvalueindex scheme_current sub_processor 0cc5b647-c1df-4637-891a-dec35c318583 100 }}
 $Options += [PSCustomObject]@{Id=48; Cat="Power"; LabelFR="Désactiver le Power Throttling"; LabelEN="Disable Global Windows Power Throttling engines"; Risk="safe"; CheckType="Reg"; CheckPath="HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling"; CheckName="PowerThrottlingOff"; CheckValue=1; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Power\PowerThrottling" "PowerThrottlingOff" 1 }}
 $Options += [PSCustomObject]@{Id=49; Cat="Power"; LabelFR="Forcer l'état minimal du processeur à 100%"; LabelEN="Force Minimum Processor State to 100% on AC power"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_processor 893dee8e-2bef-41e0-89c6-b55d0929964c 100 }}
@@ -449,7 +622,12 @@ $Options += [PSCustomObject]@{Id=51; Cat="Power"; LabelFR="Désactiver HPET (Hig
 $Options += [PSCustomObject]@{Id=52; Cat="Power"; LabelFR="Désactiver les mitigations Spectre/Meltdown (gain FPS)"; LabelEN="Disable Spectre/Meltdown hardware mitigations (FPS Boost)"; Risk="advanced"; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverride" 3; Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management" "FeatureSettingsOverrideMask" 3 }}
 $Options += [PSCustomObject]@{Id=53; Cat="Power"; LabelFR="Désactiver le démarrage rapide (Fast Startup)"; LabelEN="Disable Windows Fast Startup (Prevents random kernel bugs)"; Risk="safe"; CheckType="Reg"; CheckPath="HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"; CheckName="HiberbootEnabled"; CheckValue=0; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" "HiberbootEnabled" 0 }}
 $Options += [PSCustomObject]@{Id=54; Cat="Power"; LabelFR="Désactiver l'hibernation (libère de l'espace)"; LabelEN="Disable Hibernation system file (Deletes hiberfil.sys storage)"; Risk="safe"; Action={ powercfg /h off }}
-$Options += [PSCustomObject]@{Id=57; Cat="Power"; LabelFR="Désactiver le Link State Power Management (PCIe max)"; LabelEN="Turn off PCIe Link State Power Management (Max bandwidth)"; Risk="moderate"; Action={ powercfg /setacvalueindex scheme_current sub_pciexpress ee12f20e-c558-4753-b6d2-85978a506a59 0 }}
+$Options += [PSCustomObject]@{Id=57; Cat="Power"; LabelFR="Désactiver le Link State Power Management (PCIe max)"; LabelEN="Turn off PCIe Link State Power Management (Max bandwidth)"; Risk="moderate"; Action={
+    $out = powercfg /setacvalueindex scheme_current sub_pciexpress ee12f20e-c558-4753-b6d2-85978a506a59 0 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Reglage non disponible sur ce materiel/chipset (normal sur certaines configs) : $out"
+    }
+}}
 
 # --- 7. SERVICES WINDOWS INUTILES ---
 $Options += [PSCustomObject]@{Id=61; Cat="Services"; LabelFR="Désactiver SysMain / Superfetch (HDD obsolète)"; LabelEN="Disable SysMain / Superfetch service (Heavy background disk use)"; Risk="moderate"; CheckType="Svc"; CheckSvc="SysMain"; Action={ Disable-Svc "SysMain" }}
@@ -507,8 +685,50 @@ $Options += [PSCustomObject]@{Id=94; Cat="Apps"; SubCat="FR=Communication & Mult
 $Options += [PSCustomObject]@{Id=110; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="Spotify"; LabelEN="Spotify Desktop Digital Music Service Platform"; Risk="safe"; Action={ Install-WingetApp "Spotify.Spotify" "Spotify" }}
 $Options += [PSCustomObject]@{Id=111; Cat="Apps"; SubCat="FR=Communication & Multimédia|EN=Communication & Multimedia"; LabelFR="qBittorrent"; LabelEN="qBittorrent Free Open Source BitTorrent Client"; Risk="safe"; Action={ Install-WingetApp "qBittorrent.qBittorrent" "qBittorrent" }}
 
-# --- 10. BLOATWARES WINDOWS ---
-$Options += [PSCustomObject]@{Id=128; Cat="Bloatwares"; LabelFR="Désinstaller OneDrive (Stockage Cloud)"; LabelEN="Fully uninstall Microsoft OneDrive"; Risk="safe"; Action={ Uninstall-Appx "OneDrive"; Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue; Start-Process "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue }}
+# --- 11. PERFORMANCE EXTRÊME (techniques kernel avancées) ---
+$Options += [PSCustomObject]@{Id=148; Cat="Extreme"; LabelFR="Désactiver la compression mémoire Windows (libère du CPU, coûte de la RAM)"; LabelEN="Disable Windows Memory Compression (frees CPU, costs RAM)"; Risk="moderate"; Action={ Disable-MMAgent -mc }}
+$Options += [PSCustomObject]@{Id=149; Cat="Extreme"; LabelFR="Forcer l'exécution des tâches de maintenance Windows (ProcessIdleTasks)"; LabelEN="Force execution of Windows idle maintenance tasks (ProcessIdleTasks)"; Risk="safe"; Action={ Start-Process "rundll32.exe" -ArgumentList "advapi32.dll,ProcessIdleTasks" -Wait -WindowStyle Hidden }}
+$Options += [PSCustomObject]@{Id=150; Cat="Extreme"; LabelFR="Purger la Standby List (technique kernel non documentée, comme RAMMap)"; LabelEN="Purge the Standby List (undocumented kernel technique, like RAMMap)"; Risk="advanced"; Action={
+    $result = [MemoryTools]::EmptyStandbyList()
+    if ($result -ne 0) { throw "NtSetSystemInformation a retourné le code $result (privilège refusé ?)" }
+}}
+$Options += [PSCustomObject]@{Id=151; Cat="Extreme"; LabelFR="Bloquer les serveurs de télémétrie Microsoft (fichier hosts)"; LabelEN="Block Microsoft telemetry servers (hosts file)"; Risk="advanced"; Action={
+    $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"
+    $domains = @(
+        "vortex.data.microsoft.com","vortex-win.data.microsoft.com","telecommand.telemetry.microsoft.com",
+        "oca.telemetry.microsoft.com","sqm.telemetry.microsoft.com","watson.telemetry.microsoft.com",
+        "redir.metaservices.microsoft.com","choice.microsoft.com","diagnostics.support.microsoft.com",
+        "corpext.msitadfs.glbdns2.microsoft.com","compatexchange.cloudapp.net","cs1.wpc.v0cdn.net",
+        "statsfe2.ws.microsoft.com","feedback.windows.com","feedback.search.microsoft.com"
+    )
+    $current = Get-Content $hostsPath -Raw -ErrorAction SilentlyContinue
+    if ($null -eq $current) { $current = "" }
+    $added = 0
+    foreach ($d in $domains) {
+        if ($current -notmatch [regex]::Escape($d)) {
+            Add-Content -Path $hostsPath -Value "0.0.0.0 $d" -ErrorAction Stop
+            $added++
+        }
+    }
+    if ($added -eq 0) { } # deja tout bloque, rien a faire, on ne considere pas ca comme un echec
+}}
+
+
+$Options += [PSCustomObject]@{Id=128; Cat="Bloatwares"; LabelFR="Désinstaller OneDrive (Stockage Cloud)"; LabelEN="Fully uninstall Microsoft OneDrive"; Risk="safe"; Action={
+    Stop-Process -Name "OneDrive" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+    $setupPaths = @(
+        "$env:LOCALAPPDATA\Microsoft\OneDrive\OneDriveSetup.exe",
+        "$env:SystemRoot\SysWOW64\OneDriveSetup.exe",
+        "$env:SystemRoot\System32\OneDriveSetup.exe"
+    )
+    $foundPath = $setupPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($foundPath) {
+        Start-Process $foundPath -ArgumentList "/uninstall" -Wait -ErrorAction Stop
+    }
+    try { Uninstall-Appx "OneDrive" | Out-Null } catch { }
+    if (-not $foundPath) { throw "OneDriveSetup.exe introuvable (déjà désinstallé, ou chemin non standard sur cette machine)" }
+}}
 $Options += [PSCustomObject]@{Id=129; Cat="Bloatwares"; LabelFR="Désinstaller Cortana (Assistant obsolète)"; LabelEN="Uninstall Cortana voice assistant"; Risk="safe"; Action={ Uninstall-Appx "Microsoft.549981C3F5F10" }}
 $Options += [PSCustomObject]@{Id=130; Cat="Bloatwares"; LabelFR="Désinstaller Mobile Connecté (Phone Link / Your Phone)"; LabelEN="Uninstall Link to Windows / Phone Link"; Risk="safe"; Action={ Uninstall-Appx "YourPhone" }}
 $Options += [PSCustomObject]@{Id=131; Cat="Bloatwares"; LabelFR="Désinstaller l'écosystème Xbox App intégré"; LabelEN="Uninstall default Windows Xbox App elements"; Risk="moderate"; Action={ Uninstall-Appx "XboxApp"; Uninstall-Appx "XboxGamingOverlay"; Uninstall-Appx "XboxSpeechToTextOverlay" }}
@@ -585,6 +805,7 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                     <Button Name="BtnNettoyage" Tag="Nettoyage" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnApps" Tag="Apps" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnBloatwares" Tag="Bloatwares" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnExtreme" Tag="Extreme" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
                         <StackPanel>
@@ -753,6 +974,7 @@ $NavButtons = @{
     "Nettoyage"=$Form.FindName("BtnNettoyage")
     "Apps"=$Form.FindName("BtnApps")
     "Bloatwares"=$Form.FindName("BtnBloatwares")
+    "Extreme"=$Form.FindName("BtnExtreme")
 }
 
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
@@ -832,7 +1054,8 @@ $ApplyTimer.Add_Tick({
                     $LogBox.AppendText(">> [OK] $label`n")
                 }
             } catch {
-                $LogBox.AppendText(">> [ECHEC] $label -> $($_.Exception.Message)`n")
+                $realMsg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+                $LogBox.AppendText(">> [ECHEC] $label -> $realMsg`n")
             }
             $Global:CurrentPS.Dispose()
             $Global:CurrentPS = $null
@@ -1008,6 +1231,7 @@ function Update-SidebarCounters {
             "Nettoyage" { $L["CatNettoyage"] }
             "Apps" { $L["CatApps"] }
             "Bloatwares" { $L["CatBloatwares"] }
+            "Extreme" { $L["CatExtreme"] }
         }
         $emoji = switch ($key) {
             "Reseau" { "🌐" }
@@ -1020,6 +1244,7 @@ function Update-SidebarCounters {
             "Nettoyage" { "🧹" }
             "Apps" { "📦" }
             "Bloatwares" { "🗑️" }
+            "Extreme" { "🔥" }
         }
         if ($count -gt 0) {
             $NavButtons[$key].Content = "$emoji  $catTitle ($count)"
@@ -1173,7 +1398,103 @@ function Render-Category([string]$Cat) {
             $PersistBox.Child = $PersistStack
             [void]$Panel.Children.Add($PersistBox)
         }
-        
+
+        if ($Cat -eq "Extreme") {
+            $L = $Global:LangDict[$Global:CurrentLang]
+
+            $WarnBox2 = New-Object System.Windows.Controls.Border
+            $WarnBox2.Background = Get-Brush "#221A0C"
+            $WarnBox2.BorderBrush = Get-Brush "#F1C40F"
+            $WarnBox2.BorderThickness = "1"
+            $WarnBox2.CornerRadius = "5"
+            $WarnBox2.Padding = "10"
+            $WarnBox2.Margin = "0,0,0,12"
+            $WarnTxt2 = New-Object System.Windows.Controls.TextBlock
+            $WarnTxt2.Text = $L["ExtremeWarning"]
+            $WarnTxt2.Foreground = Get-Brush "#F1C40F"
+            $WarnTxt2.FontSize = 11
+            $WarnTxt2.TextWrapping = "Wrap"
+            $WarnBox2.Child = $WarnTxt2
+            [void]$Panel.Children.Add($WarnBox2)
+
+            $PrioBox = New-Object System.Windows.Controls.Border
+            $PrioBox.Background = Get-Brush "#1F0F1A"
+            $PrioBox.BorderBrush = Get-Brush "#FF6EC7"
+            $PrioBox.BorderThickness = "1"
+            $PrioBox.CornerRadius = "5"
+            $PrioBox.Padding = "12"
+            $PrioBox.Margin = "0,0,0,15"
+            $PrioStack = New-Object System.Windows.Controls.StackPanel
+
+            $PrioTitle = New-Object System.Windows.Controls.TextBlock
+            $isPrioInstalled = Test-ProcessPriorityDaemonInstalled
+            if ($isPrioInstalled) {
+                $PrioTitle.Text = if ($Global:CurrentLang -eq "FR") { "✅ Démon de priorité de processus : ACTIF" } else { "✅ Process Priority Daemon: ACTIVE" }
+            } else {
+                $PrioTitle.Text = if ($Global:CurrentLang -eq "FR") { "Démon de priorité de processus : non installé" } else { "Process Priority Daemon: not installed" }
+            }
+            $PrioTitle.Foreground = Get-Brush "#FF6EC7"
+            $PrioTitle.FontSize = 12
+            $PrioTitle.FontWeight = "Bold"
+            $PrioTitle.Margin = "0,0,0,6"
+            [void]$PrioStack.Children.Add($PrioTitle)
+
+            $PrioDesc = New-Object System.Windows.Controls.TextBlock
+            $PrioDesc.Text = if ($Global:CurrentLang -eq "FR") { "Surveille en continu la fenêtre au premier plan (ton jeu) et lui donne automatiquement la priorité Haute, sans avoir à le faire manuellement dans le Gestionnaire des tâches à chaque lancement. Tourne en fond via une tâche planifiée au démarrage de session." } else { "Continuously watches the foreground window (your game) and automatically sets it to High priority, without manually doing it in Task Manager every launch. Runs in background via a scheduled task at logon." }
+            $PrioDesc.Foreground = Get-Brush "#A0A0A0"
+            $PrioDesc.FontSize = 11
+            $PrioDesc.TextWrapping = "Wrap"
+            $PrioDesc.Margin = "0,0,0,10"
+            [void]$PrioStack.Children.Add($PrioDesc)
+
+            $PrioBtnRow = New-Object System.Windows.Controls.StackPanel
+            $PrioBtnRow.Orientation = "Horizontal"
+
+            $BtnInstallPrio = New-Object System.Windows.Controls.Button
+            $BtnInstallPrio.Content = if ($Global:CurrentLang -eq "FR") { "Installer le démon" } else { "Install daemon" }
+            $BtnInstallPrio.Height = 28
+            $BtnInstallPrio.Width = 160
+            $BtnInstallPrio.Margin = "0,0,10,0"
+            $BtnInstallPrio.Background = Get-Brush "#FF6EC7"
+            $BtnInstallPrio.Foreground = Get-Brush "#0A0A0E"
+            $BtnInstallPrio.FontWeight = "Bold"
+            $BtnInstallPrio.BorderThickness = "0"
+            $BtnInstallPrio.Add_Click({
+                try {
+                    Install-ProcessPriorityDaemon
+                    $LogBox.AppendText(">> [OK] Démon de priorité de processus installé et lancé`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Installation du démon de priorité -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Extreme"
+            })
+            [void]$PrioBtnRow.Children.Add($BtnInstallPrio)
+
+            $BtnUninstallPrio = New-Object System.Windows.Controls.Button
+            $BtnUninstallPrio.Content = if ($Global:CurrentLang -eq "FR") { "Désinstaller" } else { "Uninstall" }
+            $BtnUninstallPrio.Height = 28
+            $BtnUninstallPrio.Width = 120
+            $BtnUninstallPrio.Background = Get-Brush "#221616"
+            $BtnUninstallPrio.Foreground = Get-Brush "#E74C3C"
+            $BtnUninstallPrio.BorderThickness = "0"
+            $BtnUninstallPrio.Add_Click({
+                try {
+                    Uninstall-ProcessPriorityDaemon
+                    $LogBox.AppendText(">> [OK] Démon de priorité de processus désinstallé`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Désinstallation du démon -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Extreme"
+            })
+            [void]$PrioBtnRow.Children.Add($BtnUninstallPrio)
+
+            [void]$PrioStack.Children.Add($PrioBtnRow)
+            $PrioBox.Child = $PrioStack
+            [void]$Panel.Children.Add($PrioBox)
+        }
+
         $filter = $TxtSearch.Text.Trim()
         $Items = $Options | Where-Object { $_.Cat -eq $Cat }
         
