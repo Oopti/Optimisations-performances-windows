@@ -1066,7 +1066,7 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                         <Button Name="BtnLoadProfile" Height="28" Background="#161622" Foreground="#00FFC8" BorderThickness="0" FontSize="10" Margin="2,0,0,0"/>
                     </UniformGrid>
                     <Button Name="BtnRestore" Height="32" Background="#161622" Foreground="#00FFC8" BorderThickness="0" Margin="0,0,0,8"/>
-                    <Button Name="BtnShortcut" Height="32" Background="#161622" Foreground="#FF6EC7" BorderThickness="0" Margin="0,0,0,12"/>
+                    <Button Name="BtnShortcut" Height="32" Background="#161622" Foreground="#7C9CFF" BorderThickness="0" Margin="0,0,0,12"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,0,0,12" Padding="8" Background="#0C0C12">
                         <StackPanel>
@@ -1080,9 +1080,15 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                     </Border>
 
                     <TextBlock Text="LANGUAGE / LANGUE" FontSize="9" Foreground="#505060" Margin="5,0,0,2" HorizontalAlignment="Left"/>
-                    <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black">
+                    <ComboBox Name="ComboLang" Height="25" Background="#161622" Foreground="Black" Margin="0,0,0,10">
                         <ComboBoxItem Content="Français (FR)" IsSelected="True"/>
                         <ComboBoxItem Content="English (EN)"/>
+                    </ComboBox>
+
+                    <TextBlock Text="AFFICHAGE / DISPLAY" FontSize="9" Foreground="#505060" Margin="5,0,0,2" HorizontalAlignment="Left"/>
+                    <ComboBox Name="ComboDensity" Height="25" Background="#161622" Foreground="Black">
+                        <ComboBoxItem Content="Détaillé (confortable)" IsSelected="True"/>
+                        <ComboBoxItem Content="Compact (plus de tweaks visibles)"/>
                     </ComboBox>
                 </StackPanel>
             </ScrollViewer>
@@ -1090,9 +1096,17 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
         
         <Grid Grid.Column="1" Margin="20">
             <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="Auto"/> <RowDefinition Height="55"/>   </Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="Auto"/> <RowDefinition Height="*"/>    <RowDefinition Height="130"/>  <RowDefinition Height="Auto"/> <RowDefinition Height="55"/>   </Grid.RowDefinitions>
             
-            <Border Grid.Row="0" Background="#101016" CornerRadius="5" Padding="12" Margin="0,0,0,15" BorderBrush="#1C1C28" BorderThickness="1">
+            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,14">
+                <TextBlock Name="TxtCategoryIcon" Text="🌐" FontSize="22" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                <StackPanel>
+                    <TextBlock Name="TxtCategoryTitle" Text="RÉSEAU" FontSize="22" FontWeight="Bold" Foreground="#F5F5FA"/>
+                    <TextBlock Name="TxtCategoryCount" Text="" FontSize="11" Foreground="#606070"/>
+                </StackPanel>
+            </StackPanel>
+            
+            <Border Grid.Row="1" Background="#101016" CornerRadius="5" Padding="12" Margin="0,0,0,15" BorderBrush="#1C1C28" BorderThickness="1">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*"/>
@@ -1114,12 +1128,12 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                 </Grid>
             </Border>
             
-            <Grid Grid.Row="1" Margin="0,0,0,10">
+            <Grid Grid.Row="2" Margin="0,0,0,10">
                 <TextBox Name="TxtSearch" Height="28" Background="#161622" Foreground="#DCDCE6" BorderBrush="#2A2A3A" BorderThickness="1" Padding="25,4,5,4" FontSize="12"/>
                 <TextBlock Text="🔍" Foreground="#505060" FontSize="11" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="8,0,0,0" IsHitTestVisible="False"/>
             </Grid>
 
-            <Border Name="RamTweakPanel" Grid.Row="2" Background="#161622" CornerRadius="5" Padding="15" Margin="0,0,0,15" BorderBrush="#2A2A3A" BorderThickness="1" Visibility="Collapsed">
+            <Border Name="RamTweakPanel" Grid.Row="3" Background="#161622" CornerRadius="5" Padding="15" Margin="0,0,0,15" BorderBrush="#2A2A3A" BorderThickness="1" Visibility="Collapsed">
                 <StackPanel>
                     <TextBlock Text="⚙️ OPTIMISEUR DE CRÉATION DE PROCESSUS (SvcHostSplitThresholdInKB)" Foreground="#00FFC8" FontSize="12" FontWeight="Bold" Margin="0,0,0,5"/>
                     <TextBlock Text="Indiquez votre quantité de RAM physique installée. Le toolkit calculera et ajustera au registre le split svchost optimal pour éviter l'éparpillement inutile des processus ou améliorer l'isolation de sécurité." Foreground="#A0A0A0" FontSize="11" TextWrapping="Wrap" Margin="0,0,0,10"/>
@@ -1144,19 +1158,19 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                 </StackPanel>
             </Border>
             
-            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer Grid.Row="4" VerticalScrollBarVisibility="Auto">
                 <StackPanel Name="OptionsPanel" Margin="10,0"/>
             </ScrollViewer>
             
-            <TextBox Name="LogBox" Grid.Row="4" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
+            <TextBox Name="LogBox" Grid.Row="5" Margin="0,15,0,0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"
                      FontFamily="Consolas" FontSize="11" IsReadOnly="True" VerticalScrollBarVisibility="Auto"/>
             
-            <Grid Grid.Row="5" Margin="0,10,0,0">
+            <Grid Grid.Row="6" Margin="0,10,0,0">
                 <ProgressBar Name="ProgressBarApply" Height="18" Minimum="0" Maximum="1" Value="0" Background="#161622" Foreground="#00FFC8" BorderThickness="0"/>
                 <TextBlock Name="TxtProgressLabel" Text="" Foreground="#0A0A0E" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Grid>
             
-            <Button Name="BtnApply" Grid.Row="6" Margin="0,10,0,0"
+            <Button Name="BtnApply" Grid.Row="7" Margin="0,10,0,0"
                     Background="#00FFC8" Foreground="#0A0A0E" FontWeight="Bold" FontSize="13" BorderThickness="0"/>
         </Grid>
     </Grid>
@@ -1168,6 +1182,9 @@ $Form = [Windows.Markup.XamlReader]::Load($Reader)
 
 # Récupération des contrôles WPF
 $Panel = $Form.FindName("OptionsPanel")
+$TxtCategoryIcon = $Form.FindName("TxtCategoryIcon")
+$TxtCategoryTitle = $Form.FindName("TxtCategoryTitle")
+$TxtCategoryCount = $Form.FindName("TxtCategoryCount")
 $TxtMainTitle = $Form.FindName("TxtMainTitle")
 $TxtSubtitle = $Form.FindName("TxtSubtitle")
 $TxtLegend = $Form.FindName("TxtLegend")
@@ -1178,6 +1195,8 @@ $TxtProgressLabel = $Form.FindName("TxtProgressLabel")
 $BtnRestore = $Form.FindName("BtnRestore")
 $BtnShortcut = $Form.FindName("BtnShortcut")
 $ComboLang = $Form.FindName("ComboLang")
+$ComboDensity = $Form.FindName("ComboDensity")
+$Global:Density = "Detailed"
 
 $TxtQuickSelect = $Form.FindName("TxtQuickSelect")
 $BtnSelectSafe = $Form.FindName("BtnSelectSafe")
@@ -1463,42 +1482,59 @@ function Refresh-LogBoxDisplay {
     $LogBox.ScrollToEnd()
 }
 
-function Update-SidebarCounters {
+function Get-CategoryDisplayName([string]$Key) {
     $L = $Global:LangDict[$Global:CurrentLang]
+    switch ($Key) {
+        "Reseau" { return $L["CatReseau"] }
+        "Confidentialite" { return $L["CatConfidentialite"] }
+        "Gaming" { return $L["CatGaming"] }
+        "Processus" { return $L["CatProcessus"] }
+        "Timer" { return $L["CatTimer"] }
+        "Power" { return $L["CatPower"] }
+        "Services" { return $L["CatServices"] }
+        "Nettoyage" { return $L["CatNettoyage"] }
+        "Apps" { return $L["CatApps"] }
+        "Bloatwares" { return $L["CatBloatwares"] }
+        "Extreme" { return $L["CatExtreme"] }
+        "Innovations" { return $L["CatInnovations"] }
+    }
+}
+
+function Get-CategoryEmoji([string]$Key) {
+    switch ($Key) {
+        "Reseau" { return "🌐" }
+        "Confidentialite" { return "🛡️" }
+        "Gaming" { return "🎮" }
+        "Processus" { return "💻" }
+        "Timer" { return "⏱️" }
+        "Power" { return "⚡" }
+        "Services" { return "⚙️" }
+        "Nettoyage" { return "🧹" }
+        "Apps" { return "📦" }
+        "Bloatwares" { return "🗑️" }
+        "Extreme" { return "🔥" }
+        "Innovations" { return "🚀" }
+    }
+}
+
+function Update-SidebarCounters {
     foreach ($key in $NavButtons.Keys) {
         $count = ($Options | Where-Object { $_.Cat -eq $key -and $Global:CheckStates[$_.Id] -eq $true }).Count
-        $catTitle = switch ($key) {
-            "Reseau" { $L["CatReseau"] }
-            "Confidentialite" { $L["CatConfidentialite"] }
-            "Gaming" { $L["CatGaming"] }
-            "Processus" { $L["CatProcessus"] }
-            "Timer" { $L["CatTimer"] }
-            "Power" { $L["CatPower"] }
-            "Services" { $L["CatServices"] }
-            "Nettoyage" { $L["CatNettoyage"] }
-            "Apps" { $L["CatApps"] }
-            "Bloatwares" { $L["CatBloatwares"] }
-            "Extreme" { $L["CatExtreme"] }
-            "Innovations" { $L["CatInnovations"] }
-        }
-        $emoji = switch ($key) {
-            "Reseau" { "🌐" }
-            "Confidentialite" { "🛡️" }
-            "Gaming" { "🎮" }
-            "Processus" { "💻" }
-            "Timer" { "⏱️" }
-            "Power" { "⚡" }
-            "Services" { "⚙️" }
-            "Nettoyage" { "🧹" }
-            "Apps" { "📦" }
-            "Bloatwares" { "🗑️" }
-            "Extreme" { "🔥" }
-            "Innovations" { "🚀" }
-        }
+        $catTitle = Get-CategoryDisplayName $key
+        $emoji = Get-CategoryEmoji $key
         if ($count -gt 0) {
             $NavButtons[$key].Content = "$emoji  $catTitle ($count)"
         } else {
             $NavButtons[$key].Content = "$emoji  $catTitle"
+        }
+    }
+    if ($null -ne $TxtCategoryCount -and $Global:LastCategory) {
+        $totalInCat = ($Options | Where-Object { $_.Cat -eq $Global:LastCategory }).Count
+        $checkedInCat = ($Options | Where-Object { $_.Cat -eq $Global:LastCategory -and $Global:CheckStates[$_.Id] -eq $true }).Count
+        if ($Global:CurrentLang -eq "FR") {
+            $TxtCategoryCount.Text = "$totalInCat tweak(s) disponible(s) — $checkedInCat coché(s)"
+        } else {
+            $TxtCategoryCount.Text = "$totalInCat tweak(s) available — $checkedInCat checked"
         }
     }
 }
@@ -1548,6 +1584,16 @@ function Render-Category([string]$Cat) {
     try {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
+
+        $TxtCategoryIcon.Text = Get-CategoryEmoji $Cat
+        $TxtCategoryTitle.Text = (Get-CategoryDisplayName $Cat).ToUpper()
+        $totalInCat = ($Options | Where-Object { $_.Cat -eq $Cat }).Count
+        $checkedInCat = ($Options | Where-Object { $_.Cat -eq $Cat -and $Global:CheckStates[$_.Id] -eq $true }).Count
+        if ($Global:CurrentLang -eq "FR") {
+            $TxtCategoryCount.Text = "$totalInCat tweak(s) disponible(s) — $checkedInCat coché(s)"
+        } else {
+            $TxtCategoryCount.Text = "$totalInCat tweak(s) available — $checkedInCat checked"
+        }
         
         # Afficher le module RAM uniquement dans la section "Processus"
         if ($Cat -eq "Processus") {
@@ -1577,8 +1623,8 @@ function Render-Category([string]$Cat) {
             [void]$Panel.Children.Add($WarnBox)
 
             $PersistBox = New-Object System.Windows.Controls.Border
-            $PersistBox.Background = Get-Brush "#0F1F1B"
-            $PersistBox.BorderBrush = Get-Brush "#00FFC8"
+            $PersistBox.Background = Get-Brush "#14162A"
+            $PersistBox.BorderBrush = Get-Brush "#7C9CFF"
             $PersistBox.BorderThickness = "1"
             $PersistBox.CornerRadius = "5"
             $PersistBox.Padding = "12"
@@ -1676,8 +1722,8 @@ function Render-Category([string]$Cat) {
             [void]$Panel.Children.Add($WarnBox2)
 
             $PrioBox = New-Object System.Windows.Controls.Border
-            $PrioBox.Background = Get-Brush "#1F0F1A"
-            $PrioBox.BorderBrush = Get-Brush "#FF6EC7"
+            $PrioBox.Background = Get-Brush "#14162A"
+            $PrioBox.BorderBrush = Get-Brush "#7C9CFF"
             $PrioBox.BorderThickness = "1"
             $PrioBox.CornerRadius = "5"
             $PrioBox.Padding = "12"
@@ -1691,7 +1737,7 @@ function Render-Category([string]$Cat) {
             } else {
                 $PrioTitle.Text = if ($Global:CurrentLang -eq "FR") { "Démon de priorité de processus : non installé" } else { "Process Priority Daemon: not installed" }
             }
-            $PrioTitle.Foreground = Get-Brush "#FF6EC7"
+            $PrioTitle.Foreground = Get-Brush "#7C9CFF"
             $PrioTitle.FontSize = 12
             $PrioTitle.FontWeight = "Bold"
             $PrioTitle.Margin = "0,0,0,6"
@@ -1713,7 +1759,7 @@ function Render-Category([string]$Cat) {
             $BtnInstallPrio.Height = 28
             $BtnInstallPrio.Width = 160
             $BtnInstallPrio.Margin = "0,0,10,0"
-            $BtnInstallPrio.Background = Get-Brush "#FF6EC7"
+            $BtnInstallPrio.Background = Get-Brush "#7C9CFF"
             $BtnInstallPrio.Foreground = Get-Brush "#0A0A0E"
             $BtnInstallPrio.FontWeight = "Bold"
             $BtnInstallPrio.BorderThickness = "0"
@@ -1757,15 +1803,15 @@ function Render-Category([string]$Cat) {
             $L = $Global:LangDict[$Global:CurrentLang]
 
             $InfoBox = New-Object System.Windows.Controls.Border
-            $InfoBox.Background = Get-Brush "#0C1A22"
-            $InfoBox.BorderBrush = Get-Brush "#3AA0FF"
+            $InfoBox.Background = Get-Brush "#14162A"
+            $InfoBox.BorderBrush = Get-Brush "#7C9CFF"
             $InfoBox.BorderThickness = "1"
             $InfoBox.CornerRadius = "5"
             $InfoBox.Padding = "10"
             $InfoBox.Margin = "0,0,0,12"
             $InfoTxt = New-Object System.Windows.Controls.TextBlock
             $InfoTxt.Text = $L["InnovationsWarning"]
-            $InfoTxt.Foreground = Get-Brush "#3AA0FF"
+            $InfoTxt.Foreground = Get-Brush "#7C9CFF"
             $InfoTxt.FontSize = 11
             $InfoTxt.TextWrapping = "Wrap"
             $InfoBox.Child = $InfoTxt
@@ -1824,8 +1870,8 @@ function Render-Category([string]$Cat) {
 
             # --- Bloc Smart Power Switcher ---
             $SpBox = New-Object System.Windows.Controls.Border
-            $SpBox.Background = Get-Brush "#1A1F0F"
-            $SpBox.BorderBrush = Get-Brush "#C6FF3A"
+            $SpBox.Background = Get-Brush "#14162A"
+            $SpBox.BorderBrush = Get-Brush "#7C9CFF"
             $SpBox.BorderThickness = "1"
             $SpBox.CornerRadius = "5"
             $SpBox.Padding = "12"
@@ -1839,7 +1885,7 @@ function Render-Category([string]$Cat) {
             } else {
                 $SpTitle.Text = if ($Global:CurrentLang -eq "FR") { "Smart Power Switcher : non installé" } else { "Smart Power Switcher: not installed" }
             }
-            $SpTitle.Foreground = Get-Brush "#C6FF3A"
+            $SpTitle.Foreground = Get-Brush "#7C9CFF"
             $SpTitle.FontSize = 12
             $SpTitle.FontWeight = "Bold"
             $SpTitle.Margin = "0,0,0,6"
@@ -1861,7 +1907,7 @@ function Render-Category([string]$Cat) {
             $BtnInstallSp.Height = 28
             $BtnInstallSp.Width = 160
             $BtnInstallSp.Margin = "0,0,10,0"
-            $BtnInstallSp.Background = Get-Brush "#C6FF3A"
+            $BtnInstallSp.Background = Get-Brush "#7C9CFF"
             $BtnInstallSp.Foreground = Get-Brush "#0A0A0E"
             $BtnInstallSp.FontWeight = "Bold"
             $BtnInstallSp.BorderThickness = "0"
@@ -1941,13 +1987,13 @@ function Render-Category([string]$Cat) {
             $Lbl = New-Object System.Windows.Controls.TextBlock
             if ($Global:CurrentLang -eq "FR") { $Lbl.Text = $item.LabelFR } else { $Lbl.Text = $item.LabelEN }
             $Lbl.Foreground = $Brush
-            $Lbl.FontSize = 13
+            $Lbl.FontSize = if ($Global:Density -eq "Compact") { 12 } else { 13 }
             $Lbl.TextWrapping = "Wrap"
             $Lbl.VerticalAlignment = "Center"
 
             $Chk = New-Object System.Windows.Controls.CheckBox
             $Chk.Content = $Lbl
-            $Chk.Margin = "0,6,0,6"
+            $Chk.Margin = if ($Global:Density -eq "Compact") { "0,2,0,2" } else { "0,6,0,6" }
             $Chk.Tag = $item.Id
             $Chk.IsChecked = $Global:CheckStates[$item.Id]
             
@@ -2074,6 +2120,11 @@ foreach ($key in $NavButtons.Keys) {
 $ComboLang.Add_SelectionChanged({
     if ($ComboLang.SelectedIndex -eq 0) { $Global:CurrentLang = "FR" } else { $Global:CurrentLang = "EN" }
     Update-InterfaceLanguage
+})
+
+$ComboDensity.Add_SelectionChanged({
+    if ($ComboDensity.SelectedIndex -eq 0) { $Global:Density = "Detailed" } else { $Global:Density = "Compact" }
+    Render-Category $Global:LastCategory
 })
 
 $BtnRestore.Add_Click({
