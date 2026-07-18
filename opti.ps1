@@ -120,6 +120,7 @@ $Global:LangDict = @{
         "CatApps" = "Applications"
         "CatBloatwares" = "Bloatwares Windows"
         "CatExtreme" = "Performance Extrême"
+        "CatAudio" = "Audio & Micro"
         "CatInnovations" = "Innovations"
         "InnovationsWarning" = "Ici : un démon qui bascule automatiquement le plan d'alimentation quand tu lances un jeu en plein écran, un benchmark rapide pour mesurer l'impact de tes tweaks, et des correctifs de cache. Rien de risqué, juste des idées qu'on ne trouve pas ailleurs."
         "ExtremeWarning" = "Ces réglages utilisent des techniques kernel avancées (API non documentées, fichier hosts, démon en fond). Ils sont efficaces mais réservés à ceux qui veulent aller très loin — lis bien chaque description avant de cocher."
@@ -172,6 +173,7 @@ $Global:LangDict = @{
         "CatApps" = "Applications"
         "CatBloatwares" = "Windows Bloatwares"
         "CatExtreme" = "Extreme Performance"
+        "CatAudio" = "Audio & Mic"
         "CatInnovations" = "Innovations"
         "InnovationsWarning" = "Here: a daemon that auto-switches your power plan when a game goes fullscreen, a quick benchmark to measure your tweaks' real impact, and cache fixes. Nothing risky, just ideas you won't find elsewhere."
         "ExtremeWarning" = "These tweaks use advanced kernel techniques (undocumented APIs, hosts file, background daemon). They're effective but meant for those who want to go all the way — read each description carefully before checking."
@@ -272,6 +274,160 @@ function Uninstall-Appx {
 function Get-Brush {
     param([string]$Hex)
     return (New-Object System.Windows.Media.BrushConverter).ConvertFromString($Hex)
+}
+
+# ==============================================================================
+#  MOTEUR AUDIO NATIF (OptiDylanAudio) + FONCTIONS EQUALIZER APO / VST / RADAR
+#  Rien de ceci n'existait avant : nouvelle categorie "Audio" ci-dessous.
+# ==============================================================================
+
+$OptiDylanAudioCSharp = @"
+using System;
+using System.Runtime.InteropServices;
+
+public class OptiDylanAudio {
+    [Guid("BCDE0359-F3E5-4A3C-B120-4B34FA7C3396"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IMMDeviceEnumerator {
+        int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice ppDevice);
+    }
+    [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IMMDevice {
+        int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams,
+            [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface);
+    }
+    [Guid("C8ADBD64-E71E-48A0-A4DE-185C384CD43F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IAudioMeterInformation {
+        int GetPeakValue(out float pfPeak);
+    }
+    [ComImport, Guid("BCDE0359-F3E5-4A3C-B120-4B34FA7C3396")]
+    internal class MMDeviceEnumeratorComObject { }
+
+    public static float GetMicrophonePeakLevel() {
+        try {
+            var enumerator = (IMMDeviceEnumerator)new MMDeviceEnumeratorComObject();
+            IMMDevice device;
+            enumerator.GetDefaultAudioEndpoint(1, 0, out device); // 1 = eCapture
+            Guid meterGuid = new Guid("C8ADBD64-E71E-48A0-A4DE-185C384CD43F");
+            object meterObj;
+            device.Activate(ref meterGuid, 1, IntPtr.Zero, out meterObj);
+            var meter = (IAudioMeterInformation)meterObj;
+            float peak;
+            meter.GetPeakValue(out peak);
+            return peak;
+        } catch {
+            return 0.0f;
+        }
+    }
+}
+"@
+if (-not ([System.Management.Automation.PSTypeName]'OptiDylanAudio').Type) {
+    Add-Type -TypeDefinition $OptiDylanAudioCSharp -ErrorAction SilentlyContinue
+}
+
+$Global:EqApoPath      = "C:\Program Files\EqualizerAPO"
+$Global:EqApoConfig    = "$Global:EqApoPath\config\config.txt"
+$Global:OptiVstFolder  = "C:\OptiDylan\VST"
+
+function Test-EqualizerApoInstalled { return (Test-Path $Global:EqApoPath) }
+
+# IMPORTANT : pas d'installation "silencieuse" ici. D'apres les tickets
+# officiels du projet (sourceforge.net/p/equalizerapo/tickets/186), le setup
+# NSIS lance son Configurator.exe en ExecWait, qui exige de choisir le
+# peripherique audio a la main -- un vrai silent install n'existe pas pour
+# ce logiciel precis, et pretendre le contraire aurait ete du theatre de
+# plus. On telecharge et on lance l'installeur normalement, une seule fois.
+function Install-EqualizerApoGuided {
+    if (Test-EqualizerApoInstalled) { return $true }
+    try {
+        $url = "https://sourceforge.net/projects/equalizerapo/files/latest/download"
+        $dest = "$env:TEMP\EqualizerAPO-Setup.exe"
+        Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+        Start-Process -FilePath $dest -Wait
+        return (Test-EqualizerApoInstalled)
+    } catch {
+        Write-Log "[ERR] Install-EqualizerApoGuided -> $($_.Exception.Message)" $false
+        return $false
+    }
+}
+
+# Fusionne une section balisee dans config.txt SANS ecraser les autres
+# sections (corrige le bug ou VST et Radar s'effacaient mutuellement).
+function Set-EqualizerApoSection {
+    param([string]$SectionName, [string[]]$Lines)
+
+    if (-not (Test-EqualizerApoInstalled)) { return $false }
+    $configDir = Split-Path $Global:EqApoConfig -Parent
+    if (-not (Test-Path $configDir)) { New-Item -Path $configDir -ItemType Directory -Force | Out-Null }
+
+    $existing = @()
+    if (Test-Path $Global:EqApoConfig) { $existing = @(Get-Content $Global:EqApoConfig) }
+
+    $startTag = "# >>> OPTIDYLAN:$SectionName"
+    $endTag   = "# <<< OPTIDYLAN:$SectionName"
+    $kept = New-Object System.Collections.Generic.List[string]
+    $skip = $false
+    foreach ($line in $existing) {
+        if ($line -eq $startTag) { $skip = $true; continue }
+        if ($line -eq $endTag) { $skip = $false; continue }
+        if (-not $skip) { [void]$kept.Add($line) }
+    }
+
+    if ($null -ne $Lines -and $Lines.Count -gt 0) {
+        [void]$kept.Add($startTag)
+        foreach ($l in $Lines) { [void]$kept.Add($l) }
+        [void]$kept.Add($endTag)
+    }
+
+    Set-Content -Path $Global:EqApoConfig -Value $kept -Force
+    return $true
+}
+
+function Set-OptiAudioVST {
+    param([string]$VstPath, [bool]$Enabled)
+    if ($Enabled -and (Test-Path $VstPath)) {
+        return Set-EqualizerApoSection -SectionName "VST" -Lines @("Device: Microphone", "VSTPlugin: `"$VstPath`"")
+    } else {
+        return Set-EqualizerApoSection -SectionName "VST" -Lines @()
+    }
+}
+
+function Set-OptiSoundRadar {
+    param([bool]$Enabled)
+    if ($Enabled) {
+        return Set-EqualizerApoSection -SectionName "RADAR" -Lines @(
+            "Device: Speakers Headphones",
+            "Filter 1: ON PK Fc 100 Hz Gain -6.0 dB Q 1.00",
+            "Filter 2: ON PK Fc 2500 Hz Gain 5.5 dB Q 1.41",
+            "Filter 3: ON PK Fc 4000 Hz Gain 4.0 dB Q 1.41"
+        )
+    } else {
+        return Set-EqualizerApoSection -SectionName "RADAR" -Lines @()
+    }
+}
+
+# ------------------------------------------------------------------------
+# NIVEAUX DE REDUCTION DE PROCESSUS (1 a 5, ~100 a ~50 processus). C'est un
+# PRESET : il coche des options qui existent deja (Confidentialite/Services/
+# Bloatwares/Processus), rien n'est duplique ni reimplemente.
+# ------------------------------------------------------------------------
+function Set-ProcessReductionLevel([int]$Level) {
+    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,122,123,124)
+    foreach ($id in $managedIds) { $Global:CheckStates[$id] = $false }
+
+    if ($Level -ge 2) { $Global:CheckStates[20]=$true; $Global:CheckStates[27]=$true; $Global:CheckStates[24]=$true }
+    if ($Level -ge 3) { $Global:CheckStates[16]=$true; $Global:CheckStates[122]=$true }
+    if ($Level -ge 4) {
+        $Global:CheckStates[17]=$true; $Global:CheckStates[61]=$true
+        $Global:CheckStates[68]=$true; $Global:CheckStates[69]=$true; $Global:CheckStates[74]=$true
+        $Global:CheckStates[122]=$false; $Global:CheckStates[123]=$true
+    }
+    if ($Level -ge 5) {
+        $Global:CheckStates[63]=$true; $Global:CheckStates[137]=$true
+        $Global:CheckStates[123]=$false; $Global:CheckStates[124]=$true
+    }
+
+    Render-Category $Global:LastCategory
+    Update-SidebarCounters
 }
 
 # ============================================================
@@ -1050,6 +1206,7 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                     <Button Name="BtnBloatwares" Tag="Bloatwares" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnExtreme" Tag="Extreme" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnInnovations" Tag="Innovations" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnAudio" Tag="Audio" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
                         <StackPanel>
@@ -1241,6 +1398,7 @@ $NavButtons = @{
     "Bloatwares"=$Form.FindName("BtnBloatwares")
     "Extreme"=$Form.FindName("BtnExtreme")
     "Innovations"=$Form.FindName("BtnInnovations")
+    "Audio"=$Form.FindName("BtnAudio")
 }
 
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
@@ -1496,6 +1654,7 @@ function Get-CategoryDisplayName([string]$Key) {
         "Apps" { return $L["CatApps"] }
         "Bloatwares" { return $L["CatBloatwares"] }
         "Extreme" { return $L["CatExtreme"] }
+        "Audio" { return $L["CatAudio"] }
         "Innovations" { return $L["CatInnovations"] }
     }
 }
@@ -1514,6 +1673,7 @@ function Get-CategoryEmoji([string]$Key) {
         "Bloatwares" { return "🗑️" }
         "Extreme" { return "🔥" }
         "Innovations" { return "🚀" }
+        "Audio" { return "🎙️" }
     }
 }
 
@@ -1598,8 +1758,326 @@ function Render-Category([string]$Cat) {
         # Afficher le module RAM uniquement dans la section "Processus"
         if ($Cat -eq "Processus") {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
+
+            # --- NIVEAUX DE REDUCTION DE PROCESSUS (preset 1 a 5, ~100 a ~50) ---
+            $LvlBox = New-Object System.Windows.Controls.Border
+            $LvlBox.Background = Get-Brush "#161622"
+            $LvlBox.BorderBrush = Get-Brush "#2A2A3A"
+            $LvlBox.BorderThickness = "1"
+            $LvlBox.CornerRadius = "5"
+            $LvlBox.Padding = "15"
+            $LvlBox.Margin = "0,0,0,15"
+            $LvlStack = New-Object System.Windows.Controls.StackPanel
+
+            $LvlTitle = New-Object System.Windows.Controls.TextBlock
+            $LvlTitle.Text = if ($Global:CurrentLang -eq "FR") { "Niveau de reduction des processus (preset)" } else { "Process reduction level (preset)" }
+            $LvlTitle.Foreground = Get-Brush "#00FFC8"
+            $LvlTitle.FontSize = 12
+            $LvlTitle.FontWeight = "Bold"
+            $LvlTitle.Margin = "0,0,0,8"
+            [void]$LvlStack.Children.Add($LvlTitle)
+
+            $LvlSlider = New-Object System.Windows.Controls.Slider
+            $LvlSlider.Minimum = 1
+            $LvlSlider.Maximum = 5
+            $LvlSlider.TickFrequency = 1
+            $LvlSlider.IsSnapToTickEnabled = $true
+            $LvlSlider.Value = 1
+            $LvlSlider.Margin = "0,0,0,8"
+            [void]$LvlStack.Children.Add($LvlSlider)
+
+            $LvlLabels = @{
+                1 = @{FR="Niveau 1 : Standard (~100 processus) - aucune modification supplementaire."; EN="Level 1: Standard (~100 processes) - no additional change."}
+                2 = @{FR="Niveau 2 : Leger (~90 processus) - OneDrive, Cortana, apps en arriere-plan."; EN="Level 2: Light (~90 processes) - OneDrive, Cortana, background apps."}
+                3 = @{FR="Niveau 3 : Optimise (~75 processus) - + DiagTrack, regroupement svchost leger."; EN="Level 3: Optimized (~75 processes) - + DiagTrack, light svchost grouping."}
+                4 = @{FR="Niveau 4 : Ultra (~60 processus) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc."; EN="Level 4: Ultra (~60 processes) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc."}
+                5 = @{FR="Niveau 5 : Extreme (~50 processus) - + Xbox, Widgets, regroupement svchost total."; EN="Level 5: Extreme (~50 processes) - + Xbox, Widgets, total svchost grouping."}
+            }
+            $LvlDesc = New-Object System.Windows.Controls.TextBlock
+            $LvlDesc.Text = if ($Global:CurrentLang -eq "FR") { $LvlLabels[1].FR } else { $LvlLabels[1].EN }
+            $LvlDesc.Foreground = Get-Brush "#A0A0A0"
+            $LvlDesc.FontSize = 11
+            $LvlDesc.TextWrapping = "Wrap"
+            $LvlDesc.Margin = "0,0,0,10"
+            [void]$LvlStack.Children.Add($LvlDesc)
+
+            $LvlSlider.Add_ValueChanged({
+                $lvl = [int]$this.Value
+                $LvlDesc.Text = if ($Global:CurrentLang -eq "FR") { $LvlLabels[$lvl].FR } else { $LvlLabels[$lvl].EN }
+            }.GetNewClosure())
+
+            $BtnApplyLevel = New-Object System.Windows.Controls.Button
+            $BtnApplyLevel.Content = if ($Global:CurrentLang -eq "FR") { "Appliquer ce niveau" } else { "Apply this level" }
+            $BtnApplyLevel.Height = 28
+            $BtnApplyLevel.Width = 180
+            $BtnApplyLevel.HorizontalAlignment = "Left"
+            $BtnApplyLevel.Background = Get-Brush "#00FFC8"
+            $BtnApplyLevel.Foreground = Get-Brush "#0A0A0E"
+            $BtnApplyLevel.FontWeight = "Bold"
+            $BtnApplyLevel.BorderThickness = "0"
+            $BtnApplyLevel.Add_Click({
+                Set-ProcessReductionLevel ([int]$LvlSlider.Value)
+            }.GetNewClosure())
+            [void]$LvlStack.Children.Add($BtnApplyLevel)
+
+            $LvlNote = New-Object System.Windows.Controls.TextBlock
+            $LvlNote.Text = if ($Global:CurrentLang -eq "FR") { "Coche des options existantes des categories Confidentialite/Services/Bloatwares -- rien n'est duplique. Tu peux verifier/decocher ensuite dans ces categories." } else { "Checks existing options from the Confidentialite/Services/Bloatwares categories - nothing is duplicated. You can review/uncheck them there afterward." }
+            $LvlNote.Foreground = Get-Brush "#6A6A7A"
+            $LvlNote.FontSize = 10
+            $LvlNote.TextWrapping = "Wrap"
+            $LvlNote.Margin = "0,8,0,0"
+            [void]$LvlStack.Children.Add($LvlNote)
+
+            $LvlBox.Child = $LvlStack
+            [void]$Panel.Children.Add($LvlBox)
         } else {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Collapsed
+        }
+
+        if ($Cat -eq "Audio") {
+            # --- Statut Equalizer APO ---
+            $EqBox = New-Object System.Windows.Controls.Border
+            $EqBox.Background = Get-Brush "#161622"
+            $EqBox.BorderBrush = Get-Brush "#2A2A3A"
+            $EqBox.BorderThickness = "1"
+            $EqBox.CornerRadius = "5"
+            $EqBox.Padding = "12"
+            $EqBox.Margin = "0,0,0,12"
+            $EqStack = New-Object System.Windows.Controls.StackPanel
+
+            $eqInstalled = Test-EqualizerApoInstalled
+            $EqTitle = New-Object System.Windows.Controls.TextBlock
+            if ($eqInstalled) {
+                $EqTitle.Text = if ($Global:CurrentLang -eq "FR") { "Equalizer APO : installe" } else { "Equalizer APO: installed" }
+                $EqTitle.Foreground = Get-Brush "#2ECC71"
+            } else {
+                $EqTitle.Text = if ($Global:CurrentLang -eq "FR") { "Equalizer APO : non installe" } else { "Equalizer APO: not installed" }
+                $EqTitle.Foreground = Get-Brush "#E74C3C"
+            }
+            $EqTitle.FontSize = 12
+            $EqTitle.FontWeight = "Bold"
+            [void]$EqStack.Children.Add($EqTitle)
+
+            $EqDesc = New-Object System.Windows.Controls.TextBlock
+            $EqDesc.Text = if ($Global:CurrentLang -eq "FR") { "Requis pour le VST et le Radar Casque. L'installeur a besoin d'un clic pour choisir ton peripherique : il n'existe pas de version 100% silencieuse pour ce logiciel precis." } else { "Required for VST and Headset Radar. The installer needs one click to pick your device: there is no 100% silent version for this specific software." }
+            $EqDesc.Foreground = Get-Brush "#A0A0A0"
+            $EqDesc.FontSize = 11
+            $EqDesc.TextWrapping = "Wrap"
+            $EqDesc.Margin = "0,4,0,8"
+            [void]$EqStack.Children.Add($EqDesc)
+
+            if (-not $eqInstalled) {
+                $BtnInstallEq = New-Object System.Windows.Controls.Button
+                $BtnInstallEq.Content = if ($Global:CurrentLang -eq "FR") { "Telecharger et installer" } else { "Download and install" }
+                $BtnInstallEq.Height = 28
+                $BtnInstallEq.Width = 200
+                $BtnInstallEq.HorizontalAlignment = "Left"
+                $BtnInstallEq.Background = Get-Brush "#7C9CFF"
+                $BtnInstallEq.Foreground = Get-Brush "#0A0A0E"
+                $BtnInstallEq.FontWeight = "Bold"
+                $BtnInstallEq.BorderThickness = "0"
+                $BtnInstallEq.Add_Click({
+                    $ok = Install-EqualizerApoGuided
+                    if ($ok) { $LogBox.AppendText(">> [OK] Equalizer APO installe`n") }
+                    else { $LogBox.AppendText(">> [ECHEC] Installation Equalizer APO -> voir le log`n") }
+                    $LogBox.ScrollToEnd()
+                    Render-Category "Audio"
+                }.GetNewClosure())
+                [void]$EqStack.Children.Add($BtnInstallEq)
+            }
+            $EqBox.Child = $EqStack
+            [void]$Panel.Children.Add($EqBox)
+
+            # --- Vu-metre en direct ---
+            $VuBox = New-Object System.Windows.Controls.Border
+            $VuBox.Background = Get-Brush "#161622"
+            $VuBox.BorderBrush = Get-Brush "#2A2A3A"
+            $VuBox.BorderThickness = "1"
+            $VuBox.CornerRadius = "5"
+            $VuBox.Padding = "12"
+            $VuBox.Margin = "0,0,0,12"
+            $VuStack = New-Object System.Windows.Controls.StackPanel
+
+            $VuTitle = New-Object System.Windows.Controls.TextBlock
+            $VuTitle.Text = if ($Global:CurrentLang -eq "FR") { "Niveau du micro (temps reel)" } else { "Microphone level (live)" }
+            $VuTitle.Foreground = Get-Brush "#00FFC8"
+            $VuTitle.FontSize = 12
+            $VuTitle.FontWeight = "Bold"
+            $VuTitle.Margin = "0,0,0,8"
+            [void]$VuStack.Children.Add($VuTitle)
+
+            $Global:AudioVuBar = New-Object System.Windows.Controls.ProgressBar
+            $Global:AudioVuBar.Minimum = 0
+            $Global:AudioVuBar.Maximum = 100
+            $Global:AudioVuBar.Height = 14
+            $Global:AudioVuBar.Foreground = Get-Brush "#00FFC8"
+            $Global:AudioVuBar.Background = Get-Brush "#101016"
+            [void]$VuStack.Children.Add($Global:AudioVuBar)
+
+            $VuBox.Child = $VuStack
+            [void]$Panel.Children.Add($VuBox)
+
+            if ($null -eq $Global:AudioVuTimer) {
+                $Global:AudioVuTimer = New-Object System.Windows.Threading.DispatcherTimer
+                $Global:AudioVuTimer.Interval = [TimeSpan]::FromMilliseconds(60)
+                $Global:AudioVuTimer.Add_Tick({
+                    if ($Global:LastCategory -eq "Audio" -and $null -ne $Global:AudioVuBar) {
+                        try {
+                            $lvl = [OptiDylanAudio]::GetMicrophonePeakLevel()
+                            $Global:AudioVuBar.Value = [Math]::Min(100, [int]($lvl * 100))
+                        } catch {}
+                    }
+                })
+                $Global:AudioVuTimer.Start()
+            }
+
+            # --- VST via Equalizer APO ---
+            $VstBox = New-Object System.Windows.Controls.Border
+            $VstBox.Background = Get-Brush "#161622"
+            $VstBox.BorderBrush = Get-Brush "#2A2A3A"
+            $VstBox.BorderThickness = "1"
+            $VstBox.CornerRadius = "5"
+            $VstBox.Padding = "12"
+            $VstBox.Margin = "0,0,0,12"
+            $VstStack = New-Object System.Windows.Controls.StackPanel
+
+            $VstTitle = New-Object System.Windows.Controls.TextBlock
+            $VstTitle.Text = if ($Global:CurrentLang -eq "FR") { "Plugin VST sur le micro" } else { "VST plugin on the microphone" }
+            $VstTitle.Foreground = Get-Brush "#00FFC8"
+            $VstTitle.FontSize = 12
+            $VstTitle.FontWeight = "Bold"
+            $VstTitle.Margin = "0,0,0,8"
+            [void]$VstStack.Children.Add($VstTitle)
+
+            $Global:AudioVstStatusText = New-Object System.Windows.Controls.TextBlock
+            $Global:AudioVstStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Aucun plugin charge." } else { "No plugin loaded." }
+            $Global:AudioVstStatusText.Foreground = Get-Brush "#A0A0A0"
+            $Global:AudioVstStatusText.FontSize = 11
+            $Global:AudioVstStatusText.TextWrapping = "Wrap"
+            $Global:AudioVstStatusText.Margin = "0,0,0,8"
+            [void]$VstStack.Children.Add($Global:AudioVstStatusText)
+
+            $VstBtnRow = New-Object System.Windows.Controls.StackPanel
+            $VstBtnRow.Orientation = "Horizontal"
+
+            $BtnBrowseVst = New-Object System.Windows.Controls.Button
+            $BtnBrowseVst.Content = if ($Global:CurrentLang -eq "FR") { "Choisir un .dll" } else { "Choose a .dll" }
+            $BtnBrowseVst.Height = 28
+            $BtnBrowseVst.Width = 150
+            $BtnBrowseVst.Margin = "0,0,10,0"
+            $BtnBrowseVst.Background = Get-Brush "#00FFC8"
+            $BtnBrowseVst.Foreground = Get-Brush "#0A0A0E"
+            $BtnBrowseVst.FontWeight = "Bold"
+            $BtnBrowseVst.BorderThickness = "0"
+            $BtnBrowseVst.Add_Click({
+                if (-not (Test-EqualizerApoInstalled)) {
+                    $Global:AudioVstStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Installe d'abord Equalizer APO ci-dessus." } else { "Install Equalizer APO above first." }
+                    return
+                }
+                $Dlg = New-Object System.Windows.Forms.OpenFileDialog
+                $Dlg.Filter = "VST plugin (*.dll)|*.dll"
+                if ($Dlg.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
+                    Set-OptiAudioVST -VstPath $Dlg.FileName -Enabled $true
+                    $Global:AudioVstStatusText.Text = $Dlg.FileName
+                    $LogBox.AppendText(">> [OK] VST charge : $($Dlg.FileName)`n")
+                    $LogBox.ScrollToEnd()
+                }
+            }.GetNewClosure())
+            [void]$VstBtnRow.Children.Add($BtnBrowseVst)
+
+            $BtnBypassVst = New-Object System.Windows.Controls.Button
+            $BtnBypassVst.Content = if ($Global:CurrentLang -eq "FR") { "Desactiver" } else { "Disable" }
+            $BtnBypassVst.Height = 28
+            $BtnBypassVst.Width = 120
+            $BtnBypassVst.Background = Get-Brush "#221616"
+            $BtnBypassVst.Foreground = Get-Brush "#E74C3C"
+            $BtnBypassVst.BorderThickness = "0"
+            $BtnBypassVst.Add_Click({
+                Set-OptiAudioVST -VstPath "" -Enabled $false
+                $Global:AudioVstStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Aucun plugin charge." } else { "No plugin loaded." }
+                $LogBox.AppendText(">> [OK] VST desactive`n")
+                $LogBox.ScrollToEnd()
+            }.GetNewClosure())
+            [void]$VstBtnRow.Children.Add($BtnBypassVst)
+
+            [void]$VstStack.Children.Add($VstBtnRow)
+            $VstBox.Child = $VstStack
+            [void]$Panel.Children.Add($VstBox)
+
+            # --- Esports Sound Radar (sortie casque) ---
+            $RadarBox = New-Object System.Windows.Controls.Border
+            $RadarBox.Background = Get-Brush "#161622"
+            $RadarBox.BorderBrush = Get-Brush "#2A2A3A"
+            $RadarBox.BorderThickness = "1"
+            $RadarBox.CornerRadius = "5"
+            $RadarBox.Padding = "12"
+            $RadarStack = New-Object System.Windows.Controls.StackPanel
+
+            $RadarTitle = New-Object System.Windows.Controls.TextBlock
+            $RadarTitle.Text = if ($Global:CurrentLang -eq "FR") { "Esports Sound Radar (sortie casque)" } else { "Esports Sound Radar (headset output)" }
+            $RadarTitle.Foreground = Get-Brush "#00FFC8"
+            $RadarTitle.FontSize = 12
+            $RadarTitle.FontWeight = "Bold"
+            $RadarTitle.Margin = "0,0,0,4"
+            [void]$RadarStack.Children.Add($RadarTitle)
+
+            $RadarDesc = New-Object System.Windows.Controls.TextBlock
+            $RadarDesc.Text = if ($Global:CurrentLang -eq "FR") { "Attenue les basses (explosions) et booste 2500-4000Hz (bruits de pas)." } else { "Attenuates bass (explosions) and boosts 2500-4000Hz (footsteps)." }
+            $RadarDesc.Foreground = Get-Brush "#A0A0A0"
+            $RadarDesc.FontSize = 11
+            $RadarDesc.TextWrapping = "Wrap"
+            $RadarDesc.Margin = "0,0,0,8"
+            [void]$RadarStack.Children.Add($RadarDesc)
+
+            $Global:AudioRadarStatusText = New-Object System.Windows.Controls.TextBlock
+            $Global:AudioRadarStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Statut : neutre" } else { "Status: neutral" }
+            $Global:AudioRadarStatusText.Foreground = Get-Brush "#F5F5FA"
+            $Global:AudioRadarStatusText.FontSize = 11
+            $Global:AudioRadarStatusText.Margin = "0,0,0,8"
+            [void]$RadarStack.Children.Add($Global:AudioRadarStatusText)
+
+            $RadarBtnRow = New-Object System.Windows.Controls.StackPanel
+            $RadarBtnRow.Orientation = "Horizontal"
+
+            $BtnRadarOn = New-Object System.Windows.Controls.Button
+            $BtnRadarOn.Content = if ($Global:CurrentLang -eq "FR") { "Activer" } else { "Enable" }
+            $BtnRadarOn.Height = 28
+            $BtnRadarOn.Width = 120
+            $BtnRadarOn.Margin = "0,0,10,0"
+            $BtnRadarOn.Background = Get-Brush "#2ECC71"
+            $BtnRadarOn.Foreground = Get-Brush "#0A0A0E"
+            $BtnRadarOn.FontWeight = "Bold"
+            $BtnRadarOn.BorderThickness = "0"
+            $BtnRadarOn.Add_Click({
+                if (-not (Test-EqualizerApoInstalled)) {
+                    $Global:AudioRadarStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Installe d'abord Equalizer APO ci-dessus." } else { "Install Equalizer APO above first." }
+                    return
+                }
+                Set-OptiSoundRadar -Enabled $true
+                $Global:AudioRadarStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Statut : actif" } else { "Status: active" }
+                $LogBox.AppendText(">> [OK] Sound Radar active`n")
+                $LogBox.ScrollToEnd()
+            }.GetNewClosure())
+            [void]$RadarBtnRow.Children.Add($BtnRadarOn)
+
+            $BtnRadarOff = New-Object System.Windows.Controls.Button
+            $BtnRadarOff.Content = if ($Global:CurrentLang -eq "FR") { "Mode neutre" } else { "Neutral mode" }
+            $BtnRadarOff.Height = 28
+            $BtnRadarOff.Width = 120
+            $BtnRadarOff.Background = Get-Brush "#221616"
+            $BtnRadarOff.Foreground = Get-Brush "#E74C3C"
+            $BtnRadarOff.BorderThickness = "0"
+            $BtnRadarOff.Add_Click({
+                Set-OptiSoundRadar -Enabled $false
+                $Global:AudioRadarStatusText.Text = if ($Global:CurrentLang -eq "FR") { "Statut : neutre" } else { "Status: neutral" }
+                $LogBox.AppendText(">> [OK] Sound Radar desactive`n")
+                $LogBox.ScrollToEnd()
+            }.GetNewClosure())
+            [void]$RadarBtnRow.Children.Add($BtnRadarOff)
+
+            [void]$RadarStack.Children.Add($RadarBtnRow)
+            $RadarBox.Child = $RadarStack
+            [void]$Panel.Children.Add($RadarBox)
         }
 
         # CORRECTIF V15.1 : avertissement clair et permanent sur la limite reelle
@@ -2190,6 +2668,7 @@ $Form.Add_Closing({
     try {
         if ($null -ne $Global:CurrentPS) { $Global:CurrentPS.Dispose() }
         if ($null -ne $Global:BgRunspace) { $Global:BgRunspace.Close() }
+        if ($null -ne $Global:AudioVuTimer) { $Global:AudioVuTimer.Stop() }
     } catch {}
     try {
         $L = $Global:LangDict[$Global:CurrentLang]
