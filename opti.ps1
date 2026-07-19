@@ -449,6 +449,11 @@ function Set-ProcessReductionLevel([int]$Level) {
         if ($ComboSvcHostRam.Items[$i].Tag -eq $svcHostValue) { $ComboSvcHostRam.SelectedIndex = $i; break }
     }
 
+    # Log explicite pour diagnostiquer sans etape supplementaire au prochain test
+    $checkedNow = ($managedIds | Where-Object { $Global:CheckStates[$_] -eq $true })
+    $LogBox.AppendText(">> [NIVEAU $Level] SvcHost cible = $svcHostValue Ko | Options cochees = $($checkedNow -join ', ')`n")
+    $LogBox.ScrollToEnd()
+
     Render-Category $Global:LastCategory
     Update-SidebarCounters
 
@@ -1020,6 +1025,65 @@ $Options += [PSCustomObject]@{Id=61; Cat="Services"; LabelFR="Désactiver SysMai
 $Options += [PSCustomObject]@{Id=62; Cat="Services"; LabelFR="Désactiver Windows Search (Indexation en tâche de fond)"; LabelEN="Disable Windows Search (Stops continuous file indexing)"; Risk="moderate"; CheckType="Svc"; CheckSvc="WSearch"; Action={ Disable-Svc "WSearch" }}
 $Options += [PSCustomObject]@{Id=63; Cat="Services"; LabelFR="Désactiver la suite complète des Services Xbox"; LabelEN="Disable complete suite of core background Xbox ecosystem services"; Risk="moderate"; Action={ "XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc" | ForEach-Object { Disable-Svc $_ } }}
 $Options += [PSCustomObject]@{Id=64; Cat="Services"; LabelFR="Désactiver Bluetooth Support Service (si inutilisé)"; LabelEN="Disable Bluetooth Support Service (If wireless devices aren't used)"; Risk="moderate"; CheckType="Svc"; CheckSvc="bthserv"; Action={ Disable-Svc "bthserv" }}
+# --- Ajouts issus de ReviOS (registre confidentialite/telemetrie, non couverts) ---
+$Options += [PSCustomObject]@{Id=166; Cat="Confidentialite"; LabelFR="Télémétrie approfondie (strategies de groupe AllowTelemetry, flighting, diagnostics)"; LabelEN="Deep telemetry policy (AllowTelemetry group policies, flighting, diagnostics)"; Risk="moderate"; Action={
+    Set-Reg "HKCU:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowTelemetry" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection" "AllowTelemetry" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowCommercialDataPipeline" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowDeviceNameInTelemetry" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "DisableEnterpriseAuthProxy" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "MicrosoftEdgeDataOptIn" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "DisableTelemetryOptInChangeNotification" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "DisableTelemetryOptInSettingsUx" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\PreviewBuilds" "EnableConfigFlighting" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "DoNotShowFeedbackNotifications" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "LimitEnhancedDiagnosticDataWindowsAnalytics" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowBuildPreview" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "LimitDiagnosticLogCollection" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "LimitDumpCollection" 1
+    Set-Reg "HKLM:\SYSTEM\ControlSet001\Control\WMI\Autologger\Diagtrack-Listener" "Start" 0
+    Set-Reg "HKLM:\SYSTEM\ControlSet001\Control\WMI\Autologger\SQMLogger" "Start" 0
+}}
+$Options += [PSCustomObject]@{Id=167; Cat="Confidentialite"; LabelFR="Désactiver le Programme d'amélioration (CEIP, toutes composantes)"; LabelEN="Disable Customer Experience Improvement Program (CEIP, all components)"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\SQMClient\Windows" "CEIPEnable" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\AppV\CEIP" "CEIPEnable" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Internet Explorer\SQM" "DisableCustomerImprovementProgram" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Messenger\Client" "CEIP" 2
+}}
+$Options += [PSCustomObject]@{Id=168; Cat="Confidentialite"; LabelFR="Couper les suggestions/contenus sponsorisés (menu Démarrer, verrouillage, apps pré-installées)"; LabelEN="Cut sponsored content/suggestions (Start menu, lock screen, pre-installed apps)"; Risk="safe"; Action={
+    foreach ($hive in @("HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager")) {
+        Set-Reg $hive "ContentDeliveryAllowed" 0
+        Set-Reg $hive "SubscribedContentEnabled" 0
+        Set-Reg $hive "SilentInstalledAppsEnabled" 0
+        Set-Reg $hive "PreInstalledAppsEnabled" 0
+        Set-Reg $hive "SoftLandingEnabled" 0
+        Set-Reg $hive "RotatingLockScreenEnabled" 0
+        Set-Reg $hive "RotatingLockScreenOverlayEnabled" 0
+    }
+}}
+$Options += [PSCustomObject]@{Id=169; Cat="Confidentialite"; LabelFR="Compatibilité applicative approfondie (moteur, télémétrie app, inventaire programmes)"; LabelEN="Deep application compatibility (engine, app telemetry, program inventory)"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "DisableEngine" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "AITEnable" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "DisableUAR" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "DisableInventory" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat" "SbEnable" 1
+}}
+$Options += [PSCustomObject]@{Id=170; Cat="Confidentialite"; LabelFR="Restreindre les communications Internet automatiques (assistant, impression web, aide en ligne)"; LabelEN="Restrict automatic Internet communications (wizards, web printing, online help)"; Risk="moderate"; Action={
+    foreach ($hive in @("HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer","HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer")) {
+        Set-Reg $hive "NoPublishingWizard" 1
+        Set-Reg $hive "NoWebServices" 1
+        Set-Reg $hive "NoOnlinePrintsWizard" 1
+        Set-Reg $hive "NoInternetOpenWith" 1
+    }
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers" "DisableHTTPPrinting" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Printers" "DisableWebPnPDownload" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\HandwritingErrorReports" "PreventHandwritingErrorReports" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\TabletPC" "PreventHandwritingDataSharing" 1
+}}
+$Options += [PSCustomObject]@{Id=171; Cat="Confidentialite"; LabelFR="Désactiver la télémétrie NVIDIA Control Panel (si GPU NVIDIA)"; LabelEN="Disable NVIDIA Control Panel telemetry (if NVIDIA GPU)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\SOFTWARE\NVIDIA Corporation\NVControlPanel2\Client" "OptInOrOutPreference" 0
+}}
 $Options += [PSCustomObject]@{Id=65; Cat="Services"; LabelFR="Désactiver le Spouleur d'impression"; LabelEN="Disable Print Spooler execution loop service (If printerless)"; Risk="moderate"; CheckType="Svc"; CheckSvc="Spooler"; Action={ Disable-Svc "Spooler" }}
 $Options += [PSCustomObject]@{Id=66; Cat="Services"; LabelFR="Désactiver le Service Fax"; LabelEN="Disable legacy faxing subsystem layout architecture"; Risk="safe"; CheckType="Svc"; CheckSvc="Fax"; Action={ Disable-Svc "Fax" }}
 $Options += [PSCustomObject]@{Id=67; Cat="Services"; LabelFR="Désactiver le Registre à distance (RemoteRegistry)"; LabelEN="Disable Remote Registry modifications system process"; Risk="safe"; CheckType="Svc"; CheckSvc="RemoteRegistry"; Action={ Disable-Svc "RemoteRegistry" }}
@@ -1843,7 +1907,7 @@ function Render-Category([string]$Cat) {
                 2 = @{FR="Niveau 2 : Leger (~90 processus) - apps Store en arriere-plan, OneDrive, Cortana au demarrage."; EN="Level 2: Light (~90 processes) - background Store apps, OneDrive, Cortana at startup."}
                 3 = @{FR="Niveau 3 : Optimise (~75 processus) - + DiagTrack, regroupement svchost leger (8 Go)."; EN="Level 3: Optimized (~75 processes) - + DiagTrack, light svchost grouping (8 GB)."}
                 4 = @{FR="Niveau 4 : Ultra (~60 processus) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc, svchost 16 Go."; EN="Level 4: Ultra (~60 processes) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc, svchost 16 GB."}
-                5 = @{FR="Niveau 5 : EXTREME (~50 processus) - + Xbox, Widgets, WSearch, Fax, RemoteRegistry, Bluetooth, Spouleur, svchost 64 Go (maximum)."; EN="Level 5: EXTREME (~50 processes) - + Xbox, Widgets, WSearch, Fax, RemoteRegistry, Bluetooth, Spooler, svchost 64 GB (maximum)."}
+                5 = @{FR="Niveau 5 : EXTREME (~50-70 processus selon ta version de Windows) - + Xbox, Widgets, WSearch, Fax, RemoteRegistry, Bluetooth, Spouleur, svchost 64 Go (maximum disponible). Windows a durci le regroupement au fil des mises a jour : sur un Windows 11 recent, ~50 n'est plus garanti meme avec ce reglage au maximum."; EN="Level 5: EXTREME (~50-70 processes depending on your Windows version) - + Xbox, Widgets, WSearch, Fax, RemoteRegistry, Bluetooth, Spooler, svchost 64 GB (max available). Windows has hardened grouping over updates: on a recent Windows 11, ~50 is no longer guaranteed even at this max setting."}
             }
             $LvlDesc = New-Object System.Windows.Controls.TextBlock
             $LvlDesc.Text = if ($Global:CurrentLang -eq "FR") { $LvlLabels[1].FR } else { $LvlLabels[1].EN }
