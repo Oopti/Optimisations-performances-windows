@@ -1026,6 +1026,15 @@ $Options += [PSCustomObject]@{Id=67; Cat="Services"; LabelFR="Désactiver le Reg
 $Options += [PSCustomObject]@{Id=68; Cat="Services"; LabelFR="Désactiver l'assistant compatibilité des programmes"; LabelEN="Disable Program Compatibility Assistant Service (PcaSvc)"; Risk="safe"; CheckType="Svc"; CheckSvc="PcaSvc"; Action={ Disable-Svc "PcaSvc" }}
 $Options += [PSCustomObject]@{Id=69; Cat="Services"; LabelFR="Désactiver la géolocalisation et les cartes"; LabelEN="Disable Geolocation tracker loop & Downloaded Maps Manager"; Risk="moderate"; Action={ Disable-Svc "MapsBroker"; Disable-Svc "lfsvc" }}
 $Options += [PSCustomObject]@{Id=74; Cat="Services"; LabelFR="Désactiver le service de rapport d'erreurs (WerSvc)"; LabelEN="Disable Windows Error Reporting Service data uploading loops"; Risk="safe"; CheckType="Svc"; CheckSvc="WerSvc"; Action={ Disable-Svc "WerSvc" }}
+# --- Ajouts issus de ReviOS (services absents de la liste d'origine) ---
+$Options += [PSCustomObject]@{Id=158; Cat="Services"; LabelFR="Désactiver Desktop Activity Moderator Driver (dam)"; LabelEN="Disable Desktop Activity Moderator Driver (dam)"; Risk="moderate"; CheckType="Svc"; CheckSvc="dam"; Action={ Disable-Svc "dam" }}
+$Options += [PSCustomObject]@{Id=159; Cat="Services"; LabelFR="Désactiver GPU Energy Driver"; LabelEN="Disable GPU Energy Driver"; Risk="moderate"; CheckType="Svc"; CheckSvc="GpuEnergyDrv"; Action={ Disable-Svc "GpuEnergyDrv" }}
+$Options += [PSCustomObject]@{Id=160; Cat="Services"; LabelFR="Désactiver Diagnostics Hub Standard Collector"; LabelEN="Disable Diagnostics Hub Standard Collector Service"; Risk="safe"; CheckType="Svc"; CheckSvc="diagnosticshub.standardcollector.service"; Action={ Disable-Svc "diagnosticshub.standardcollector.service" }}
+$Options += [PSCustomObject]@{Id=161; Cat="Services"; LabelFR="Désactiver le service Windows Insider (wisvc)"; LabelEN="Disable Windows Insider Service (wisvc)"; Risk="safe"; CheckType="Svc"; CheckSvc="wisvc"; Action={ Disable-Svc "wisvc" }}
+$Options += [PSCustomObject]@{Id=162; Cat="Services"; LabelFR="Désactiver les hôtes de diagnostic (WdiServiceHost/WdiSystemHost)"; LabelEN="Disable Diagnostic Service/System Host"; Risk="safe"; Action={ Disable-Svc "WdiServiceHost"; Disable-Svc "WdiSystemHost" }}
+$Options += [PSCustomObject]@{Id=163; Cat="Services"; LabelFR="Désactiver le collecteur d'événements Windows (Wecsvc)"; LabelEN="Disable Windows Event Collector (Wecsvc)"; Risk="moderate"; CheckType="Svc"; CheckSvc="Wecsvc"; Action={ Disable-Svc "Wecsvc" }}
+$Options += [PSCustomObject]@{Id=164; Cat="Services"; LabelFR="Désactiver NetBT (NetBIOS sur TCP/IP -- peut casser le partage fichiers/imprimante sur certains reseaux locaux anciens)"; LabelEN="Disable NetBT (NetBIOS over TCP/IP -- may break legacy LAN file/printer sharing on some networks)"; Risk="advanced"; CheckType="Svc"; CheckSvc="NetBT"; Action={ Disable-Svc "NetBT" }}
+$Options += [PSCustomObject]@{Id=165; Cat="Services"; LabelFR="Désactiver UCPD (User Choice Protection Driver -- retire une protection contre le detournement d'applications par defaut, a ton propre risque)"; LabelEN="Disable UCPD (User Choice Protection Driver -- removes a default-app hijacking protection, use at your own risk)"; Risk="advanced"; CheckType="Svc"; CheckSvc="UCPD"; Action={ Disable-Svc "UCPD" }}
 
 # --- 8. NETTOYAGE ET RAM ---
 $Options += [PSCustomObject]@{Id=76; Cat="Nettoyage"; LabelFR="Vider les fichiers temporaires (%TEMP%)"; LabelEN="Purge user environment temp dump files structures (%TEMP%)"; Risk="safe"; Action={ Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue }}
@@ -2745,4 +2754,4 @@ $Global:LogHistory.Add("LogEngineOnline")
 if ($Global:AutoCheckCount -gt 0) { $Global:LogHistory.Add("LogAutoCheck|$($Global:AutoCheckCount)") }
 Update-SidebarCounters
 Update-InterfaceLanguage
-[void]$Form.ShowDialog()                                                                                                                                                                                                                                                                                                                                                                                     
+[void]$Form.ShowDialog()
