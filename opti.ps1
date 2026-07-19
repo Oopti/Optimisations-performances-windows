@@ -321,7 +321,15 @@ public class OptiDylanAudio {
 }
 "@
 if (-not ([System.Management.Automation.PSTypeName]'OptiDylanAudio').Type) {
-    Add-Type -TypeDefinition $OptiDylanAudioCSharp -ErrorAction SilentlyContinue
+    try {
+        Add-Type -TypeDefinition $OptiDylanAudioCSharp -ErrorAction Stop
+    } catch {
+        # Write-Log et $Global:LogHistory n'existent pas encore a ce point du
+        # script (definis bien plus loin) : on ne peut pas s'appuyer dessus ici.
+        # On garde l'erreur de cote pour l'afficher plus tard dans l'onglet Audio.
+        $Global:AudioEngineError = $_.Exception.Message
+        Write-Host "[OptiDylanAudio] Erreur de compilation du moteur micro : $($_.Exception.Message)" -ForegroundColor Red
+    }
 }
 
 $Global:EqApoPath      = "C:\Program Files\EqualizerAPO"
@@ -411,23 +419,40 @@ function Set-OptiSoundRadar {
 # Bloatwares/Processus), rien n'est duplique ni reimplemente.
 # ------------------------------------------------------------------------
 function Set-ProcessReductionLevel([int]$Level) {
-    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,122,123,124)
+    # On ne coche plus 122/123/124 : leurs propres Actions ecrivent la meme cle
+    # de registre que le ComboBox "Optimiseur RAM" ci-dessous, et les deux
+    # mecanismes qui tournaient en meme temps se marchaient dessus (source
+    # probable de l'echec "operation non autorisee" vu en test). Le ComboBox
+    # est le seul a piloter le seuil SvcHost desormais.
+    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,62,66,67,146)
     foreach ($id in $managedIds) { $Global:CheckStates[$id] = $false }
 
+    $svcHostValue = "380000"
     if ($Level -ge 2) { $Global:CheckStates[20]=$true; $Global:CheckStates[27]=$true; $Global:CheckStates[24]=$true }
-    if ($Level -ge 3) { $Global:CheckStates[16]=$true; $Global:CheckStates[122]=$true }
+    if ($Level -ge 3) { $Global:CheckStates[16]=$true; $svcHostValue = "8388608" }
     if ($Level -ge 4) {
         $Global:CheckStates[17]=$true; $Global:CheckStates[61]=$true
         $Global:CheckStates[68]=$true; $Global:CheckStates[69]=$true; $Global:CheckStates[74]=$true
-        $Global:CheckStates[122]=$false; $Global:CheckStates[123]=$true
+        $svcHostValue = "16777216"
     }
     if ($Level -ge 5) {
         $Global:CheckStates[63]=$true; $Global:CheckStates[137]=$true
-        $Global:CheckStates[123]=$false; $Global:CheckStates[124]=$true
+        $Global:CheckStates[62]=$true; $Global:CheckStates[66]=$true; $Global:CheckStates[67]=$true; $Global:CheckStates[146]=$true
+        $svcHostValue = "67108864"
+    }
+
+    $Global:SelectedSvcHostValue = $svcHostValue
+    for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
+        if ($ComboSvcHostRam.Items[$i].Tag -eq $svcHostValue) { $ComboSvcHostRam.SelectedIndex = $i; break }
     }
 
     Render-Category $Global:LastCategory
     Update-SidebarCounters
+
+    # Applique VRAIMENT (pas juste une selection) : on declenche le meme
+    # bouton "Appliquer" que le reste de l'app plutot que de dupliquer sa
+    # logique (SvcHost synchrone + file d'attente asynchrone + progress bar).
+    $BtnApply.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
 }
 
 # ============================================================
@@ -1821,7 +1846,7 @@ function Render-Category([string]$Cat) {
             [void]$LvlStack.Children.Add($BtnApplyLevel)
 
             $LvlNote = New-Object System.Windows.Controls.TextBlock
-            $LvlNote.Text = if ($Global:CurrentLang -eq "FR") { "Coche des options existantes des categories Confidentialite/Services/Bloatwares -- rien n'est duplique. Tu peux verifier/decocher ensuite dans ces categories." } else { "Checks existing options from the Confidentialite/Services/Bloatwares categories - nothing is duplicated. You can review/uncheck them there afterward." }
+            $LvlNote.Text = if ($Global:CurrentLang -eq "FR") { "Coche des options existantes (Confidentialite/Services/Bloatwares) ET regle le seuil SvcHost ci-dessous (categorie Processus), puis APPLIQUE reellement -- clic = changement effectif, pas juste une selection. Le regroupement svchost n'a un effet visible dans le Gestionnaire des taches qu'apres redemarrage." } else { "Checks existing options (Confidentialite/Services/Bloatwares) AND sets the SvcHost threshold below (Processus category), then REALLY applies -- click = actual change, not just a selection. The svchost grouping only shows up in Task Manager after a restart." }
             $LvlNote.Foreground = Get-Brush "#6A6A7A"
             $LvlNote.FontSize = 10
             $LvlNote.TextWrapping = "Wrap"
@@ -1835,6 +1860,23 @@ function Render-Category([string]$Cat) {
         }
 
         if ($Cat -eq "Audio") {
+            if ($Global:AudioEngineError) {
+                $ErrBox = New-Object System.Windows.Controls.Border
+                $ErrBox.Background = Get-Brush "#2A1616"
+                $ErrBox.BorderBrush = Get-Brush "#E74C3C"
+                $ErrBox.BorderThickness = "1"
+                $ErrBox.CornerRadius = "5"
+                $ErrBox.Padding = "12"
+                $ErrBox.Margin = "0,0,0,12"
+                $ErrText = New-Object System.Windows.Controls.TextBlock
+                $ErrText.Text = if ($Global:CurrentLang -eq "FR") { "Le moteur micro n'a pas compile au demarrage : $($Global:AudioEngineError)  Le Vu-metre ne fonctionnera pas, mais VST et Sound Radar restent utilisables (ils ne dependent pas de ce moteur)." } else { "The microphone engine failed to compile at startup: $($Global:AudioEngineError)  The VU meter will not work, but VST and Sound Radar remain usable (they do not depend on this engine)." }
+                $ErrText.Foreground = Get-Brush "#E74C3C"
+                $ErrText.FontSize = 11
+                $ErrText.TextWrapping = "Wrap"
+                $ErrBox.Child = $ErrText
+                [void]$Panel.Children.Add($ErrBox)
+            }
+
             # --- Statut Equalizer APO ---
             $EqBox = New-Object System.Windows.Controls.Border
             $EqBox.Background = Get-Brush "#161622"
