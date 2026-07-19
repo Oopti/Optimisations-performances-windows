@@ -121,6 +121,7 @@ $Global:LangDict = @{
         "CatBloatwares" = "Bloatwares Windows"
         "CatExtreme" = "Performance Extrême"
         "CatAudio" = "Audio & Micro"
+        "CatNiveaux" = "Réducteur de Processus"
         "CatInnovations" = "Innovations"
         "InnovationsWarning" = "Ici : un démon qui bascule automatiquement le plan d'alimentation quand tu lances un jeu en plein écran, un benchmark rapide pour mesurer l'impact de tes tweaks, et des correctifs de cache. Rien de risqué, juste des idées qu'on ne trouve pas ailleurs."
         "ExtremeWarning" = "Ces réglages utilisent des techniques kernel avancées (API non documentées, fichier hosts, démon en fond). Ils sont efficaces mais réservés à ceux qui veulent aller très loin — lis bien chaque description avant de cocher."
@@ -174,6 +175,7 @@ $Global:LangDict = @{
         "CatBloatwares" = "Windows Bloatwares"
         "CatExtreme" = "Extreme Performance"
         "CatAudio" = "Audio & Mic"
+        "CatNiveaux" = "Process Reducer"
         "CatInnovations" = "Innovations"
         "InnovationsWarning" = "Here: a daemon that auto-switches your power plan when a game goes fullscreen, a quick benchmark to measure your tweaks' real impact, and cache fixes. Nothing risky, just ideas you won't find elsewhere."
         "ExtremeWarning" = "These tweaks use advanced kernel techniques (undocumented APIs, hosts file, background daemon). They're effective but meant for those who want to go all the way — read each description carefully before checking."
@@ -424,7 +426,7 @@ function Set-ProcessReductionLevel([int]$Level) {
     # mecanismes qui tournaient en meme temps se marchaient dessus (source
     # probable de l'echec "operation non autorisee" vu en test). Le ComboBox
     # est le seul a piloter le seuil SvcHost desormais.
-    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,62,66,67,146)
+    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,62,66,67,146,64,65)
     foreach ($id in $managedIds) { $Global:CheckStates[$id] = $false }
 
     $svcHostValue = "380000"
@@ -438,6 +440,7 @@ function Set-ProcessReductionLevel([int]$Level) {
     if ($Level -ge 5) {
         $Global:CheckStates[63]=$true; $Global:CheckStates[137]=$true
         $Global:CheckStates[62]=$true; $Global:CheckStates[66]=$true; $Global:CheckStates[67]=$true; $Global:CheckStates[146]=$true
+        $Global:CheckStates[64]=$true; $Global:CheckStates[65]=$true
         $svcHostValue = "67108864"
     }
 
@@ -1232,6 +1235,7 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                     <Button Name="BtnExtreme" Tag="Extreme" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnInnovations" Tag="Innovations" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnAudio" Tag="Audio" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnNiveaux" Tag="Niveaux" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     
                     <Border BorderBrush="#2A2A3A" BorderThickness="1" CornerRadius="5" Margin="0,12,0,12" Padding="8">
                         <StackPanel>
@@ -1424,6 +1428,7 @@ $NavButtons = @{
     "Extreme"=$Form.FindName("BtnExtreme")
     "Innovations"=$Form.FindName("BtnInnovations")
     "Audio"=$Form.FindName("BtnAudio")
+    "Niveaux"=$Form.FindName("BtnNiveaux")
 }
 
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
@@ -1680,6 +1685,7 @@ function Get-CategoryDisplayName([string]$Key) {
         "Bloatwares" { return $L["CatBloatwares"] }
         "Extreme" { return $L["CatExtreme"] }
         "Audio" { return $L["CatAudio"] }
+        "Niveaux" { return $L["CatNiveaux"] }
         "Innovations" { return $L["CatInnovations"] }
     }
 }
@@ -1699,6 +1705,7 @@ function Get-CategoryEmoji([string]$Key) {
         "Extreme" { return "🔥" }
         "Innovations" { return "🚀" }
         "Audio" { return "🎙️" }
+        "Niveaux" { return "🔻" }
     }
 }
 
@@ -1783,24 +1790,35 @@ function Render-Category([string]$Cat) {
         # Afficher le module RAM uniquement dans la section "Processus"
         if ($Cat -eq "Processus") {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
+        } else {
+            $RamTweakPanel.Visibility = [System.Windows.Visibility]::Collapsed
+        }
 
-            # --- NIVEAUX DE REDUCTION DE PROCESSUS (preset 1 a 5, ~100 a ~50) ---
+        if ($Cat -eq "Niveaux") {
             $LvlBox = New-Object System.Windows.Controls.Border
             $LvlBox.Background = Get-Brush "#161622"
             $LvlBox.BorderBrush = Get-Brush "#2A2A3A"
             $LvlBox.BorderThickness = "1"
-            $LvlBox.CornerRadius = "5"
-            $LvlBox.Padding = "15"
+            $LvlBox.CornerRadius = "6"
+            $LvlBox.Padding = "18"
             $LvlBox.Margin = "0,0,0,15"
             $LvlStack = New-Object System.Windows.Controls.StackPanel
 
             $LvlTitle = New-Object System.Windows.Controls.TextBlock
-            $LvlTitle.Text = if ($Global:CurrentLang -eq "FR") { "Niveau de reduction des processus (preset)" } else { "Process reduction level (preset)" }
+            $LvlTitle.Text = if ($Global:CurrentLang -eq "FR") { "Réducteur de processus (5 niveaux)" } else { "Process reducer (5 levels)" }
             $LvlTitle.Foreground = Get-Brush "#00FFC8"
-            $LvlTitle.FontSize = 12
+            $LvlTitle.FontSize = 15
             $LvlTitle.FontWeight = "Bold"
-            $LvlTitle.Margin = "0,0,0,8"
+            $LvlTitle.Margin = "0,0,0,4"
             [void]$LvlStack.Children.Add($LvlTitle)
+
+            $LvlSub = New-Object System.Windows.Controls.TextBlock
+            $LvlSub.Text = if ($Global:CurrentLang -eq "FR") { "Glisse le curseur, clique Appliquer. De ~100 processus au demarrage (standard) a ~50 (extreme)." } else { "Drag the slider, click Apply. From ~100 startup processes (standard) to ~50 (extreme)." }
+            $LvlSub.Foreground = Get-Brush "#A0A0A0"
+            $LvlSub.FontSize = 11
+            $LvlSub.TextWrapping = "Wrap"
+            $LvlSub.Margin = "0,0,0,14"
+            [void]$LvlStack.Children.Add($LvlSub)
 
             $LvlSlider = New-Object System.Windows.Controls.Slider
             $LvlSlider.Minimum = 1
@@ -1808,22 +1826,23 @@ function Render-Category([string]$Cat) {
             $LvlSlider.TickFrequency = 1
             $LvlSlider.IsSnapToTickEnabled = $true
             $LvlSlider.Value = 1
-            $LvlSlider.Margin = "0,0,0,8"
+            $LvlSlider.Margin = "0,0,0,10"
             [void]$LvlStack.Children.Add($LvlSlider)
 
             $LvlLabels = @{
                 1 = @{FR="Niveau 1 : Standard (~100 processus) - aucune modification supplementaire."; EN="Level 1: Standard (~100 processes) - no additional change."}
-                2 = @{FR="Niveau 2 : Leger (~90 processus) - OneDrive, Cortana, apps en arriere-plan."; EN="Level 2: Light (~90 processes) - OneDrive, Cortana, background apps."}
-                3 = @{FR="Niveau 3 : Optimise (~75 processus) - + DiagTrack, regroupement svchost leger."; EN="Level 3: Optimized (~75 processes) - + DiagTrack, light svchost grouping."}
-                4 = @{FR="Niveau 4 : Ultra (~60 processus) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc."; EN="Level 4: Ultra (~60 processes) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc."}
-                5 = @{FR="Niveau 5 : Extreme (~50 processus) - + Xbox, Widgets, regroupement svchost total."; EN="Level 5: Extreme (~50 processes) - + Xbox, Widgets, total svchost grouping."}
+                2 = @{FR="Niveau 2 : Leger (~90 processus) - apps Store en arriere-plan, OneDrive, Cortana au demarrage."; EN="Level 2: Light (~90 processes) - background Store apps, OneDrive, Cortana at startup."}
+                3 = @{FR="Niveau 3 : Optimise (~75 processus) - + DiagTrack, regroupement svchost leger (8 Go)."; EN="Level 3: Optimized (~75 processes) - + DiagTrack, light svchost grouping (8 GB)."}
+                4 = @{FR="Niveau 4 : Ultra (~60 processus) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc, svchost 16 Go."; EN="Level 4: Ultra (~60 processes) - + dmwappush, SysMain, PcaSvc, MapsBroker, WerSvc, svchost 16 GB."}
+                5 = @{FR="Niveau 5 : EXTREME (~50 processus) - + Xbox, Widgets, WSearch, Fax, RemoteRegistry, Bluetooth, Spouleur, svchost 64 Go (maximum)."; EN="Level 5: EXTREME (~50 processes) - + Xbox, Widgets, WSearch, Fax, RemoteRegistry, Bluetooth, Spooler, svchost 64 GB (maximum)."}
             }
             $LvlDesc = New-Object System.Windows.Controls.TextBlock
             $LvlDesc.Text = if ($Global:CurrentLang -eq "FR") { $LvlLabels[1].FR } else { $LvlLabels[1].EN }
-            $LvlDesc.Foreground = Get-Brush "#A0A0A0"
-            $LvlDesc.FontSize = 11
+            $LvlDesc.Foreground = Get-Brush "#F5F5FA"
+            $LvlDesc.FontSize = 12
+            $LvlDesc.FontWeight = "Bold"
             $LvlDesc.TextWrapping = "Wrap"
-            $LvlDesc.Margin = "0,0,0,10"
+            $LvlDesc.Margin = "0,0,0,14"
             [void]$LvlStack.Children.Add($LvlDesc)
 
             $LvlSlider.Add_ValueChanged({
@@ -1833,8 +1852,8 @@ function Render-Category([string]$Cat) {
 
             $BtnApplyLevel = New-Object System.Windows.Controls.Button
             $BtnApplyLevel.Content = if ($Global:CurrentLang -eq "FR") { "Appliquer ce niveau" } else { "Apply this level" }
-            $BtnApplyLevel.Height = 28
-            $BtnApplyLevel.Width = 180
+            $BtnApplyLevel.Height = 32
+            $BtnApplyLevel.Width = 200
             $BtnApplyLevel.HorizontalAlignment = "Left"
             $BtnApplyLevel.Background = Get-Brush "#00FFC8"
             $BtnApplyLevel.Foreground = Get-Brush "#0A0A0E"
@@ -1846,17 +1865,15 @@ function Render-Category([string]$Cat) {
             [void]$LvlStack.Children.Add($BtnApplyLevel)
 
             $LvlNote = New-Object System.Windows.Controls.TextBlock
-            $LvlNote.Text = if ($Global:CurrentLang -eq "FR") { "Coche des options existantes (Confidentialite/Services/Bloatwares) ET regle le seuil SvcHost ci-dessous (categorie Processus), puis APPLIQUE reellement -- clic = changement effectif, pas juste une selection. Le regroupement svchost n'a un effet visible dans le Gestionnaire des taches qu'apres redemarrage." } else { "Checks existing options (Confidentialite/Services/Bloatwares) AND sets the SvcHost threshold below (Processus category), then REALLY applies -- click = actual change, not just a selection. The svchost grouping only shows up in Task Manager after a restart." }
+            $LvlNote.Text = if ($Global:CurrentLang -eq "FR") { "Reutilise les options existantes (Confidentialite/Services/Bloatwares) et le seuil SvcHost de la categorie Processus -- rien n'est duplique. Clic = application reelle immediate. Le regroupement svchost n'a un effet visible dans le Gestionnaire des taches qu'apres redemarrage." } else { "Reuses existing options (Confidentialite/Services/Bloatwares) and the Processus category's SvcHost threshold - nothing is duplicated. Click = real, immediate application. The svchost grouping only shows up in Task Manager after a restart." }
             $LvlNote.Foreground = Get-Brush "#6A6A7A"
             $LvlNote.FontSize = 10
             $LvlNote.TextWrapping = "Wrap"
-            $LvlNote.Margin = "0,8,0,0"
+            $LvlNote.Margin = "14,0,0,0"
             [void]$LvlStack.Children.Add($LvlNote)
 
             $LvlBox.Child = $LvlStack
             [void]$Panel.Children.Add($LvlBox)
-        } else {
-            $RamTweakPanel.Visibility = [System.Windows.Visibility]::Collapsed
         }
 
         if ($Cat -eq "Audio") {
@@ -2728,4 +2745,4 @@ $Global:LogHistory.Add("LogEngineOnline")
 if ($Global:AutoCheckCount -gt 0) { $Global:LogHistory.Add("LogAutoCheck|$($Global:AutoCheckCount)") }
 Update-SidebarCounters
 Update-InterfaceLanguage
-[void]$Form.ShowDialog()
+[void]$Form.ShowDialog()                                                                                                                                                                                                                                                                                                                                                                                     
