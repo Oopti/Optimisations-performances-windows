@@ -964,7 +964,16 @@ $Options += [PSCustomObject]@{Id=32; Cat="Gaming"; LabelFR="Activer le GPU Sched
 $Options += [PSCustomObject]@{Id=33; Cat="Gaming"; LabelFR="Priorité MMCSS maximale pour les jeux"; LabelEN="Set MMCSS high priority tasks profile for Games"; Risk="safe"; Action={ Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile" "SystemResponsiveness" 0; Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile\Tasks\Games" "GPU Priority" 8 }}
 $Options += [PSCustomObject]@{Id=34; Cat="Gaming"; LabelFR="Ajuster Win32PrioritySeparation (Perf processeur)"; LabelEN="Optimize Win32PrioritySeparation (CPU core focus)"; Risk="moderate"; CheckType="Reg"; CheckPath="HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl"; CheckName="Win32PrioritySeparation"; CheckValue=38; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl" "Win32PrioritySeparation" 38 }}
 $Options += [PSCustomObject]@{Id=35; Cat="Gaming"; LabelFR="Augmenter TdrDelay (Stabilité GPU)"; LabelEN="Increase TdrDelay (Prevent random graphics driver resets)"; Risk="moderate"; CheckType="Reg"; CheckPath="HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers"; CheckName="TdrDelay"; CheckValue=8; Action={ Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers" "TdrDelay" 8 }}
-$Options += [PSCustomObject]@{Id=36; Cat="Gaming"; LabelFR="Désactiver l'accélération de la souris (1:1 RAW Input)"; LabelEN="Disable Enhance Pointer Precision (1:1 RAW mouse input)"; Risk="moderate"; CheckType="Reg"; CheckPath="HKCU:\Control Panel\Mouse"; CheckName="MouseSpeed"; CheckValue="0"; Action={ Set-Reg "HKCU:\Control Panel\Mouse" "MouseSpeed" "0" "String" }}
+$Options += [PSCustomObject]@{Id=36; Cat="Gaming"; LabelFR="Désactiver l'accélération de la souris (1:1 RAW Input, courbes linéaires incluses)"; LabelEN="Disable Enhance Pointer Precision (1:1 RAW mouse input, linear curves included)"; Risk="moderate"; CheckType="Reg"; CheckPath="HKCU:\Control Panel\Mouse"; CheckName="MouseSpeed"; CheckValue="0"; Action={
+    Set-Reg "HKCU:\Control Panel\Mouse" "MouseSpeed" "0" "String"
+    Set-Reg "HKCU:\Control Panel\Mouse" "MouseThreshold1" "0" "String"
+    Set-Reg "HKCU:\Control Panel\Mouse" "MouseThreshold2" "0" "String"
+    $sx = [byte[]]@(0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xC0,0xCC,0x0C,0x00,0x00,0x00,0x00,0x00,0x80,0x99,0x19,0x00,0x00,0x00,0x00,0x00,0x40,0x66,0x26,0x00,0x00,0x00,0x00,0x00,0x00,0x33,0x33,0x00,0x00,0x00,0x00,0x00)
+    $sy = [byte[]]@(0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x38,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x70,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xA8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xE0,0x00,0x00,0x00,0x00,0x00)
+    New-Item -Path "HKCU:\Control Panel\Mouse" -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "SmoothMouseXCurve" -Value $sx -Type Binary -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path "HKCU:\Control Panel\Mouse" -Name "SmoothMouseYCurve" -Value $sy -Type Binary -Force -ErrorAction SilentlyContinue
+}}
 $Options += [PSCustomObject]@{Id=37; Cat="Gaming"; LabelFR="Désactiver l'optimisation globale du plein écran (FSE)"; LabelEN="Disable Fullscreen Optimizations globally (Fix FSE lag)"; Risk="moderate"; CheckType="Reg"; CheckPath="HKCU:\System\GameConfigStore"; CheckName="GameDVR_DSEBehavior"; CheckValue=2; Action={ Set-Reg "HKCU:\System\GameConfigStore" "GameDVR_DSEBehavior" 2 }}
 $Options += [PSCustomObject]@{Id=38; Cat="Gaming"; LabelFR="Accélérer l'affichage des menus (MenuShowDelay à 0)"; LabelEN="Set MenuShowDelay to 0 (Instant desktop UI responsiveness)"; Risk="safe"; CheckType="Reg"; CheckPath="HKCU:\Control Panel\Desktop"; CheckName="MenuShowDelay"; CheckValue="0"; Action={ Set-Reg "HKCU:\Control Panel\Desktop" "MenuShowDelay" "0" "String" }}
 $Options += [PSCustomObject]@{Id=39; Cat="Gaming"; LabelFR="Désactiver les saccades dues au GameMode"; LabelEN="Disable automatic background stutter linked to GameMode"; Risk="safe"; CheckType="Reg"; CheckPath="HKCU:\Software\Microsoft\GameBar"; CheckName="AllowAutoGameMode"; CheckValue=0; Action={ Set-Reg "HKCU:\Software\Microsoft\GameBar" "AllowAutoGameMode" 0 }}
@@ -1083,6 +1092,245 @@ $Options += [PSCustomObject]@{Id=170; Cat="Confidentialite"; LabelFR="Restreindr
 }}
 $Options += [PSCustomObject]@{Id=171; Cat="Confidentialite"; LabelFR="Désactiver la télémétrie NVIDIA Control Panel (si GPU NVIDIA)"; LabelEN="Disable NVIDIA Control Panel telemetry (if NVIDIA GPU)"; Risk="safe"; Action={
     Set-Reg "HKCU:\SOFTWARE\NVIDIA Corporation\NVControlPanel2\Client" "OptInOrOutPreference" 0
+}}
+$Options += [PSCustomObject]@{Id=172; Cat="Confidentialite"; LabelFR="Rapport d'erreurs Windows (policy) : coupe l'envoi de données et l'UI d'erreur"; LabelEN="Windows Error Reporting (policy): stop data upload and error UI"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" "AutoApproveOSDumps" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" "LoggingDisabled" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" "Disabled" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting" "Disabled" 1
+    Set-Reg "HKLM:\Software\Microsoft\Windows\Windows Error Reporting\Consent" "DefaultConsent" 0
+    Set-Reg "HKLM:\Software\Microsoft\Windows\Windows Error Reporting\Consent" "DefaultOverrideBehavior" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" "DontSendAdditionalData" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting" "DontShowUI" 1
+}}
+$Options += [PSCustomObject]@{Id=174; Cat="Gaming"; LabelFR="Fermer les applications qui plantent/ne répondent plus, plus vite (timeouts réduits)"; LabelEN="Close crashed/unresponsive apps faster (reduced timeouts)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Control Panel\Desktop" "HungAppTimeout" "2000"
+    Set-Reg "HKCU:\Control Panel\Desktop" "WaitToKillAppTimeout" "2000"
+    Set-Reg "HKCU:\Control Panel\Desktop" "LowLevelHooksTimeout" "2000"
+    Set-Reg "HKCU:\Control Panel\Desktop" "AutoEndTasks" "1"
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "WaitToKillServiceTimeout" "2000"
+}}
+$Options += [PSCustomObject]@{Id=175; Cat="Extreme"; LabelFR="Autoriser l'installation de Windows 11 sur matériel non supporté (TPM/Secure Boot/CPU/RAM)"; LabelEN="Allow Windows 11 install on unsupported hardware (TPM/Secure Boot/CPU/RAM)"; Risk="advanced"; Action={
+    Set-Reg "HKLM:\SYSTEM\Setup\LabConfig" "BypassTPMCheck" 1
+    Set-Reg "HKLM:\SYSTEM\Setup\LabConfig" "BypassSecureBootCheck" 1
+    Set-Reg "HKLM:\SYSTEM\Setup\LabConfig" "BypassRAMCheck" 1
+    Set-Reg "HKLM:\SYSTEM\Setup\LabConfig" "BypassStorageCheck" 1
+    Set-Reg "HKLM:\SYSTEM\Setup\LabConfig" "BypassCPUCheck" 1
+    Set-Reg "HKLM:\SYSTEM\Setup\MoSetup" "AllowUpgradesWithUnsupportedTPMOrCPU" 1
+}}
+$Options += [PSCustomObject]@{Id=176; Cat="Confidentialite"; LabelFR="Couper la synchronisation des paramètres via compte Microsoft (thème, mots de passe, WiFi, langue...)"; LabelEN="Disable Microsoft Account settings sync (theme, passwords, WiFi, language...)"; Risk="safe"; Action={
+    $p = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\SettingSync"
+    Set-Reg $p "DisableSettingSync" 2; Set-Reg $p "DisableSettingSyncUserOverride" 1
+    Set-Reg $p "DisableApplicationSettingSync" 2; Set-Reg $p "DisableApplicationSettingSyncUserOverride" 1
+    Set-Reg $p "DisableCredentialsSettingSync" 2; Set-Reg $p "DisableCredentialsSettingSyncUserOverride" 1
+    Set-Reg $p "DisableDesktopThemeSettingSync" 2; Set-Reg $p "DisableDesktopThemeSettingSyncUserOverride" 1
+    Set-Reg $p "DisablePersonalizationSettingSync" 2; Set-Reg $p "DisablePersonalizationSettingSyncUserOverride" 1
+    Set-Reg $p "DisableStartLayoutSettingSync" 2; Set-Reg $p "DisableStartLayoutSettingSyncUserOverride" 1
+    Set-Reg $p "DisableWebBrowserSettingSync" 2; Set-Reg $p "DisableWebBrowserSettingSyncUserOverride" 1
+    Set-Reg $p "DisableWindowsSettingSync" 2; Set-Reg $p "DisableWindowsSettingSyncUserOverride" 1
+}}
+$Options += [PSCustomObject]@{Id=177; Cat="Nettoyage"; LabelFR="Divers confort : pas de son au démarrage, pas d'alerte disque plein, pas de reconnexion auto après update, autoplay coupé"; LabelEN="Misc QoL: no startup sound, no low-disk-space nag, no auto-relogin after update, autoplay off"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer" "DisableStartupSound" 1
+    Set-Reg "HKLM:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" "NoLowDiskSpaceChecks" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "DisableAutomaticRestartSignOn" 1
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" "NoDriveTypeAutoRun" 255
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" "NoAutoplayfornonVolume" 1
+}}
+$Options += [PSCustomObject]@{Id=178; Cat="Confidentialite"; LabelFR="Désactiver les suggestions de recherche en ligne (barre de recherche Windows)"; LabelEN="Disable online search suggestions (Windows search box)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "DisableSearchBoxSuggestions" 1
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "ConnectedSearchUseWeb" 0
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "ConnectedSearchPrivacy" 3
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "AllowCloudSearch" 0
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Search" "AllowSearchToUseLocation" 0
+}}
+$Options += [PSCustomObject]@{Id=179; Cat="Bloatwares"; LabelFR="Nettoyer la barre des tâches (People Bar, Meet Now, Chat, bouton Task View, widgets News au niveau policy)"; LabelEN="Clean up taskbar (People Bar, Meet Now, Chat, Task View button, News widget at policy level)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "ShowTaskViewButton" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds" "EnableFeeds" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Dsh" "AllowNewsAndInterests" 0
+    Set-Reg "HKCU:\Software\Policies\Microsoft\Windows\Explorer" "HidePeopleBar" 1
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" "HideSCAMeetNow" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Chat" "ChatIcon" 3
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarMn" 0
+}}
+$Options += [PSCustomObject]@{Id=180; Cat="Confidentialite"; LabelFR="Ne pas utiliser la recherche en ligne pour résoudre les raccourcis (résolution plus rapide)"; LabelEN="Don't use search-based resolution for shell shortcuts (faster resolution)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" "NoResolveSearch" 1
+}}
+$Options += [PSCustomObject]@{Id=181; Cat="Confidentialite"; LabelFR="Couper toutes les apps en arrière-plan (interrupteur global, plus fin que le réglage par app)"; LabelEN="Turn off all background apps (global toggle, more thorough than the per-app setting)"; Risk="moderate"; CheckType="Reg"; CheckPath="HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications"; CheckName="GlobalUserDisabled"; CheckValue=1; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\BackgroundAccessApplications" "GlobalUserDisabled" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy" "LetAppsRunInBackground" 2
+}}
+$Options += [PSCustomObject]@{Id=182; Cat="Confidentialite"; LabelFR="Désactiver l'Autoplay et la recherche web pour les fichiers de type inconnu"; LabelEN="Disable Autoplay and web lookup for unknown file types"; Risk="safe"; Action={
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" "DisableAutoplay" 1
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" "NoInternetOpenWith" 1
+}}
+$Options += [PSCustomObject]@{Id=183; Cat="Bloatwares"; LabelFR="Supprimer les notifications publicitaires et pubs de fonctionnalités Windows"; LabelEN="Remove ad notifications and Windows feature advertisements"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications" "NoCloudApplicationNotification" 1
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "NoBalloonFeatureAdvertisements" 1
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "EnableAutoTray" 0
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager" "SubscribedContent-353698Enabled" 0
+}}
+$Options += [PSCustomObject]@{Id=184; Cat="Gaming"; LabelFR="Désactiver la transparence et réduire les animations de l'interface (plus léger visuellement)"; LabelEN="Disable transparency and reduce interface animations (lighter visuals)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" "EnableTransparency" 0
+    Set-Reg "HKCU:\Control Panel\Desktop\WindowMetrics" "MinAnimate" "0" "String"
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "TaskbarAnimations" 0
+}}
+$Options += [PSCustomObject]@{Id=185; Cat="Confidentialite"; LabelFR="Bloquer au lancement les .exe de télémétrie/pub Microsoft les plus tenaces (CompatTelRunner, AggregatorHost, DeviceCensus, pubs Bing/Copilot)"; LabelEN="Block launch of the most persistent Microsoft telemetry/ad executables (CompatTelRunner, AggregatorHost, DeviceCensus, Bing/Copilot ads)"; Risk="moderate"; Action={
+    $blocked = @("CompatTelRunner.exe","AggregatorHost.exe","DeviceCensus.exe","FeatureLoader.exe","BingChatInstaller.exe","BGAUpsell.exe","BCILauncher.exe")
+    foreach ($exe in $blocked) {
+        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\$exe" "Debugger" "$env:windir\System32\taskkill.exe"
+    }
+}}
+$Options += [PSCustomObject]@{Id=186; Cat="Gaming"; LabelFR="Déprioriser le CPU des process d'arrière-plan systeme (recherche, saisie, polices) pour laisser plus de CPU aux jeux"; LabelEN="Deprioritize CPU for background system processes (search, input, fonts) to leave more CPU for games"; Risk="advanced"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\SearchIndexer.exe\PerfOptions" "CpuPriorityClass" 5
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\ctfmon.exe\PerfOptions" "CpuPriorityClass" 5
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\fontdrvhost.exe\PerfOptions" "CpuPriorityClass" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\fontdrvhost.exe\PerfOptions" "IoPriority" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sihost.exe\PerfOptions" "CpuPriorityClass" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sihost.exe\PerfOptions" "IoPriority" 0
+}}
+$Options += [PSCustomObject]@{Id=196; Cat="Confidentialite"; LabelFR="Empêcher Windows de sonder activement les serveurs Microsoft pour tester la connexion internet (NCSI)"; LabelEN="Stop Windows from actively probing Microsoft servers to test internet connectivity (NCSI)"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Services\NlaSvc\Parameters\Internet" "EnableActiveProbing" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\NetworkList" "NoActiveProbe" 1
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\ContentIndex" "NoNetCrawling" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\Internet Settings" "HttpAcceptLanguageOptOut" 1
+}}
+$Options += [PSCustomObject]@{Id=197; Cat="Confidentialite"; LabelFR="Désactiver l'envoi automatique du presse-papier vers le cloud/autres appareils"; LabelEN="Disable automatic clipboard upload to cloud/other devices"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Clipboard" "CloudClipboardAutomaticUpload" 0
+    Set-Reg "HKCU:\Software\Microsoft\Terminal Server Client" "CloudClipRDPOverride" 0
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "EnableClipboardHistory" 0
+}}
+$Options += [PSCustomObject]@{Id=198; Cat="Bloatwares"; LabelFR="Menu Démarrer épuré : pas de recommandations, pas de liste 'utilisés récemment'"; LabelEN="Clean Start menu: no recommendations, no 'recently used' list"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "Start_TrackDocs" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" "HideRecommendedSection" 1
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Start" "HideRecommendedPersonalizedSites" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start" "HideRecommendedSection" 1
+}}
+$Options += [PSCustomObject]@{Id=193; Cat="Confidentialite"; LabelFR="Interdire à TOUTES les apps l'accès aux données sensibles (contacts, position, caméra, IA générative, fichiers, notifications...)"; LabelEN="Deny ALL apps access to sensitive data (contacts, location, camera, generative AI, files, notifications...)"; Risk="moderate"; Action={
+    $p = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy"
+    $caps = @("AccountInfo","Activity","AppDiagnostics","BackgroundSpatialPerception","Bluetooth","BluetoothSync","BroadFileSystemAccess","Calendar","CallHistory","CellularData","Contacts","DocumentsLibrary","DownloadsFolder","Email","EyeTracker","GazeInput","GenerativeAi","GraphicsCaptureProgrammatic","GraphicsCaptureWithoutBorder","HumanInterfaceDevice","HumanPresence","Location","Messaging","Motion","MusicLibrary","Notifications","Phone","PicturesLibrary","Radios","SpatialPerception","Tasks","TrustedDevices","UserAccountInformation","UserDataTasks","UserNotificationListener","VideosLibrary","VoiceActivation","FileSystem","TextAndImageGeneration")
+    foreach ($cap in $caps) { Set-Reg $p "LetAppsAccess$cap" 2 }
+    Set-Reg $p "LetAppsRunInBackground" 2
+    Set-Reg $p "LetAppsGetDiagnosticInfo" 2
+}}
+$Options += [PSCustomObject]@{Id=194; Cat="Confidentialite"; LabelFR="Refuser l'accès matériel bas niveau (Bluetooth, capteurs de présence, suivi du regard, casques VR)"; LabelEN="Deny low-level hardware access (Bluetooth, presence sensors, eye tracking, VR headsets)"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\bluetooth" "Value" "Deny"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\spatialPerception" "Value" "Deny"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\backgroundSpatialPerception" "Value" "Deny"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\gazeInput" "Value" "Deny"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\humanPresence" "Value" "Deny"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\humanInterfaceDevice" "Value" "Deny"
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled" "Value" "Deny"
+}}
+$Options += [PSCustomObject]@{Id=195; Cat="Confidentialite"; LabelFR="Divers confidentialité complémentaires (voix, WiFi Sense, cartes auto, historique récent, notifications verrouillage)"; LabelEN="Misc extra privacy (voice, WiFi Sense, auto maps, recent history, lock screen notifications)"; Risk="safe"; Action={
+    Set-Reg "HKLM:\Software\Microsoft\Speech_OneCore\Preferences" "VoiceActivationDefaultOn" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE" "DisableVoice" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowWiFiHotSpotReporting" "value" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\PolicyManager\default\WiFi\AllowAutoConnectToWiFiSenseHotspots" "Enabled" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Maps" "AutoDownloadAndUpdateMapData" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer" "NoRecentDocsHistory" 1
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" "ClearRecentDocsOnExit" 1
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer" "ShowRecent" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "DisableLockScreenAppNotifications" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\System" "AllowOnlineTips" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowDesktopAnalyticsProcessing" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowWUfBCloudProcessing" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection" "AllowUpdateComplianceProcessing" 0
+    Set-Reg "HKLM:\Software\Policies\Microsoft\Windows\DataCollection" "DisableOneSettingsDownloads" 1
+}}
+$Options += [PSCustomObject]@{Id=189; Cat="Gaming"; LabelFR="Affiner le Raw Input souris (throttle, anti-trainées, pas d'accroche au bouton par défaut)"; LabelEN="Fine-tune raw mouse input (throttle, no trails, no default button snap)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Control Panel\Mouse" "RawMouseThrottleEnabled" 1
+    Set-Reg "HKCU:\Control Panel\Mouse" "RawMouseThrottleForced" 1
+    Set-Reg "HKCU:\Control Panel\Mouse" "RawMouseThrottleDuration" 20
+    Set-Reg "HKCU:\Control Panel\Mouse" "RawMouseThrottleLeeway" 0
+    Set-Reg "HKCU:\Control Panel\Mouse" "MouseTrails" "0" "String"
+    Set-Reg "HKCU:\Control Panel\Mouse" "SnapToDefaultButton" "0" "String"
+    Set-Reg "HKCU:\Control Panel\Desktop" "ScreenSaveActive" "0" "String"
+    Set-Reg "HKCU:\Control Panel\Desktop" "FontSmoothing" "2" "String"
+}}
+$Options += [PSCustomObject]@{Id=190; Cat="Gaming"; LabelFR="Désactiver l'économie d'énergie de TOUTES les cartes réseau détectées (boucle automatique, ignore WAN/virtuel/Bluetooth)"; LabelEN="Disable power saving on ALL detected network adapters (auto loop, skips WAN/virtual/Bluetooth)"; Risk="moderate"; Action={
+    $nicClass = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}'
+    if (Test-Path $nicClass) {
+        Get-ChildItem -Path $nicClass -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' } | ForEach-Object {
+            $key = $_.PSPath
+            try {
+                $driverDesc = (Get-ItemProperty -Path $key -Name 'DriverDesc' -ErrorAction SilentlyContinue).DriverDesc
+                if (-not $driverDesc) { return }
+                if ($driverDesc -match 'WAN Miniport|Kernel Debug|Virtual|Loopback|Teredo|ISATAP|6to4|Bluetooth') { return }
+                Set-ItemProperty -Path $key -Name 'PnPCapabilities' -Value 24 -Type DWord -Force -ErrorAction SilentlyContinue
+                foreach ($prop in @('*EEE','AdvancedEEE','EnableGreenEthernet','EnablePME','ULPMode','EnableSavePowerNow','ReduceSpeedOnPowerDown','WakeOnMagicPacket','WakeOnPattern','WolShutdownLinkSpeed','EnableWakeOnLan')) {
+                    try {
+                        if (Get-ItemProperty -Path $key -Name $prop -ErrorAction SilentlyContinue) {
+                            Set-ItemProperty -Path $key -Name $prop -Value '0' -Type String -Force -ErrorAction SilentlyContinue
+                        }
+                    } catch {}
+                }
+            } catch {}
+        }
+    }
+}}
+$Options += [PSCustomObject]@{Id=191; Cat="Gaming"; LabelFR="Désactiver la suspension sélective USB sur TOUS les périphériques détectés (boucle automatique)"; LabelEN="Disable selective suspend on ALL detected USB devices (auto loop)"; Risk="moderate"; Action={
+    $usbRoot = 'HKLM:\SYSTEM\CurrentControlSet\Enum\USB'
+    if (Test-Path $usbRoot) {
+        Get-ChildItem -Path $usbRoot -ErrorAction SilentlyContinue | ForEach-Object {
+            Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
+                $params = Join-Path $_.PSPath 'Device Parameters'
+                if (Test-Path $params) {
+                    try {
+                        Set-ItemProperty -Path $params -Name 'EnhancedPowerManagementEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                        Set-ItemProperty -Path $params -Name 'SelectiveSuspendEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                        Set-ItemProperty -Path $params -Name 'AllowIdleIrpInD3' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                        Set-ItemProperty -Path $params -Name 'DeviceSelectiveSuspended' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                    } catch {}
+                }
+            }
+        }
+    }
+    powercfg -attributes 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 -ATTRIB_HIDE
+    powercfg /setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0
+    powercfg /setactive scheme_current
+}}
+$Options += [PSCustomObject]@{Id=192; Cat="Gaming"; LabelFR="Verrouiller les fréquences GPU NVIDIA (empêche le throttling P-State, si carte NVIDIA détectée)"; LabelEN="Lock NVIDIA GPU clocks (prevents P-State throttling, if NVIDIA card detected)"; Risk="advanced"; Action={
+    $dispClass = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+    if (Test-Path $dispClass) {
+        Get-ChildItem -Path $dispClass -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' } | ForEach-Object {
+            $key = $_.PSPath
+            try {
+                $driverDesc = (Get-ItemProperty -Path $key -Name 'DriverDesc' -ErrorAction SilentlyContinue).DriverDesc
+                $provider = (Get-ItemProperty -Path $key -Name 'ProviderName' -ErrorAction SilentlyContinue).ProviderName
+                if (($driverDesc -and $driverDesc -match 'NVIDIA|GeForce|Quadro|RTX|GTX') -or ($provider -and $provider -match 'NVIDIA')) {
+                    Set-ItemProperty -Path $key -Name 'DisableDynamicPstate' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                }
+            } catch {}
+        }
+    }
+}}
+$Options += [PSCustomObject]@{Id=187; Cat="Nettoyage"; LabelFR="Libérer le stockage réservé Windows Update (~7 Go) et bloquer les notifications de mise a niveau forcée"; LabelEN="Free Windows Update reserved storage (~7 GB) and block forced upgrade notifications"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\ReserveManager" "ShippedWithReserves" 0
+    Set-Reg "HKLM:\SYSTEM\Setup\UpgradeNotification" "UpgradeAvailable" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" "HideMCTLink" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings" "RestartNotificationsAllowed2" 0
+}}
+$Options += [PSCustomObject]@{Id=188; Cat="Bloatwares"; LabelFR="Empêcher Windows Update d'installer de force DevHome/Outlook (nouveau), et bloquer les MàJ auto du Store"; LabelEN="Prevent Windows Update from force-installing DevHome/new Outlook, and block auto Store app updates"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler\DevHomeUpdate" "workCompleted" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler\OutlookUpdate" "workCompleted" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe" "BlockedOobeUpdaters" '["MS_Outlook"]'
+    Set-Reg "HKLM:\Software\Policies\Microsoft\WindowsStore" "AutoDownload" 4
+    Set-Reg "HKLM:\Software\Policies\Microsoft\WindowsStore" "DisableOSUpgrade" 1
+}}
+$Options += [PSCustomObject]@{Id=173; Cat="Confidentialite"; LabelFR="Couper Windows Spotlight / conseils / contenus cloud optimises (verrouillage, parametres, centre notifs)"; LabelEN="Turn off Windows Spotlight / tips / cloud-optimized content (lock screen, settings, action center)"; Risk="safe"; Action={
+    Set-Reg "HKLM:\Software\Policies\Microsoft\Windows\CloudContent" "DisableSoftLanding" 1
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableCloudOptimizedContent" 1
+    foreach ($hive in @("HKCU:\Software\Policies\Microsoft\Windows\CloudContent","Registry::HKEY_USERS\.DEFAULT\Software\Policies\Microsoft\Windows\CloudContent")) {
+        Set-Reg $hive "ConfigureWindowsSpotlight" 2
+        Set-Reg $hive "IncludeEnterpriseSpotlight" 0
+        Set-Reg $hive "DisableThirdPartySuggestions" 1
+        Set-Reg $hive "DisableTailoredExperiencesWithDiagnosticData" 1
+        Set-Reg $hive "DisableWindowsSpotlightFeatures" 1
+        Set-Reg $hive "DisableWindowsSpotlightWindowsWelcomeExperience" 1
+        Set-Reg $hive "DisableWindowsSpotlightOnActionCenter" 1
+        Set-Reg $hive "DisableWindowsSpotlightOnSettings" 1
+    }
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableTailoredExperiencesWithDiagnosticData" 1
 }}
 $Options += [PSCustomObject]@{Id=65; Cat="Services"; LabelFR="Désactiver le Spouleur d'impression"; LabelEN="Disable Print Spooler execution loop service (If printerless)"; Risk="moderate"; CheckType="Svc"; CheckSvc="Spooler"; Action={ Disable-Svc "Spooler" }}
 $Options += [PSCustomObject]@{Id=66; Cat="Services"; LabelFR="Désactiver le Service Fax"; LabelEN="Disable legacy faxing subsystem layout architecture"; Risk="safe"; CheckType="Svc"; CheckSvc="Fax"; Action={ Disable-Svc "Fax" }}
