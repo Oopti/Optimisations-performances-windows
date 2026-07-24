@@ -457,10 +457,10 @@ function Set-ProcessReductionLevel([int]$Level) {
     Render-Category $Global:LastCategory
     Update-SidebarCounters
 
-    # Applique VRAIMENT (pas juste une selection) : on declenche le meme
-    # bouton "Appliquer" que le reste de l'app plutot que de dupliquer sa
-    # logique (SvcHost synchrone + file d'attente asynchrone + progress bar).
-    $BtnApply.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent)))
+    # Applique VRAIMENT (pas juste une selection) : appel DIRECT de la fonction
+    # d'application (plus de simulation de clic RaiseEvent, dont je ne pouvais
+    # pas garantir qu'elle declenchait bien le handler PowerShell).
+    Invoke-ApplyAllChecked
 }
 
 # ============================================================
@@ -1204,6 +1204,112 @@ $Options += [PSCustomObject]@{Id=198; Cat="Bloatwares"; LabelFR="Menu Démarrer 
     Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer" "HideRecommendedSection" 1
     Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\Start" "HideRecommendedPersonalizedSites" 1
     Set-Reg "HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start" "HideRecommendedSection" 1
+}}
+$Options += [PSCustomObject]@{Id=199; Cat="Gaming"; LabelFR="Désactiver la maintenance automatique planifiée de Windows (défrag/nettoyage/scans programmés)"; LabelEN="Disable Windows scheduled automatic maintenance (defrag/cleanup/scheduled scans)"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance" "MaintenanceDisabled" 1
+}}
+$Options += [PSCustomObject]@{Id=200; Cat="Confidentialite"; LabelFR="Couper la télémétrie PowerShell et Visual Studio (variante complémentaire)"; LabelEN="Disable PowerShell and Visual Studio telemetry (complementary variant)"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" "POWERSHELL_TELEMETRY_OPTOUT" "1" "String"
+    Set-Reg "HKLM:\SOFTWARE\Wow6432Node\Microsoft\VSCommon\15.0\SQM" "OptIn" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\PCHealth\ErrorReporting" "DoReport" 0
+}}
+$Options += [PSCustomObject]@{Id=201; Cat="Bloatwares"; LabelFR="Restaurer le menu contextuel classique de Windows 10 (clic droit direct, sans 'Afficher plus d'options')"; LabelEN="Restore classic Windows 10 right-click context menu (direct, no 'Show more options')"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32" "(default)" "" "String"
+}}
+$Options += [PSCustomObject]@{Id=202; Cat="Confidentialite"; LabelFR="Désactiver LLMNR (résolution de noms multicast, vecteur d'attaque réseau local connu) et la télémétrie encre/saisie"; LabelEN="Disable LLMNR (multicast name resolution, known local-network attack vector) and ink/typing telemetry"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\DNSClient" "EnableMulticast" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\TextInput" "AllowLinguisticDataCollection" 0
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\DeviceHealthAttestationService" "EnableDeviceHealthAttestationService" 0
+}}
+$Options += [PSCustomObject]@{Id=203; Cat="Gaming"; LabelFR="Déprioriser sppsvc (licence Windows) et arrêter les canaux d'événements Superfetch (léger, complète les tweaks CPU existants)"; LabelEN="Deprioritize sppsvc (Windows licensing) and stop Superfetch event log channels (light, complements existing CPU tweaks)"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sppsvc.exe\PerfOptions" "CpuPriorityClass" 1
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sppsvc.exe\PerfOptions" "IoPriority" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Superfetch/Main" "Enable" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Superfetch/PfApLog" "Enable" 0
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Superfetch/StoreLog" "Enable" 0
+}}
+$Options += [PSCustomObject]@{Id=204; Cat="Bloatwares"; LabelFR="[WinUtil] Désinstaller réellement les Widgets (paquet complet, pas juste masqué)"; LabelEN="[WinUtil] Actually uninstall Widgets (full package, not just hidden)"; Risk="moderate"; Action={
+    Get-Process *Widget* -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
+    Get-AppxPackage Microsoft.WidgetsPlatformRuntime -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+    Get-AppxPackage MicrosoftWindows.Client.WebExperience -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+}}
+$Options += [PSCustomObject]@{Id=205; Cat="Bloatwares"; LabelFR="[WinUtil] Bloquer les suggestions d'apps dans la recherche du menu Démarrer (Store)"; LabelEN="[WinUtil] Block Store app recommendations in Start menu search"; Risk="moderate"; Action={
+    icacls "$Env:LocalAppData\Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\LocalState\store.db" /deny Everyone:F 2>$null
+}}
+$Options += [PSCustomObject]@{Id=206; Cat="Confidentialite"; LabelFR="[WinUtil] Refuser la géolocalisation au niveau consentement matériel + capteurs + cartes"; LabelEN="[WinUtil] Deny location at the hardware consent level + sensors + maps"; Risk="moderate"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" "Value" "Deny" "String"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}" "SensorPermissionState" 0
+    Set-Reg "HKLM:\SYSTEM\Maps" "AutoUpdateEnabled" 0
+}}
+$Options += [PSCustomObject]@{Id=207; Cat="Confidentialite"; LabelFR="[WinUtil] Bloquer l'exécution du WPBT (table binaire OEM au démarrage -- vecteur d'attaque connu, désactivation = plus sûr)"; LabelEN="[WinUtil] Block WPBT execution (OEM boot-time binary table -- known attack vector, disabling is safer)"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "DisableWpbtExecution" 1
+}}
+$Options += [PSCustomObject]@{Id=208; Cat="Confidentialite"; LabelFR="[WinUtil] Télémétrie complémentaire (pub par app, saisie/encre, échantillons Defender jamais envoyés, wermgr)"; LabelEN="[WinUtil] Complementary telemetry (per-app ads, ink/typing, Defender samples never sent, wermgr)"; Risk="safe"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" "TailoredExperiencesWithDiagnosticDataEnabled" 0
+    Set-Reg "HKCU:\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy" "HasAccepted" 0
+    Set-Reg "HKCU:\Software\Microsoft\Input\TIPC" "Enabled" 0
+    Set-Reg "HKCU:\Software\Microsoft\InputPersonalization" "RestrictImplicitInkCollection" 1
+    Set-Reg "HKCU:\Software\Microsoft\InputPersonalization" "RestrictImplicitTextCollection" 1
+    Set-Reg "HKCU:\Software\Microsoft\InputPersonalization\TrainedDataStore" "HarvestContacts" 0
+    Set-Reg "HKCU:\Software\Microsoft\Siuf\Rules" "NumberOfSIUFInPeriod" 0
+    try { Set-MpPreference -SubmitSamplesConsent 2 -ErrorAction SilentlyContinue } catch {}
+    Disable-Svc "wermgr"
+}}
+$Options += [PSCustomObject]@{Id=209; Cat="Bloatwares"; LabelFR="[WinUtil] Débloatage Microsoft Edge (télémétrie, pubs, extension pub bloquée, suggestions)"; LabelEN="[WinUtil] Microsoft Edge debloat (telemetry, ads, blocked ad extension, suggestions)"; Risk="moderate"; Action={
+    $p = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate" "CreateDesktopShortcutDefault" 0
+    Set-Reg $p "PersonalizationReportingEnabled" 0
+    Set-Reg $p "ShowRecommendationsEnabled" 0
+    Set-Reg $p "HideFirstRunExperience" 1
+    Set-Reg $p "UserFeedbackAllowed" 0
+    Set-Reg $p "ConfigureDoNotTrack" 1
+    Set-Reg $p "AlternateErrorPagesEnabled" 0
+    Set-Reg $p "EdgeCollectionsEnabled" 0
+    Set-Reg $p "EdgeShoppingAssistantEnabled" 0
+    Set-Reg $p "MicrosoftEdgeInsiderPromotionEnabled" 0
+    Set-Reg $p "ShowMicrosoftRewards" 0
+    Set-Reg $p "WebWidgetAllowed" 0
+    Set-Reg $p "DiagnosticData" 0
+    Set-Reg $p "EdgeAssetDeliveryServiceEnabled" 0
+    Set-Reg $p "WalletDonationEnabled" 0
+    Set-Reg $p "DefaultBrowserSettingsCampaignEnabled" 0
+}}
+$Options += [PSCustomObject]@{Id=210; Cat="Confidentialite"; LabelFR="[WinUtil] Désactiver les fonctionnalités consommateur Windows (installation auto de jeux/apps tierces)"; LabelEN="[WinUtil] Disable Windows consumer features (auto-install of games/third-party apps)"; Risk="safe"; Action={
+    Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableWindowsConsumerFeatures" 1
+}}
+$Options += [PSCustomObject]@{Id=211; Cat="Gaming"; LabelFR="[WinUtil] Xbox/Gaming complémentaire (Game Bar capture + paquets Xbox restants)"; LabelEN="[WinUtil] Complementary Xbox/Gaming (Game Bar capture + remaining Xbox packages)"; Risk="moderate"; Action={
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" 0
+    foreach ($pkg in @("Microsoft.XboxIdentityProvider","Microsoft.XboxSpeechToTextOverlay","Microsoft.GamingApp","Microsoft.Xbox.TCUI","Microsoft.XboxGamingOverlay")) {
+        Uninstall-Appx $pkg
+    }
+}}
+$Options += [PSCustomObject]@{Id=212; Cat="Bloatwares"; LabelFR="[WinUtil] Apps pré-installées complémentaires (Bing, Todos, Sound Recorder, Sticky Notes, DevHome, Outlook nouveau, Alarms, GetHelp, Zune, Teams)"; LabelEN="[WinUtil] Complementary pre-installed apps (Bing, Todos, Sound Recorder, Sticky Notes, DevHome, new Outlook, Alarms, GetHelp, Zune, Teams)"; Risk="safe"; Action={
+    foreach ($pkg in @("Microsoft.WindowsFeedbackHub","Microsoft.BingNews","Microsoft.BingSearch","Microsoft.BingWeather","Clipchamp.Clipchamp","Microsoft.Todos","Microsoft.PowerAutomateDesktop","Microsoft.WindowsSoundRecorder","Microsoft.MicrosoftStickyNotes","Microsoft.Windows.DevHome","Microsoft.OutlookForWindows","Microsoft.WindowsAlarms","Microsoft.StartExperiencesApp","Microsoft.GetHelp","Microsoft.ZuneMusic","MicrosoftCorporationII.QuickAssist","MSTeams")) {
+        Uninstall-Appx $pkg
+    }
+    $TeamsPath = "$Env:LocalAppData\Microsoft\Teams\Update.exe"
+    if (Test-Path $TeamsPath) {
+        Start-Process $TeamsPath -ArgumentList "-uninstall" -Wait -ErrorAction SilentlyContinue
+        Remove-Item $TeamsPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}}
+$Options += [PSCustomObject]@{Id=213; Cat="Confidentialite"; LabelFR="[WinUtil] IA Windows complémentaire (paquet CoreAI, service WSAIFabricSvc)"; LabelEN="[WinUtil] Complementary Windows AI (CoreAI package, WSAIFabricSvc service)"; Risk="advanced"; Action={
+    try {
+        $Appx = (Get-AppxPackage MicrosoftWindows.Client.CoreAI -ErrorAction SilentlyContinue).PackageFullName
+        if ($Appx) {
+            $Sid = (Get-LocalUser $Env:UserName -ErrorAction SilentlyContinue).Sid.Value
+            if ($Sid) { New-Item "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife\$Sid\$Appx" -Force -ErrorAction SilentlyContinue | Out-Null }
+            Remove-AppxPackage $Appx -ErrorAction SilentlyContinue
+        }
+    } catch {}
+    Disable-Svc "WSAIFabricSvc"
+}}
+$Options += [PSCustomObject]@{Id=214; Cat="Nettoyage"; LabelFR="[WinUtil] Divers confort (fin de tâche clic droit taskbar, correctif dual-boot UTC, masquer Accueil/Galerie Explorer)"; LabelEN="[WinUtil] Misc QoL (end task on taskbar right-click, dual-boot UTC fix, hide Explorer Home/Gallery)"; Risk="moderate"; Action={
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings" "TaskbarEndTask" 1
+    Set-Reg "HKCU:\Software\Classes\CLSID\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" "System.IsPinnedToNameSpaceTree" 0
+    Set-Reg "HKCU:\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" "System.IsPinnedToNameSpaceTree" 0
+    Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "LaunchTo" 1
 }}
 $Options += [PSCustomObject]@{Id=193; Cat="Confidentialite"; LabelFR="Interdire à TOUTES les apps l'accès aux données sensibles (contacts, position, caméra, IA générative, fichiers, notifications...)"; LabelEN="Deny ALL apps access to sensitive data (contacts, location, camera, generative AI, files, notifications...)"; Risk="moderate"; Action={
     $p = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy"
@@ -3006,18 +3112,18 @@ $BtnShortcut.Add_Click({
     Update-ShortcutButtonLabel
 })
 
-$BtnApply.Add_Click({
+function Invoke-ApplyAllChecked {
     $L = $Global:LangDict[$Global:CurrentLang]
     $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
-    
+
     if ($selected.Count -eq 0 -and $Global:SelectedSvcHostValue -eq "380000") {
         [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
         return
     }
-    
+
     $BtnApply.IsEnabled = $false
     $LogBox.AppendText(">> " + ($L["Exec"] -f $selected.Count) + "`n")
-    
+
     # 1. APPLICATION DU TWEAK RAM SVCHOST INDÉPENDANT (rapide, reste synchrone)
     try {
         Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control" "SvcHostSplitThresholdInKB" $Global:SelectedSvcHostValue
@@ -3026,7 +3132,7 @@ $BtnApply.Add_Click({
         $LogBox.AppendText(">> [ECHEC] Configuration SvcHostSplitThresholdInKB`n")
     }
     $LogBox.ScrollToEnd()
-    
+
     # 2. FILE D'ATTENTE ASYNCHRONE POUR LES TWEAKS SÉLECTIONNÉS
     # Chaque tweak tourne dans le runspace de fond via BeginInvoke ; le timer
     # ApplyTimer verifie l'avancement toutes les 150ms sans jamais bloquer
@@ -3039,7 +3145,9 @@ $BtnApply.Add_Click({
     $ProgressBarApply.Value = 0
     $TxtProgressLabel.Text = "0 / $($selected.Count)"
     $ApplyTimer.Start()
-})
+}
+
+$BtnApply.Add_Click({ Invoke-ApplyAllChecked })
 
 # ============================================================
 # EXPORT AUTOMATIQUE DU LOG A LA FERMETURE
