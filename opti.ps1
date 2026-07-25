@@ -587,7 +587,7 @@ public class Program {
 
     $action = New-ScheduledTaskAction -Execute $Global:TimerExePath -Argument "$val"
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 
     Register-ScheduledTask -TaskName $Global:TimerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
@@ -676,7 +676,7 @@ public class Program {
 
     $action = New-ScheduledTaskAction -Execute $Global:PrioExePath
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 
     Register-ScheduledTask -TaskName $Global:PrioTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
@@ -782,7 +782,7 @@ public class Program {
 
     $action = New-ScheduledTaskAction -Execute $Global:SmartPowerExePath
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 
     Register-ScheduledTask -TaskName $Global:SmartPowerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
@@ -892,7 +892,7 @@ while (`$true) {
 
     $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-WindowStyle Hidden -ExecutionPolicy Bypass -File `"$($Global:TimerServiceScript)`""
     $Trigger = New-ScheduledTaskTrigger -AtLogOn
-    $Principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -RunLevel Highest -LogonType Interactive
+    $Principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest -LogonType Interactive
     $Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBattery -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
     Register-ScheduledTask -TaskName $Global:TimerTaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings -Force | Out-Null
 
