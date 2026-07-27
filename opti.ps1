@@ -1,8 +1,42 @@
 #requires -Version 5.1
 <#
     OPTI-DYLAN TOOLKIT PRO V15.1 - THE ULTIMATE CONTROL SYSTEM
-    Corrections apportees a la V15.0 :
-    - Id=8 : le tweak NetBIOS "Size/Small/Medium/Large" etait invalide (valeur de
+    Corrections apportees dans cette passe (sur la base des logs et de
+    l'erreur terminal fournis) :
+
+    1. [CRITIQUE] Set-ProcessReductionLevel, Render-Category,
+       Install-EqualizerApoGuided, Set-OptiAudioVST, Test-EqualizerApoInstalled,
+       Set-OptiSoundRadar : toutes ces fonctions etaient appelees par leur nom
+       depuis un scriptblock cree via .GetNewClosure() a l'INTERIEUR d'une
+       fonction (Render-Category). Un closure cree ainsi se rattache a la
+       portee Global, pas a la portee Script ou vivent les "function X {}" :
+       d'ou l'erreur exacte observee "Set-ProcessReductionLevel n'est pas
+       reconnu comme nom d'applet de commande". Fix : ces 6 fonctions sont
+       maintenant declarees "function Global:X" pour rester visibles depuis
+       n'importe quel closure, peu importe ou il est cree.
+
+    2. [BUG] 3 tweaks plantaient avec "Impossible de convertir la valeur ...
+       en type System.UInt32" (Id=185, 194, 188 - voir logs). Cause : Set-Reg
+       ecrit en REG_DWORD par defaut, mais ces 3 tweaks passent des VALEURS
+       TEXTE ("Deny", un chemin .exe, un tableau JSON) sans preciser le 4e
+       argument -Type "String". Fix : le type String est maintenant precise
+       explicitement sur ces 3 tweaks (9 lignes Set-Reg au total).
+
+    3. [CLIGNOTEMENT] $TxtSearch.Add_TextChanged relancait un Render-Category
+       complet (Panel.Children.Clear() + reconstruction de toutes les
+       CheckBox) a CHAQUE caractere tape dans la recherche. Sur une categorie
+       de 40+ tweaks, ca fait plusieurs reconstructions completes par seconde
+       = clignotement visible. Fix : debounce de 250ms (un seul redraw apres
+       que tu arretes de taper). Le fix #1 ci-dessus peut aussi expliquer une
+       partie du clignotement general : une exception non geree levee depuis
+       un closure invoque par le dispatcher WPF peut provoquer un flash/redraw
+       visible de la fenetre au moment ou elle remonte.
+
+    4. [ROBUSTESSE] Set-ProcessReductionLevel est maintenant entouree d'un
+       try/catch qui affiche la VRAIE erreur dans le LogBox (avant : echec
+       totalement silencieux si quoi que ce soit levait une exception).
+
+    --- Anciennes corrections (V15.0) conservees ci-dessous ---
       registre qui n'existe pas), remplace par un vrai tweak TcpTimedWaitDelay.
     - Id=10/11 : DCA et NetDMA sont des parametres netsh retires depuis Windows 8,
       remplaces par des reglages netsh reellement supportes sur Windows 10/11
@@ -338,7 +372,7 @@ $Global:EqApoPath      = "C:\Program Files\EqualizerAPO"
 $Global:EqApoConfig    = "$Global:EqApoPath\config\config.txt"
 $Global:OptiVstFolder  = "C:\OptiDylan\VST"
 
-function Test-EqualizerApoInstalled { return (Test-Path $Global:EqApoPath) }
+function Global:Test-EqualizerApoInstalled { return (Test-Path $Global:EqApoPath) }
 
 # IMPORTANT : pas d'installation "silencieuse" ici. D'apres les tickets
 # officiels du projet (sourceforge.net/p/equalizerapo/tickets/186), le setup
@@ -346,7 +380,7 @@ function Test-EqualizerApoInstalled { return (Test-Path $Global:EqApoPath) }
 # peripherique audio a la main -- un vrai silent install n'existe pas pour
 # ce logiciel precis, et pretendre le contraire aurait ete du theatre de
 # plus. On telecharge et on lance l'installeur normalement, une seule fois.
-function Install-EqualizerApoGuided {
+function Global:Install-EqualizerApoGuided {
     if (Test-EqualizerApoInstalled) { return $true }
     try {
         $url = "https://sourceforge.net/projects/equalizerapo/files/latest/download"
@@ -392,7 +426,7 @@ function Set-EqualizerApoSection {
     return $true
 }
 
-function Set-OptiAudioVST {
+function Global:Set-OptiAudioVST {
     param([string]$VstPath, [bool]$Enabled)
     if ($Enabled -and (Test-Path $VstPath)) {
         return Set-EqualizerApoSection -SectionName "VST" -Lines @("Device: Microphone", "VSTPlugin: `"$VstPath`"")
@@ -401,7 +435,7 @@ function Set-OptiAudioVST {
     }
 }
 
-function Set-OptiSoundRadar {
+function Global:Set-OptiSoundRadar {
     param([bool]$Enabled)
     if ($Enabled) {
         return Set-EqualizerApoSection -SectionName "RADAR" -Lines @(
@@ -420,7 +454,7 @@ function Set-OptiSoundRadar {
 # PRESET : il coche des options qui existent deja (Confidentialite/Services/
 # Bloatwares/Processus), rien n'est duplique ni reimplemente.
 # ------------------------------------------------------------------------
-function Set-ProcessReductionLevel([int]$Level) {
+function Global:Set-ProcessReductionLevel([int]$Level) {
     # FIX bug "0 options cochees, aucune sortie log" : cette fonction n'avait
     # AUCUNE gestion d'erreur. Si une seule ligne levait une exception (ex:
     # $ComboSvcHostRam pas encore pret, IsChecked bindings, etc.), tout le
@@ -1193,7 +1227,7 @@ $Options += [PSCustomObject]@{Id=184; Cat="Gaming"; LabelFR="Désactiver la tran
 $Options += [PSCustomObject]@{Id=185; Cat="Confidentialite"; LabelFR="Bloquer au lancement les .exe de télémétrie/pub Microsoft les plus tenaces (CompatTelRunner, AggregatorHost, DeviceCensus, pubs Bing/Copilot)"; LabelEN="Block launch of the most persistent Microsoft telemetry/ad executables (CompatTelRunner, AggregatorHost, DeviceCensus, Bing/Copilot ads)"; Risk="moderate"; Action={
     $blocked = @("CompatTelRunner.exe","AggregatorHost.exe","DeviceCensus.exe","FeatureLoader.exe","BingChatInstaller.exe","BGAUpsell.exe","BCILauncher.exe")
     foreach ($exe in $blocked) {
-        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\$exe" "Debugger" "$env:windir\System32\taskkill.exe"
+        Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\$exe" "Debugger" "$env:windir\System32\taskkill.exe" "String"
     }
 }}
 $Options += [PSCustomObject]@{Id=186; Cat="Gaming"; LabelFR="Déprioriser le CPU des process d'arrière-plan systeme (recherche, saisie, polices) pour laisser plus de CPU aux jeux"; LabelEN="Deprioritize CPU for background system processes (search, input, fonts) to leave more CPU for games"; Risk="advanced"; Action={
@@ -1335,13 +1369,13 @@ $Options += [PSCustomObject]@{Id=193; Cat="Confidentialite"; LabelFR="Interdire 
     Set-Reg $p "LetAppsGetDiagnosticInfo" 2
 }}
 $Options += [PSCustomObject]@{Id=194; Cat="Confidentialite"; LabelFR="Refuser l'accès matériel bas niveau (Bluetooth, capteurs de présence, suivi du regard, casques VR)"; LabelEN="Deny low-level hardware access (Bluetooth, presence sensors, eye tracking, VR headsets)"; Risk="moderate"; Action={
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\bluetooth" "Value" "Deny"
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\spatialPerception" "Value" "Deny"
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\backgroundSpatialPerception" "Value" "Deny"
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\gazeInput" "Value" "Deny"
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\humanPresence" "Value" "Deny"
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\humanInterfaceDevice" "Value" "Deny"
-    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled" "Value" "Deny"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\bluetooth" "Value" "Deny" "String"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\spatialPerception" "Value" "Deny" "String"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\backgroundSpatialPerception" "Value" "Deny" "String"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\gazeInput" "Value" "Deny" "String"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\humanPresence" "Value" "Deny" "String"
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\humanInterfaceDevice" "Value" "Deny" "String"
+    Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\DeviceAccess\Global\LooselyCoupled" "Value" "Deny" "String"
 }}
 $Options += [PSCustomObject]@{Id=195; Cat="Confidentialite"; LabelFR="Divers confidentialité complémentaires (voix, WiFi Sense, cartes auto, historique récent, notifications verrouillage)"; LabelEN="Misc extra privacy (voice, WiFi Sense, auto maps, recent history, lock screen notifications)"; Risk="safe"; Action={
     Set-Reg "HKLM:\Software\Microsoft\Speech_OneCore\Preferences" "VoiceActivationDefaultOn" 0
@@ -1435,7 +1469,7 @@ $Options += [PSCustomObject]@{Id=187; Cat="Nettoyage"; LabelFR="Libérer le stoc
 $Options += [PSCustomObject]@{Id=188; Cat="Bloatwares"; LabelFR="Empêcher Windows Update d'installer de force DevHome/Outlook (nouveau), et bloquer les MàJ auto du Store"; LabelEN="Prevent Windows Update from force-installing DevHome/new Outlook, and block auto Store app updates"; Risk="safe"; Action={
     Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler\DevHomeUpdate" "workCompleted" 1
     Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Orchestrator\UScheduler\OutlookUpdate" "workCompleted" 1
-    Set-Reg "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe" "BlockedOobeUpdaters" '["MS_Outlook"]'
+    Set-Reg "HKLM:\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe" "BlockedOobeUpdaters" '["MS_Outlook"]' "String"
     Set-Reg "HKLM:\Software\Policies\Microsoft\WindowsStore" "AutoDownload" 4
     Set-Reg "HKLM:\Software\Policies\Microsoft\WindowsStore" "DisableOSUpgrade" 1
 }}
@@ -2215,7 +2249,7 @@ function Update-InterfaceLanguage {
     Refresh-LogBoxDisplay
 }
 
-function Render-Category([string]$Cat) {
+function Global:Render-Category([string]$Cat) {
     try {
         $Global:LastCategory = $Cat
         $Panel.Children.Clear()
