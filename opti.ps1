@@ -421,6 +421,13 @@ function Set-OptiSoundRadar {
 # Bloatwares/Processus), rien n'est duplique ni reimplemente.
 # ------------------------------------------------------------------------
 function Set-ProcessReductionLevel([int]$Level) {
+    # FIX bug "0 options cochees, aucune sortie log" : cette fonction n'avait
+    # AUCUNE gestion d'erreur. Si une seule ligne levait une exception (ex:
+    # $ComboSvcHostRam pas encore pret, IsChecked bindings, etc.), tout le
+    # bloc s'arretait en silence avant meme d'atteindre le LogBox.AppendText
+    # de diagnostic plus bas -- d'ou "aucune sortie log". Desormais l'erreur
+    # reelle est toujours visible dans le LogBox.
+    try {
     # On ne coche plus 122/123/124 : leurs propres Actions ecrivent la meme cle
     # de registre que le ComboBox "Optimiseur RAM" ci-dessous, et les deux
     # mecanismes qui tournaient en meme temps se marchaient dessus (source
@@ -445,6 +452,9 @@ function Set-ProcessReductionLevel([int]$Level) {
     }
 
     $Global:SelectedSvcHostValue = $svcHostValue
+    if ($null -eq $ComboSvcHostRam) {
+        throw "ComboSvcHostRam est `$null (le controle XAML n'a pas ete trouve par FindName)."
+    }
     for ($i = 0; $i -lt $ComboSvcHostRam.Items.Count; $i++) {
         if ($ComboSvcHostRam.Items[$i].Tag -eq $svcHostValue) { $ComboSvcHostRam.SelectedIndex = $i; break }
     }
@@ -461,6 +471,12 @@ function Set-ProcessReductionLevel([int]$Level) {
     # d'application (plus de simulation de clic RaiseEvent, dont je ne pouvais
     # pas garantir qu'elle declenchait bien le handler PowerShell).
     Invoke-ApplyAllChecked
+    } catch {
+        $realMsg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+        $LogBox.AppendText(">> [ECHEC NIVEAU $Level] $realMsg`n")
+        $LogBox.ScrollToEnd()
+        [System.Windows.MessageBox]::Show("Erreur reducteur de processus : $realMsg", "OPTI-DYLAN - Debug")
+    }
 }
 
 # ============================================================
@@ -3003,8 +3019,20 @@ function Render-Category([string]$Cat) {
     }
 }
 
-$TxtSearch.Add_TextChanged({
+$Global:SearchDebounceTimer = New-Object System.Windows.Threading.DispatcherTimer
+$Global:SearchDebounceTimer.Interval = [TimeSpan]::FromMilliseconds(250)
+$Global:SearchDebounceTimer.Add_Tick({
+    $Global:SearchDebounceTimer.Stop()
     Render-Category $Global:LastCategory
+})
+$TxtSearch.Add_TextChanged({
+    # FIX clignotement : on ne redessine plus tout le panneau (Panel.Children.Clear()
+    # + reconstruction de chaque CheckBox) a CHAQUE caractere tape. On redemarre juste
+    # un timer de 250ms ; seule la derniere frappe declenche le vrai Render-Category.
+    # Avant ce correctif, taper "defender" = 8 reconstructions completes du panneau
+    # en une seconde, visible comme un clignotement de la fenetre.
+    $Global:SearchDebounceTimer.Stop()
+    $Global:SearchDebounceTimer.Start()
 })
 
 # --- BOUTONS DE SÉLECTION RAPIDE ---
