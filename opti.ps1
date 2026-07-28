@@ -70,10 +70,23 @@ Add-Type -AssemblyName System.Windows.Forms
 $Global:AppSourcePath = if ($PSCommandPath) { $PSCommandPath }
     elseif ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path }
     else { $null }
-# Dernier recours absolu : le texte du script tel qu'il est actuellement charge
-# en memoire. Meme si aucun chemin de fichier n'a pu etre determine, on peut
-# toujours reconstituer un .ps1 fonctionnel a partir de ca.
-$Global:AppSourceText = $MyInvocation.MyCommand.ScriptBlock.Ast.Extent.Text
+# FIX raccourci (v2) : la capture via .Ast.Extent.Text pouvait echouer
+# silencieusement selon le mode de lancement (paste dans console, iex, etc.),
+# laissant $Global:AppSourceText a $null -> les 2 methodes de repli tombaient
+# a plat en meme temps, d'ou l'echec systematique observe. On essaie
+# maintenant plusieurs methodes dans l'ordre, chacune protegee.
+$Global:AppSourceText = $null
+foreach ($method in @(
+    { $MyInvocation.MyCommand.ScriptBlock.Ast.Extent.Text },
+    { $MyInvocation.MyCommand.ScriptBlock.ToString() },
+    { if ($Global:AppSourcePath) { Get-Content -Raw -Path $Global:AppSourcePath -ErrorAction Stop } }
+)) {
+    if ($Global:AppSourceText) { break }
+    try {
+        $result = & $method
+        if ($result) { $Global:AppSourceText = $result }
+    } catch { }
+}
 
 $TimerResolutionCode = @"
 using System;
