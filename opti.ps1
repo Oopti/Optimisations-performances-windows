@@ -1,54 +1,5 @@
 #requires -Version 5.1
-<#
-    OPTI-DYLAN TOOLKIT PRO V15.1 - THE ULTIMATE CONTROL SYSTEM
-    Corrections apportees dans cette passe (sur la base des logs et de
-    l'erreur terminal fournis) :
-
-    1. [CRITIQUE] Set-ProcessReductionLevel, Render-Category,
-       Install-EqualizerApoGuided, Set-OptiAudioVST, Test-EqualizerApoInstalled,
-       Set-OptiSoundRadar : toutes ces fonctions etaient appelees par leur nom
-       depuis un scriptblock cree via .GetNewClosure() a l'INTERIEUR d'une
-       fonction (Render-Category). Un closure cree ainsi se rattache a la
-       portee Global, pas a la portee Script ou vivent les "function X {}" :
-       d'ou l'erreur exacte observee "Set-ProcessReductionLevel n'est pas
-       reconnu comme nom d'applet de commande". Fix : ces 6 fonctions sont
-       maintenant declarees "function Global:X" pour rester visibles depuis
-       n'importe quel closure, peu importe ou il est cree.
-
-    2. [BUG] 3 tweaks plantaient avec "Impossible de convertir la valeur ...
-       en type System.UInt32" (Id=185, 194, 188 - voir logs). Cause : Set-Reg
-       ecrit en REG_DWORD par defaut, mais ces 3 tweaks passent des VALEURS
-       TEXTE ("Deny", un chemin .exe, un tableau JSON) sans preciser le 4e
-       argument -Type "String". Fix : le type String est maintenant precise
-       explicitement sur ces 3 tweaks (9 lignes Set-Reg au total).
-
-    3. [CLIGNOTEMENT] $TxtSearch.Add_TextChanged relancait un Render-Category
-       complet (Panel.Children.Clear() + reconstruction de toutes les
-       CheckBox) a CHAQUE caractere tape dans la recherche. Sur une categorie
-       de 40+ tweaks, ca fait plusieurs reconstructions completes par seconde
-       = clignotement visible. Fix : debounce de 250ms (un seul redraw apres
-       que tu arretes de taper). Le fix #1 ci-dessus peut aussi expliquer une
-       partie du clignotement general : une exception non geree levee depuis
-       un closure invoque par le dispatcher WPF peut provoquer un flash/redraw
-       visible de la fenetre au moment ou elle remonte.
-
-    4. [ROBUSTESSE] Set-ProcessReductionLevel est maintenant entouree d'un
-       try/catch qui affiche la VRAIE erreur dans le LogBox (avant : echec
-       totalement silencieux si quoi que ce soit levait une exception).
-
-    --- Anciennes corrections (V15.0) conservees ci-dessous ---
-      registre qui n'existe pas), remplace par un vrai tweak TcpTimedWaitDelay.
-    - Id=10/11 : DCA et NetDMA sont des parametres netsh retires depuis Windows 8,
-      remplaces par des reglages netsh reellement supportes sur Windows 10/11
-      (fournisseur de congestion CTCP + desactivation des TCP Timestamps).
-    - Timer Resolution : la resolution du timer ne reste active que tant que ce
-      programme tourne (limitation reelle de l'API NtSetTimerResolution). Un
-      avertissement clair est maintenant affiche a l'ecran et dans le log.
-    - Sauvegarde de profil : ConvertTo-Json refusait les cles numeriques du
-      dictionnaire d'etats des cases. Corrige en convertissant les cles en texte
-      avant serialisation.
-    - Ajout de 5 nouveaux tweaks reels (Ids 140 a 144).
-#>
+# OPTI-DYLAN TOOLKIT PRO V15.2
 
 # ============================================================
 # ICONE DE L'APPLICATION (encodee en base64, un seul fichier a gerer)
@@ -70,11 +21,7 @@ Add-Type -AssemblyName System.Windows.Forms
 $Global:AppSourcePath = if ($PSCommandPath) { $PSCommandPath }
     elseif ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path }
     else { $null }
-# FIX raccourci (v2) : la capture via .Ast.Extent.Text pouvait echouer
-# silencieusement selon le mode de lancement (paste dans console, iex, etc.),
-# laissant $Global:AppSourceText a $null -> les 2 methodes de repli tombaient
-# a plat en meme temps, d'ou l'echec systematique observe. On essaie
-# maintenant plusieurs methodes dans l'ordre, chacune protegee.
+# Plusieurs methodes de capture en cascade, chacune protegee par try/catch.
 $Global:AppSourceText = $null
 foreach ($method in @(
     { $MyInvocation.MyCommand.ScriptBlock.Ast.Extent.Text },
@@ -480,19 +427,13 @@ function Global:Set-OptiSoundRadar {
 # Bloatwares/Processus), rien n'est duplique ni reimplemente.
 # ------------------------------------------------------------------------
 function Global:Set-ProcessReductionLevel([int]$Level) {
-    # FIX bug "0 options cochees, aucune sortie log" : cette fonction n'avait
-    # AUCUNE gestion d'erreur. Si une seule ligne levait une exception (ex:
-    # $ComboSvcHostRam pas encore pret, IsChecked bindings, etc.), tout le
-    # bloc s'arretait en silence avant meme d'atteindre le LogBox.AppendText
-    # de diagnostic plus bas -- d'ou "aucune sortie log". Desormais l'erreur
-    # reelle est toujours visible dans le LogBox.
     try {
     # On ne coche plus 122/123/124 : leurs propres Actions ecrivent la meme cle
     # de registre que le ComboBox "Optimiseur RAM" ci-dessous, et les deux
     # mecanismes qui tournaient en meme temps se marchaient dessus (source
     # probable de l'echec "operation non autorisee" vu en test). Le ComboBox
     # est le seul a piloter le seuil SvcHost desormais.
-    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,62,66,67,146,64,65)
+    $managedIds = @(20,27,24,16,17,61,68,69,74,63,137,62,66,67,146,64,65,158,159,160,161,162,163,164,165,89,81,150)
     foreach ($id in $managedIds) { $Global:CheckStates[$id] = $false }
 
     $svcHostValue = "380000"
@@ -501,12 +442,16 @@ function Global:Set-ProcessReductionLevel([int]$Level) {
     if ($Level -ge 4) {
         $Global:CheckStates[17]=$true; $Global:CheckStates[61]=$true
         $Global:CheckStates[68]=$true; $Global:CheckStates[69]=$true; $Global:CheckStates[74]=$true
+        $Global:CheckStates[158]=$true; $Global:CheckStates[159]=$true
+        $Global:CheckStates[161]=$true; $Global:CheckStates[162]=$true; $Global:CheckStates[163]=$true
         $svcHostValue = "16777216"
     }
     if ($Level -ge 5) {
         $Global:CheckStates[63]=$true; $Global:CheckStates[137]=$true
         $Global:CheckStates[62]=$true; $Global:CheckStates[66]=$true; $Global:CheckStates[67]=$true; $Global:CheckStates[146]=$true
         $Global:CheckStates[64]=$true; $Global:CheckStates[65]=$true
+        $Global:CheckStates[160]=$true; $Global:CheckStates[164]=$true; $Global:CheckStates[165]=$true
+        $Global:CheckStates[89]=$true; $Global:CheckStates[81]=$true; $Global:CheckStates[150]=$true
         $svcHostValue = "67108864"
     }
 
@@ -662,7 +607,7 @@ public class Program {
 
     $action = New-ScheduledTaskAction -Execute $Global:TimerExePath -Argument "$val"
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest -LogonType Interactive
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 
     Register-ScheduledTask -TaskName $Global:TimerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
@@ -751,7 +696,7 @@ public class Program {
 
     $action = New-ScheduledTaskAction -Execute $Global:PrioExePath
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest -LogonType Interactive
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 
     Register-ScheduledTask -TaskName $Global:PrioTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
@@ -857,7 +802,7 @@ public class Program {
 
     $action = New-ScheduledTaskAction -Execute $Global:SmartPowerExePath
     $trigger = New-ScheduledTaskTrigger -AtLogOn
-    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest -LogonType Interactive
     $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
 
     Register-ScheduledTask -TaskName $Global:SmartPowerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
@@ -3089,11 +3034,6 @@ $Global:SearchDebounceTimer.Add_Tick({
     Render-Category $Global:LastCategory
 })
 $TxtSearch.Add_TextChanged({
-    # FIX clignotement : on ne redessine plus tout le panneau (Panel.Children.Clear()
-    # + reconstruction de chaque CheckBox) a CHAQUE caractere tape. On redemarre juste
-    # un timer de 250ms ; seule la derniere frappe declenche le vrai Render-Category.
-    # Avant ce correctif, taper "defender" = 8 reconstructions completes du panneau
-    # en une seconde, visible comme un clignotement de la fenetre.
     $Global:SearchDebounceTimer.Stop()
     $Global:SearchDebounceTimer.Start()
 })
