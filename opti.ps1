@@ -63,6 +63,18 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 
+# FIX raccourci bureau : $PSCommandPath est vide selon la methode de lancement
+# (double-clic vs "Executer avec PowerShell" vs collage dans une console, etc.).
+# On capture ICI, au niveau script (pas dans une fonction), toutes les
+# alternatives possibles UNE SEULE FOIS, pendant qu'elles sont encore fiables.
+$Global:AppSourcePath = if ($PSCommandPath) { $PSCommandPath }
+    elseif ($MyInvocation.MyCommand.Path) { $MyInvocation.MyCommand.Path }
+    else { $null }
+# Dernier recours absolu : le texte du script tel qu'il est actuellement charge
+# en memoire. Meme si aucun chemin de fichier n'a pu etre determine, on peut
+# toujours reconstituer un .ps1 fonctionnel a partir de ca.
+$Global:AppSourceText = $MyInvocation.MyCommand.ScriptBlock.Ast.Extent.Text
+
 $TimerResolutionCode = @"
 using System;
 using System.Runtime.InteropServices;
@@ -504,7 +516,7 @@ function Global:Set-ProcessReductionLevel([int]$Level) {
     # Applique VRAIMENT (pas juste une selection) : appel DIRECT de la fonction
     # d'application (plus de simulation de clic RaiseEvent, dont je ne pouvais
     # pas garantir qu'elle declenchait bien le handler PowerShell).
-    Invoke-ApplyAllChecked
+    Invoke-ApplyAllChecked -OnlyIds $managedIds
     } catch {
         $realMsg = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
         $LogBox.AppendText(">> [ECHEC NIVEAU $Level] $realMsg`n")
@@ -871,8 +883,12 @@ function Install-DesktopShortcut {
     $iconBytes = [Convert]::FromBase64String($Global:IconBase64)
     [System.IO.File]::WriteAllBytes($Global:AppIconPath, $iconBytes)
 
-    if ($PSCommandPath) {
-        Copy-Item -Path $PSCommandPath -Destination $Global:AppScriptPath -Force
+    if ($Global:AppSourcePath -and (Test-Path $Global:AppSourcePath)) {
+        Copy-Item -Path $Global:AppSourcePath -Destination $Global:AppScriptPath -Force
+    } elseif ($Global:AppSourceText) {
+        # Aucun chemin de fichier fiable trouve (lancement colle/pipe/etc.) :
+        # on ecrit le script tel qu'il tourne actuellement en memoire.
+        Set-Content -Path $Global:AppScriptPath -Value $Global:AppSourceText -Encoding UTF8 -Force
     } elseif (-not (Test-Path $Global:AppScriptPath)) {
         throw "Impossible de localiser le fichier du script. Lance OPTI-DYLAN depuis un .ps1 enregistré sur ton disque (pas via une commande en ligne) avant de créer le raccourci."
     }
@@ -3175,8 +3191,18 @@ $BtnShortcut.Add_Click({
 })
 
 function Invoke-ApplyAllChecked {
+    param([int[]]$OnlyIds = $null)
+    # FIX "ca applique tous les tweaks de la boite" : avant, CETTE fonction
+    # appliquait TOUJOURS tout ce qui etait coche dans $Global:CheckStates,
+    # peu importe qui l'appelait. Si "Cocher tout (avance)" avait ete clique
+    # une fois, alors le bouton "Appliquer ce niveau" du Reducteur de Processus
+    # (qui appelle cette fonction en interne) republiait TOUT, pas seulement
+    # les ~17 tweaks du niveau. Avec -OnlyIds, Set-ProcessReductionLevel peut
+    # desormais se limiter strictement a ses propres tweaks.
     $L = $Global:LangDict[$Global:CurrentLang]
-    $selected = $Options | Where-Object { $Global:CheckStates[$_.Id] -eq $true }
+    $selected = $Options | Where-Object {
+        $Global:CheckStates[$_.Id] -eq $true -and ($null -eq $OnlyIds -or $OnlyIds -contains $_.Id)
+    }
 
     if ($selected.Count -eq 0 -and $Global:SelectedSvcHostValue -eq "380000") {
         [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
