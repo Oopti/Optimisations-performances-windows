@@ -1335,6 +1335,429 @@ $Options += [PSCustomObject]@{Id=214; Cat="Nettoyage"; LabelFR="[WinUtil] Divers
     Set-Reg "HKCU:\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" "System.IsPinnedToNameSpaceTree" 0
     Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" "LaunchTo" 1
 }}
+$Options += [PSCustomObject]@{Id=215; Cat="Processus"; LabelFR="Priorité CPU → FortniteClient-Win64-Shipping.exe"; LabelEN="CpuPriorityClass → FortniteClient-Win64-Shipping.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\FortniteClient-Win64-Shipping.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\FortniteClient-Win64-Shipping.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '2' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=216; Cat="Processus"; LabelFR="Priorité CPU → ApplicationFrameHost.exe"; LabelEN="CpuPriorityClass → ApplicationFrameHost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\ApplicationFrameHost.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\ApplicationFrameHost.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=217; Cat="Processus"; LabelFR="Priorité CPU → csrss.exe"; LabelEN="CpuPriorityClass → csrss.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\csrss.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\csrss.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '4' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=218; Cat="Processus"; LabelFR="Priorité I/O → csrss.exe"; LabelEN="IoPriority → csrss.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\csrss.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\csrss.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '3' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=219; Cat="Processus"; LabelFR="Priorité CPU → dllhost.exe"; LabelEN="CpuPriorityClass → dllhost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\dllhost.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\dllhost.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=220; Cat="Processus"; LabelFR="Priorité I/O → dwm.exe"; LabelEN="IoPriority → dwm.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\dwm.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\dwm.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '3' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=221; Cat="Processus"; LabelFR="Priorité CPU → fontdrvhost.exe"; LabelEN="CpuPriorityClass → fontdrvhost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\fontdrvhost.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\fontdrvhost.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=222; Cat="Processus"; LabelFR="Priorité CPU → lsass.exe"; LabelEN="CpuPriorityClass → lsass.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=223; Cat="Processus"; LabelFR="Priorité I/O → lsass.exe"; LabelEN="IoPriority → lsass.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=224; Cat="Processus"; LabelFR="Priorité mémoire → lsass.exe"; LabelEN="PagePriority → lsass.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\lsass.exe\PerfOptions' -Name 'PagePriority' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=225; Cat="Processus"; LabelFR="Priorité CPU → SearchIndexer.exe"; LabelEN="CpuPriorityClass → SearchIndexer.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\SearchIndexer.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\SearchIndexer.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=226; Cat="Processus"; LabelFR="Priorité I/O → SearchIndexer.exe"; LabelEN="IoPriority → SearchIndexer.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\SearchIndexer.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\SearchIndexer.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=227; Cat="Processus"; LabelFR="Priorité CPU → services.exe"; LabelEN="CpuPriorityClass → services.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\services.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\services.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=228; Cat="Processus"; LabelFR="Priorité CPU → sihost.exe"; LabelEN="CpuPriorityClass → sihost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sihost.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\sihost.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=229; Cat="Processus"; LabelFR="Priorité CPU → smss.exe"; LabelEN="CpuPriorityClass → smss.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\smss.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\smss.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=230; Cat="Processus"; LabelFR="Priorité CPU → StartMenu.exe"; LabelEN="CpuPriorityClass → StartMenu.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\StartMenu.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\StartMenu.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=231; Cat="Processus"; LabelFR="MinimumStackCommitInBytes → svchost.exe"; LabelEN="MinimumStackCommitInBytes → svchost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe' -Name 'MinimumStackCommitInBytes' -PropertyType DWord -Value '32768' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=232; Cat="Processus"; LabelFR="Priorité CPU → svchost.exe"; LabelEN="CpuPriorityClass → svchost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=233; Cat="Processus"; LabelFR="Priorité I/O → svchost.exe"; LabelEN="IoPriority → svchost.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\svchost.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=234; Cat="Processus"; LabelFR="Priorité CPU → TrustedInstaller.exe"; LabelEN="CpuPriorityClass → TrustedInstaller.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\TrustedInstaller.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\TrustedInstaller.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=235; Cat="Processus"; LabelFR="Priorité I/O → TrustedInstaller.exe"; LabelEN="IoPriority → TrustedInstaller.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\TrustedInstaller.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\TrustedInstaller.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=236; Cat="Processus"; LabelFR="Priorité CPU → wininit.exe"; LabelEN="CpuPriorityClass → wininit.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wininit.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wininit.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=237; Cat="Processus"; LabelFR="Priorité CPU → winlogon.exe"; LabelEN="CpuPriorityClass → winlogon.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\winlogon.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\winlogon.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=238; Cat="Processus"; LabelFR="Priorité CPU → WMIADAP.exe"; LabelEN="CpuPriorityClass → WMIADAP.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\WMIADAP.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\WMIADAP.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=239; Cat="Processus"; LabelFR="Priorité CPU → WmiPrvSE.exe"; LabelEN="CpuPriorityClass → WmiPrvSE.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\WmiPrvSE.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\WmiPrvSE.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=240; Cat="Processus"; LabelFR="Priorité CPU → wuauclt.exe"; LabelEN="CpuPriorityClass → wuauclt.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wuauclt.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wuauclt.exe\PerfOptions' -Name 'CpuPriorityClass' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=241; Cat="Processus"; LabelFR="Priorité I/O → wuauclt.exe"; LabelEN="IoPriority → wuauclt.exe"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wuauclt.exe\PerfOptions' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\wuauclt.exe\PerfOptions' -Name 'IoPriority' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=242; Cat="Processus"; LabelFR="Win32PrioritySeparation → PriorityControl"; LabelEN="Win32PrioritySeparation → PriorityControl"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\ControlSet001\Control\PriorityControl' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\ControlSet001\Control\PriorityControl' -Name 'Win32PrioritySeparation' -PropertyType DWord -Value '0x00000014' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=243; Cat="Processus"; LabelFR="Win32PrioritySeparation, FeatureSettings → PriorityControl"; LabelEN="Win32PrioritySeparation, FeatureSettings → PriorityControl"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\PriorityControl' -Name 'Win32PrioritySeparation' -PropertyType DWord -Value '40' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettings' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=244; Cat="Nettoyage"; LabelFR="EnablePrefetcher → PrefetchParameters"; LabelEN="EnablePrefetcher → PrefetchParameters"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management\PrefetchParameters' -Name 'EnablePrefetcher' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=245; Cat="Services"; LabelFR="MouseDataQueueSize → Parameters"; LabelEN="MouseDataQueueSize → Parameters"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\mouclass\Parameters' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\mouclass\Parameters' -Name 'MouseDataQueueSize' -PropertyType DWord -Value '30' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=246; Cat="Services"; LabelFR="KeyboardDataQueueSize → Parameters"; LabelEN="KeyboardDataQueueSize → Parameters"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\kbdclass\Parameters' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\kbdclass\Parameters' -Name 'KeyboardDataQueueSize' -PropertyType DWord -Value '30' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=247; Cat="Services"; LabelFR="Start → WSearch"; LabelEN="Start → WSearch"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\WSearch' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\WSearch' -Name 'Start' -PropertyType DWord -Value '4' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=248; Cat="Services"; LabelFR="Start → SysMain"; LabelEN="Start → SysMain"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\SysMain' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\SysMain' -Name 'Start' -PropertyType DWord -Value '4' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=249; Cat="Gaming"; LabelFR="RmGpsPsEnablePerCpuCoreDpc → GraphicsDrivers"; LabelEN="RmGpsPsEnablePerCpuCoreDpc → GraphicsDrivers"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers' -Name 'RmGpsPsEnablePerCpuCoreDpc' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Power' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\GraphicsDrivers\Power' -Name 'RmGpsPsEnablePerCpuCoreDpc' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm' -Name 'RmGpsPsEnablePerCpuCoreDpc' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\NVAPI' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\NVAPI' -Name 'RmGpsPsEnablePerCpuCoreDpc' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\nvlddmkm\Global\NVTweak' -Name 'RmGpsPsEnablePerCpuCoreDpc' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=250; Cat="Gaming"; LabelFR="GameFullScreenOptimizations → GameConfigStore"; LabelEN="GameFullScreenOptimizations → GameConfigStore"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameFullScreenOptimizations' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=251; Cat="Gaming"; LabelFR="GameDVR_Enabled → GameConfigStore"; LabelEN="GameDVR_Enabled → GameConfigStore"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=252; Cat="Gaming"; LabelFR="Enabled, EnableActivityFeed, SilentInstalledAppsEnabled, SystemPaneSuggestionsEnabled, ShowSyncProviderNotifications, SoftLandingEnabled, RotatingLockScreenEnabled, EnableLUA, DisableAutomaticRestartSignOn, DisableWindowsConsumerFeatures, .tif, .tiff, .bmp, .dib, .gif, .jfif, .jpe, .jpeg, .jpg, .jxr, .png, RotatingLockScreenOverlayEnabled, SubscribedContent-310093Enabled, AppCaptureEnabled, GameDVR_Enabled, Start → AdvertisingInfo"; LabelEN="Enabled, EnableActivityFeed, SilentInstalledAppsEnabled, SystemPaneSuggestionsEnabled, ShowSyncProviderNotifications, SoftLandingEnabled, RotatingLockScreenEnabled, EnableLUA, DisableAutomaticRestartSignOn, DisableWindowsConsumerFeatures, .tif, .tiff, .bmp, .dib, .gif, .jfif, .jpe, .jpeg, .jpg, .jxr, .png, RotatingLockScreenOverlayEnabled, SubscribedContent-310093Enabled, AppCaptureEnabled, GameDVR_Enabled, Start → AdvertisingInfo"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name 'EnableActivityFeed' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SilentInstalledAppsEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SilentInstalledAppsEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SystemPaneSuggestionsEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowSyncProviderNotifications' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SoftLandingEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'RotatingLockScreenEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'EnableLUA' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name 'DisableAutomaticRestartSignOn' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableWindowsConsumerFeatures' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.tif' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.tiff' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.bmp' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.dib' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.gif' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.jfif' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.jpe' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.jpeg' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.jpg' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.jxr' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows Photo Viewer\Capabilities\FileAssociations' -Name '.png' -PropertyType String -Value 'PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Policies\Microsoft\Windows\System' -Name 'EnableActivityFeed' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SilentInstalledAppsEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SilentInstalledAppsEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SystemPaneSuggestionsEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowSyncProviderNotifications' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SoftLandingEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'RotatingLockScreenEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'RotatingLockScreenOverlayEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\ContentDeliveryManager' -Name 'SubscribedContent-310093Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\kdnic' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\kdnic' -Name 'Start' -PropertyType DWord -Value '4' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\NdisVirtualBus' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\NdisVirtualBus' -Name 'Start' -PropertyType DWord -Value '4' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\Vid' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\Vid' -Name 'Start' -PropertyType DWord -Value '4' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=253; Cat="Gaming"; LabelFR="value → AllowGameDVR"; LabelEN="value → AllowGameDVR"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\PolicyManager\default\ApplicationManagement\AllowGameDVR' -Name 'value' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=254; Cat="Gaming"; LabelFR="GameDVR_FSEBehaviorMode, GameDVR_HonorUserFSEBehaviorMode, GameDVR_FSEBehavior, GameDVR_DXGIHonorFSEWindowsCompatible → GameConfigStore"; LabelEN="GameDVR_FSEBehaviorMode, GameDVR_HonorUserFSEBehaviorMode, GameDVR_FSEBehavior, GameDVR_DXGIHonorFSEWindowsCompatible → GameConfigStore"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_FSEBehaviorMode' -PropertyType DWord -Value '2' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_HonorUserFSEBehaviorMode' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_FSEBehavior' -PropertyType DWord -Value '2' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_DXGIHonorFSEWindowsCompatible' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=255; Cat="Gaming"; LabelFR="GameDVR_Enabled → GameConfigStore"; LabelEN="GameDVR_Enabled → GameConfigStore"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\System\GameConfigStore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\System\GameConfigStore' -Name 'GameDVR_Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=256; Cat="Power"; LabelFR="Delaydestroyer 33"; LabelEN="Delaydestroyer 33"; Risk="safe"; Action={
+    powercfg -import "C:\Delay Destroyer Tools\Power Plan\Ultimate Performance.pow"
+}}
+
+$Options += [PSCustomObject]@{Id=257; Cat="Power"; LabelFR="Delaydestroyer 34"; LabelEN="Delaydestroyer 34"; Risk="safe"; Action={
+    powercfg -import "C:\Delay Destroyer Tools\Power Plan\Ultimate Performance Idle Off.pow"
+}}
+
+$Options += [PSCustomObject]@{Id=258; Cat="Power"; LabelFR="Delaydestroyer 35"; LabelEN="Delaydestroyer 35"; Risk="safe"; Action={
+    powercfg /setactive %plan_guid% >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=259; Cat="Power"; LabelFR="Delaydestroyer 36"; LabelEN="Delaydestroyer 36"; Risk="safe"; Action={
+    powercfg /setactive %idle_off_guid% >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=260; Cat="Power"; LabelFR="Delaydestroyer 37"; LabelEN="Delaydestroyer 37"; Risk="safe"; Action={
+    powercfg.cpl
+}}
+
+$Options += [PSCustomObject]@{Id=261; Cat="Power"; LabelFR="Delaydestroyer 38"; LabelEN="Delaydestroyer 38"; Risk="safe"; Action={
+    powercfg -delete 381b4222-f694-41f0-9685-ff5bb260df2e >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=262; Cat="Power"; LabelFR="Delaydestroyer 39"; LabelEN="Delaydestroyer 39"; Risk="safe"; Action={
+    powercfg -delete a1841308-3541-4fab-bc81-f71556f20b4a >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=263; Cat="Power"; LabelFR="Delaydestroyer 40"; LabelEN="Delaydestroyer 40"; Risk="safe"; Action={
+    powercfg -delete e9a42b02-d5df-448d-aa00-03f14749eb61 >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=264; Cat="Power"; LabelFR="PerformanceBoostMode → PowerSettings"; LabelEN="PerformanceBoostMode → PowerSettings"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings' -Name 'PerformanceBoostMode' -PropertyType DWord -Value '2' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=265; Cat="Power"; LabelFR="Attributes → 943c8cb6-6f93-4227-ad87-e9a3feec08d1"; LabelEN="Attributes → 943c8cb6-6f93-4227-ad87-e9a3feec08d1"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\943c8cb6-6f93-4227-ad87-e9a3feec08d1' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\943c8cb6-6f93-4227-ad87-e9a3feec08d1' -Name 'Attributes' -PropertyType String -Value '2' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=266; Cat="Power"; LabelFR="Attributes, ACSettingIndex, DCSettingIndex, SearchOrderConfig, HiberbootEnabled, PowerThrottlingOff, HibernateEnabledDefault → 943c8cb6-6f93-4227-ad87-e9a3feec08d1"; LabelEN="Attributes, ACSettingIndex, DCSettingIndex, SearchOrderConfig, HiberbootEnabled, PowerThrottlingOff, HibernateEnabledDefault → 943c8cb6-6f93-4227-ad87-e9a3feec08d1"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\943c8cb6-6f93-4227-ad87-e9a3feec08d1' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\943c8cb6-6f93-4227-ad87-e9a3feec08d1' -Name 'Attributes' -PropertyType DWord -Value '2' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'DCSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'DCSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' -Name 'SearchOrderConfig' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power' -Name 'HiberbootEnabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name 'HibernateEnabledDefault' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=267; Cat="Power"; LabelFR="ACSettingIndex, DCSettingIndex, PowerThrottlingOff → 381b4222-f694-41f0-9685-ff5bb260df2e"; LabelEN="ACSettingIndex, DCSettingIndex, PowerThrottlingOff → 381b4222-f694-41f0-9685-ff5bb260df2e"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'DCSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\2a737441-1930-4402-8d77-b2bebba308a3\d4e98f31-5ffe-4ce1-be31-1b38b384c009\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\381b4222-f694-41f0-9685-ff5bb260df2e' -Name 'DCSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerSettings\54533251-82be-4824-96c1-47b60b740d00\3b04d4fd-1cc7-4f23-ab1c-d1337819c4bb\DefaultPowerSchemeValues\8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c' -Name 'ACSettingIndex' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling' -Name 'PowerThrottlingOff' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=268; Cat="Timer"; LabelFR="GlobalTimerResolutionRequests → kernel"; LabelEN="GlobalTimerResolutionRequests → kernel"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\SYSTEM\ControlSet001\Control\Session Manager\kernel' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Control\Session Manager\kernel' -Name 'GlobalTimerResolutionRequests' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=269; Cat="Timer"; LabelFR="SystemResponsiveness → SystemProfile"; LabelEN="SystemResponsiveness → SystemProfile"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=270; Cat="Timer"; LabelFR="NetworkThrottlingIndex, SystemResponsiveness, MenuShowDelay, WaitToKillAppTimeout, HungAppTimeout, AutoEndTasks, LowLevelHooksTimeout, WaitToKillServiceTimeout → SystemProfile"; LabelEN="NetworkThrottlingIndex, SystemResponsiveness, MenuShowDelay, WaitToKillAppTimeout, HungAppTimeout, AutoEndTasks, LowLevelHooksTimeout, WaitToKillServiceTimeout → SystemProfile"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -PropertyType DWord -Value '4294967295' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'SystemResponsiveness' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'MenuShowDelay' -PropertyType String -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'WaitToKillAppTimeout' -PropertyType String -Value '5000' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'HungAppTimeout' -PropertyType String -Value '4000' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'AutoEndTasks' -PropertyType String -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'LowLevelHooksTimeout' -PropertyType DWord -Value '4096' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'WaitToKillServiceTimeout' -PropertyType DWord -Value '8192' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control' -Name 'WaitToKillServiceTimeout' -PropertyType String -Value '2000' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=271; Cat="Confidentialite"; LabelFR="SystemRestorePointCreationFrequency → SystemRestore"; LabelEN="SystemRestorePointCreationFrequency → SystemRestore"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\Software\Microsoft\Windows NT\CurrentVersion\SystemRestore' -Name 'SystemRestorePointCreationFrequency' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=272; Cat="Confidentialite"; LabelFR="Delaydestroyer 28"; LabelEN="Delaydestroyer 28"; Risk="safe"; Action={
+    bcdedit /deletevalue useplatformclock >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=273; Cat="Confidentialite"; LabelFR="Delaydestroyer 29"; LabelEN="Delaydestroyer 29"; Risk="safe"; Action={
+    bcdedit /set useplatformtick no
+}}
+
+$Options += [PSCustomObject]@{Id=274; Cat="Confidentialite"; LabelFR="Delaydestroyer 30"; LabelEN="Delaydestroyer 30"; Risk="safe"; Action={
+    bcdedit /set disabledynamictick yes
+}}
+
+$Options += [PSCustomObject]@{Id=275; Cat="Confidentialite"; LabelFR="NetworkThrottlingIndex → SystemProfile"; LabelEN="NetworkThrottlingIndex → SystemProfile"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'NetworkThrottlingIndex' -PropertyType DWord -Value '10' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=276; Cat="Confidentialite"; LabelFR="PlatformAoAcOverride → Power"; LabelEN="PlatformAoAcOverride → Power"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name 'PlatformAoAcOverride' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=277; Cat="Confidentialite"; LabelFR="MenuShowDelay → Desktop"; LabelEN="MenuShowDelay → Desktop"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\Control Panel\Desktop' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop' -Name 'MenuShowDelay' -PropertyType String -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=278; Cat="Confidentialite"; LabelFR="MouseHoverTime → Mouse"; LabelEN="MouseHoverTime → Mouse"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Mouse' -Name 'MouseHoverTime' -PropertyType String -Value '10' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=279; Cat="Confidentialite"; LabelFR="MouseSensitivity, SmoothMouseXCurve, SmoothMouseYCurve, MouseSpeed, MouseThreshold1, MouseThreshold2 → Mouse"; LabelEN="MouseSensitivity, SmoothMouseXCurve, SmoothMouseYCurve, MouseSpeed, MouseThreshold1, MouseThreshold2 → Mouse"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Mouse' -Name 'MouseSensitivity' -PropertyType String -Value '10' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Mouse' -Name 'SmoothMouseXCurve' -PropertyType Binary -Value '\' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKCU:\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Mouse' -Name 'SmoothMouseYCurve' -PropertyType Binary -Value '\' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Mouse' -Name 'MouseSpeed' -PropertyType String -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Mouse' -Name 'MouseThreshold1' -PropertyType String -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Mouse' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKEY_USERS\.DEFAULT\Control Panel\Mouse' -Name 'MouseThreshold2' -PropertyType String -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=280; Cat="Confidentialite"; LabelFR="Priority → SystemProfile"; LabelEN="Priority → SystemProfile"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Multimedia\SystemProfile' -Name 'Priority' -PropertyType DWord -Value '6' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=281; Cat="Confidentialite"; LabelFR="LargeSystemCache → Memory Management"; LabelEN="LargeSystemCache → Memory Management"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'LargeSystemCache' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=282; Cat="Confidentialite"; LabelFR="MinAnimate → WindowMetrics"; LabelEN="MinAnimate → WindowMetrics"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\Control Panel\Desktop\WindowMetrics' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\Control Panel\Desktop\WindowMetrics' -Name 'MinAnimate' -PropertyType String -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=283; Cat="Confidentialite"; LabelFR="ClearPageFileAtShutdown, FeatureSettings, FeatureSettingsOverrideMask, FeatureSettingsOverride, LargeSystemCache, NonPagedPoolQuota, NonPagedPoolSize, SessionViewSize, SystemPages, SecondLevelDataCache, SessionPoolSize, DisablePagingExecutive, PagedPoolSize, PagedPoolQuota, PhysicalAddressExtension, IoPageLockLimit, PoolUsageMaximum → Memory Management"; LabelEN="ClearPageFileAtShutdown, FeatureSettings, FeatureSettingsOverrideMask, FeatureSettingsOverride, LargeSystemCache, NonPagedPoolQuota, NonPagedPoolSize, SessionViewSize, SystemPages, SecondLevelDataCache, SessionPoolSize, DisablePagingExecutive, PagedPoolSize, PagedPoolQuota, PhysicalAddressExtension, IoPageLockLimit, PoolUsageMaximum → Memory Management"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'ClearPageFileAtShutdown' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettings' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverrideMask' -PropertyType DWord -Value '3' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverride' -PropertyType DWord -Value '3' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'LargeSystemCache' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'NonPagedPoolQuota' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'NonPagedPoolSize' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'SessionViewSize' -PropertyType DWord -Value '192' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'SystemPages' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'SecondLevelDataCache' -PropertyType DWord -Value '3072' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'SessionPoolSize' -PropertyType DWord -Value '192' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'DisablePagingExecutive' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'PagedPoolSize' -PropertyType DWord -Value '192' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'PagedPoolQuota' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'PhysicalAddressExtension' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'IoPageLockLimit' -PropertyType DWord -Value '1048576' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management' -Name 'PoolUsageMaximum' -PropertyType DWord -Value '96' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=284; Cat="Confidentialite"; LabelFR="SearchOrderConfig → DriverSearching"; LabelEN="SearchOrderConfig → DriverSearching"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\DriverSearching' -Name 'SearchOrderConfig' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=285; Cat="Confidentialite"; LabelFR="StartupDelayInMSec → Serialize"; LabelEN="StartupDelayInMSec → Serialize"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Serialize' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Serialize' -Name 'StartupDelayInMSec' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=286; Cat="Confidentialite"; LabelFR="Start"; LabelEN="Start"; Risk="safe"; Action={
+    Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Manual -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Manual -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Manual -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+Set-Service -Name 'Start' -StartupType Disabled -ErrorAction SilentlyContinue; Stop-Service -Name 'Start' -Force -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=287; Cat="Reseau"; LabelFR="TcpAckFrequency, TCPNoDelay → Interfaces"; LabelEN="TcpAckFrequency, TCPNoDelay → Interfaces"; Risk="safe"; Action={
+    New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -Name 'TcpAckFrequency' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+New-Item -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces' -Name 'TCPNoDelay' -PropertyType DWord -Value '1' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
 $Options += [PSCustomObject]@{Id=193; Cat="Confidentialite"; LabelFR="Interdire à TOUTES les apps l'accès aux données sensibles (contacts, position, caméra, IA générative, fichiers, notifications...)"; LabelEN="Deny ALL apps access to sensitive data (contacts, location, camera, generative AI, files, notifications...)"; Risk="moderate"; Action={
     $p = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy"
     $caps = @("AccountInfo","Activity","AppDiagnostics","BackgroundSpatialPerception","Bluetooth","BluetoothSync","BroadFileSystemAccess","Calendar","CallHistory","CellularData","Contacts","DocumentsLibrary","DownloadsFolder","Email","EyeTracker","GazeInput","GenerativeAi","GraphicsCaptureProgrammatic","GraphicsCaptureWithoutBorder","HumanInterfaceDevice","HumanPresence","Location","Messaging","Motion","MusicLibrary","Notifications","Phone","PicturesLibrary","Radios","SpatialPerception","Tasks","TrustedDevices","UserAccountInformation","UserDataTasks","UserNotificationListener","VideosLibrary","VoiceActivation","FileSystem","TextAndImageGeneration")
