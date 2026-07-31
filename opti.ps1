@@ -727,6 +727,115 @@ $Global:SmartPowerTaskName = "OPTI-DYLAN-SmartPower"
 $Global:SmartPowerInstallDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
 $Global:SmartPowerExePath = Join-Path $Global:SmartPowerInstallDir "SmartPowerDaemon.exe"
 
+# ============================================================
+# NETTOYEUR RAM (4e demon persistant) - vide le working set de tous les
+# process (EmptyWorkingSet, psapi.dll) + purge la Standby List noyau
+# (NtSetSystemInformation, technique RAMMap) a intervalle reglable.
+# L'intervalle se change a chaud via un registre lu a chaque cycle,
+# pas besoin de reinstaller le demon pour l'ajuster.
+# ============================================================
+$Global:RamCleanerTaskName = "OPTI-DYLAN-RamCleaner"
+$Global:RamCleanerInstallDir = Join-Path $env:LOCALAPPDATA "OPTI-DYLAN"
+$Global:RamCleanerExePath = Join-Path $Global:RamCleanerInstallDir "RamCleanerDaemon.exe"
+$Global:RamCleanerRegPath = "HKCU:\Software\OPTI-DYLAN"
+$Global:RamCleanerRegName = "RamCleanerIntervalSeconds"
+
+function Set-RamCleanerInterval([int]$Seconds) {
+    if (-not (Test-Path $Global:RamCleanerRegPath)) {
+        New-Item -Path $Global:RamCleanerRegPath -Force | Out-Null
+    }
+    New-ItemProperty -Path $Global:RamCleanerRegPath -Name $Global:RamCleanerRegName -PropertyType DWord -Value $Seconds -Force | Out-Null
+}
+
+function Install-RamCleanerDaemon {
+    if (-not (Test-Path $Global:RamCleanerInstallDir)) {
+        New-Item -Path $Global:RamCleanerInstallDir -ItemType Directory -Force | Out-Null
+    }
+
+    $csharpSource = @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
+using Microsoft.Win32;
+
+public class Program {
+    [DllImport("psapi.dll")]
+    static extern bool EmptyWorkingSet(IntPtr hProcess);
+
+    [DllImport("ntdll.dll")]
+    static extern int NtSetSystemInformation(int SystemInformationClass, IntPtr SystemInformation, int SystemInformationLength);
+
+    static void PurgeStandbyList() {
+        try {
+            IntPtr ptr = Marshal.AllocHGlobal(4);
+            Marshal.WriteInt32(ptr, 4); // MemoryPurgeStandbyList
+            NtSetSystemInformation(80, ptr, 4); // SystemMemoryListInformation
+            Marshal.FreeHGlobal(ptr);
+        } catch { }
+    }
+
+    static void TrimAllProcesses() {
+        foreach (var p in Process.GetProcesses()) {
+            try { EmptyWorkingSet(p.Handle); } catch { }
+        }
+    }
+
+    public static void Main(string[] args) {
+        while (true) {
+            int intervalSec = 300;
+            try {
+                object v = Registry.GetValue("HKEY_CURRENT_USER\\Software\\OPTI-DYLAN", "RamCleanerIntervalSeconds", 300);
+                if (v != null) intervalSec = Convert.ToInt32(v);
+            } catch { }
+
+            if (intervalSec <= 0) {
+                Thread.Sleep(5000); // desactive (0) : on repolle juste, pas de purge
+                continue;
+            }
+            TrimAllProcesses();
+            PurgeStandbyList();
+            Thread.Sleep(intervalSec * 1000);
+        }
+    }
+}
+'@
+
+    if (Test-Path $Global:RamCleanerExePath) {
+        Get-Process -Name "RamCleanerDaemon" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Milliseconds 300
+        Remove-Item $Global:RamCleanerExePath -Force -ErrorAction SilentlyContinue
+    }
+
+    Add-Type -TypeDefinition $csharpSource -OutputType WindowsApplication -OutputAssembly $Global:RamCleanerExePath -ReferencedAssemblies "Microsoft.Win32.Registry" -ErrorAction Stop
+
+    if (-not (Test-Path $Global:RamCleanerRegPath) -or $null -eq (Get-ItemProperty -Path $Global:RamCleanerRegPath -Name $Global:RamCleanerRegName -ErrorAction SilentlyContinue)) {
+        Set-RamCleanerInterval -Seconds 300
+    }
+
+    Unregister-ScheduledTask -TaskName $Global:RamCleanerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+    $action = New-ScheduledTaskAction -Execute $Global:RamCleanerExePath
+    $trigger = New-ScheduledTaskTrigger -AtLogOn
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -RunLevel Highest -LogonType Interactive
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+
+    Register-ScheduledTask -TaskName $Global:RamCleanerTaskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+    Start-ScheduledTask -TaskName $Global:RamCleanerTaskName
+}
+
+function Uninstall-RamCleanerDaemon {
+    Unregister-ScheduledTask -TaskName $Global:RamCleanerTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Get-Process -Name "RamCleanerDaemon" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 300
+    Remove-Item $Global:RamCleanerExePath -Force -ErrorAction SilentlyContinue
+}
+
+function Test-RamCleanerDaemonInstalled {
+    $task = Get-ScheduledTask -TaskName $Global:RamCleanerTaskName -ErrorAction SilentlyContinue
+    return ($null -ne $task)
+}
+
 function Install-SmartPowerDaemon {
     if (-not (Test-Path $Global:SmartPowerInstallDir)) {
         New-Item -Path $Global:SmartPowerInstallDir -ItemType Directory -Force | Out-Null
@@ -2541,6 +2650,5672 @@ New-Item -Path 'Registry::HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Search'
 $Options += [PSCustomObject]@{Id=421; Cat="Extreme"; LabelFR="DÃ©sactiver Fault Tolerant Heap (FTH)"; LabelEN="Disable Fault Tolerant Heap (FTH)"; Risk="moderate"; Action={
 Start-Process -FilePath 'rundll32.exe' -ArgumentList 'fthsvc.dll,FthSysprepSpecialize' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
 New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\FTH' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\FTH' -Name 'Enabled' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+$Options += [PSCustomObject]@{Id=463; Cat="Nettoyage"; LabelFR="Tuer les process bloat avant d'appliquer les tweaks"; LabelEN="Kill bloat processes before applying tweaks"; Risk="safe"; Action={
+    taskkill /IM explorer /F 2>$null
+    taskkill /IM SearchApp /F 2>$null
+    taskkill /IM SearchHost /F 2>$null
+    taskkill /IM RuntimeBroker /F 2>$null
+    taskkill /IM TextInputHost /F 2>$null
+    taskkill /IM ShellExperienceHost /F 2>$null
+    taskkill /IM backgroundTaskHost /F 2>$null
+    taskkill /IM Widgets /F 2>$null
+    taskkill /IM MicrosoftEdge* /F 2>$null
+    taskkill /IM msedge /F 2>$null
+    taskkill /IM OneDrive /F 2>$null
+}}
+$Options += [PSCustomObject]@{Id=464; Cat="Bloatwares"; LabelFR="AppX"; LabelEN="AppX"; Risk="moderate"; Action={
+    taskkill /IM msteams* /F 2>$null
+    Get-AppxPackage -AllUsers -Name 'MicrosoftTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Communications' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Communications' -Name 'ConfigureChatAutoInstall' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+    taskkill /IM ms-teams* /F 2>$null
+    Get-AppxPackage -AllUsers -Name 'MSTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Disney.37853FC22B2CE*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'SpotifyAB.SpotifyMusic*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.549981C3F5F10*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'microsoft.windowscommunicationsapps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MSPaint*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.ZuneVideo*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.MicrosoftFamily*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MixedReality.Portal*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.DevHome*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingWeather*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingNews*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingSearch*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Microsoft3DViewer*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftOfficeHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftStickyNotes*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Office.OneNote*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.People*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.PowerAutomateDesktop*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.ScreenSketch*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.SkypeApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Todos*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsAlarms*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsCamera*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsMaps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsSoundRecorder*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Ink.Handwriting.Main.Store.en-US1.0' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage Microsoft.YourPhone* | Remove-AppxPackage
+Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -eq 'Microsoft.YourPhone' } | Remove-AppxProvisionedPackage -Online
+
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.Client.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.Search*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=465; Cat="Confidentialite"; LabelFR="Components"; LabelEN="Components"; Risk="moderate"; Action={
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy' -Force -ErrorAction SilentlyContinue | Out-Null; New-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy' -Name 'VerifiedAndReputablePolicyState' -PropertyType DWord -Value '0' -Force -ErrorAction SilentlyContinue | Out-Null
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdge_8wekyb3d8bbwe' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge.Stable_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    Start-Process -FilePath 'ONED.cmd' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\OfflineSys\ControlSet001\Services\WdBoot' -Recurse -Force -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=466; Cat="Services"; LabelFR="Services and Drivers"; LabelEN="Services and Drivers"; Risk="moderate"; Action={
+    Stop-Service -Name 'OneSyncSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'OneSyncSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TrkWks' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TrkWks' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PcaSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PcaSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagnosticshub.standardcollector.service' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagnosticshub.standardcollector.service' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WerSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WerSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wercplsupport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wercplsupport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UCPD' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UCPD' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GpuEnergyDrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GpuEnergyDrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetBT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetBT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Telemetry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Telemetry' -StartupType Disabled -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=467; Cat="Confidentialite"; LabelFR="Initial Configuration"; LabelEN="Initial Configuration"; Risk="moderate"; Action={
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Enable-Feature /FeatureName:"DirectPlay" /NoRestart /All' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Remove-Capability /CapabilityName:"App.StepsRecorder~~~~0.0.1.0" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Cleanup-Image /StartComponentCleanup' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    .\SOFTWARE.ps1
+    .\SOFTWARE.ps1 -Toolbox
+    .\SOFTWARE.ps1 -Brave
+    .\SOFTWARE.ps1 -Firefox
+    .\LIBREWOLF.ps1
+    .\SOFTWARE.ps1 -Chrome
+}}
+$Options += [PSCustomObject]@{Id=468; Cat="Extreme"; LabelFR="Z-LAG Ultimate Process & RAM Reduction Engine v3.0"; LabelEN="Z-LAG Ultimate Process & RAM Reduction Engine v3.0"; Risk="moderate"; Action={
+    $SystemControlPath = "HKLM:\SYSTEM\CurrentControlSet\Control"
+    Set-ItemProperty -Path $SystemControlPath -Name "SvcHostSplitThresholdInKB" -Value 380000000 -Type DWord -Force
+    $VisualPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects"
+    if (-not (Test-Path $VisualPath)) { New-Item -Path $VisualPath -Force | Out-Null }
+    Set-ItemProperty -Path $VisualPath -Name "VisualFXSetting" -Value 2 -Type DWord -Force
+    $DwmPath = "HKCU:\Software\Microsoft\Windows\DWM"
+    Set-ItemProperty -Path $DwmPath -Name "ColorPrevalence" -Value 0 -Type DWord -Force
+    Set-ItemProperty -Path $DwmPath -Name "EnableAeroPeek" -Value 0 -Type DWord -Force
+    Set-ItemProperty -Path $DwmPath -Name "AlwaysHibernateThumbnails" -Value 1 -Type DWord -Force
+    $DesktopPath = "HKCU:\Control Panel\Desktop\WindowMetrics"
+    Set-ItemProperty -Path $DesktopPath -Name "MinAnimate" -Value "0" -Type String -Force
+    $RegMemoryPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Memory Management"
+    Set-ItemProperty -Path $RegMemoryPath -Name "DisablePagingExecutive" -Value 1 -Type DWord -Force
+    Set-ItemProperty -Path $RegMemoryPath -Name "LargeSystemCache" -Value 0 -Type DWord -Force
+    $PrivacyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy"
+    if (-not (Test-Path $PrivacyPath)) { New-Item -Path $PrivacyPath -Force | Out-Null }
+    Set-ItemProperty -Path $PrivacyPath -Name "LetAppsRunInBackground" -Value 2 -Type DWord -Force
+    $WscNotifPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows Advanced Threat Protection"
+    if (-not (Test-Path $WscNotifPath)) { New-Item -Path $WscNotifPath -Force | Out-Null }
+    Set-ItemProperty -Path $WscNotifPath -Name "ShowAlertWindow" -Value 0 -Type DWord -Force
+    $BenignNotifPath = "HKLM:\SOFTWARE\Microsoft\Windows Defender Security Center\Notifications"
+    if (-not (Test-Path $BenignNotifPath)) { New-Item -Path $BenignNotifPath -Force | Out-Null }
+    Set-ItemProperty -Path $BenignNotifPath -Name "DisableNotifications" -Value 1 -Type DWord -Force
+    Set-ItemProperty -Path $BenignNotifPath -Name "DisableEnhancedNotifications" -Value 1 -Type DWord -Force
+    $WpnPolicies = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications"
+    if (-not (Test-Path $WpnPolicies)) { New-Item -Path $WpnPolicies -Force | Out-Null }
+    Set-ItemProperty -Path $WpnPolicies -Name "NoToastNotification" -Value 1 -Type DWord -Force
+    $WpnPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\PushNotifications"
+    if (-not (Test-Path $WpnPath)) { New-Item -Path $WpnPath -Force | Out-Null }
+    Set-ItemProperty -Path $WpnPath -Name "ToastEnabled" -Value 0 -Type DWord -Force
+    $PolicyExplPath = "HKCU:\Software\Policies\Microsoft\Windows\Explorer"
+    if (-not (Test-Path $PolicyExplPath)) { New-Item -Path $PolicyExplPath -Force | Out-Null }
+    Set-ItemProperty -Path $PolicyExplPath -Name "NoNotificationBalloon" -Value 1 -Type DWord -Force
+    Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "SecurityHealth" -ErrorAction SilentlyContinue
+    $ServicesToKill = @("DiagTrack","dmwappushservice","WerSvc","PcaSvc","SysMain","WSearch","WbioSrvc","MapsBroker","Fax","XblAuthManager","XblGameSave","XboxNetApiSvc","XboxGipSvc","RetailDemo","RemoteRegistry","UsoSvc","BDESVC","CDPSvc","PhoneSvc","TrkWks","TabletInputService","StiSvc","wisvc","SensorDataService","SensorService","SensrSvc","BcastDVRUserService","OneSyncSvc","UserDataSvc","UnistoreSvc","PimIndexMaintenanceSvc","MessagingService","wlidsvc","wuauserv","WaaSMedicSvc","FontCache","FontCache3.0.0.0","smphost","DeviceAssociationService","WebManagementService","SDRSVC","WpcMonSvc","Spooler","PrintNotify","Themes","DPS","WdiServiceHost","WdiSystemHost","TroubleshootingSvc","TrainedDeployments","PushToInstall","LicenseManager")
+    foreach ($Svc in $ServicesToKill) {
+        if (Get-Service -Name $Svc -ErrorAction SilentlyContinue) {
+            Stop-Service -Name $Svc -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $Svc -StartupType Disabled -ErrorAction SilentlyContinue
+        }
+    }
+    $GhostProcesses = @("OneDrive","MicrosoftEdgeUpdate","msedge","Teams","WidgetService","SearchHost","YourPhone","SkypeBackgroundHost","SecurityHealthSystray","GameBarPresenceWriter","Cortana","mobsync","ctfmon")
+    foreach ($Proc in $GhostProcesses) { Stop-Process -Name $Proc -Force -ErrorAction SilentlyContinue }
+    if ((Get-CimInstance Win32_OperatingSystem).Caption -like "*Windows 11*") {
+        Get-AppxPackage -AllUsers *WebExperience* | Remove-AppxPackage -ErrorAction SilentlyContinue
+    }
+    $TelemetryTasks = @("\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser","\Microsoft\Windows\Application Experience\ProgramDataUpdater","\Microsoft\Windows\Autochk\Proxy","\Microsoft\Windows\Customer Experience Improvement Program\Consolidator","\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip","\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector","\Microsoft\Windows\Maintenance\Scheduler")
+    foreach ($Task in $TelemetryTasks) {
+        Disable-ScheduledTask -TaskPath (Split-Path $Task) -TaskName (Split-Path $Task -Leaf) -ErrorAction SilentlyContinue
+    }
+    $GpuControllers = Get-CimInstance Win32_VideoController
+    foreach ($Gpu in $GpuControllers) {
+        $DevicePNP = $Gpu.PNPDeviceID
+        $MsiPath = "HKLM:\SYSTEM\CurrentControlSet\Enum\$DevicePNP\Device Parameters\Interrupt Management\MessageSignaledInterruptProperties"
+        if (-not (Test-Path $MsiPath)) { New-Item -Path $MsiPath -Force | Out-Null }
+        Set-ItemProperty -Path $MsiPath -Name "MSISupported" -Value 1 -Type DWord -Force
+        Set-ItemProperty -Path $MsiPath -Name "MessageNumberLimit" -Value 1 -Type DWord -Force
+    }
+    $UltimateProfileGuid = "e9a42b02-581c-44d4-9f1f-9c732444b192"
+    & powercfg /duplicateid $UltimateProfileGuid 2>$null
+    & powercfg /setactive $UltimateProfileGuid 2>$null
+    $PowerControlPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Power\PowerThrottling"
+    if (-not (Test-Path $PowerControlPath)) { New-Item -Path $PowerControlPath -Force | Out-Null }
+    Set-ItemProperty -Path $PowerControlPath -Name "PowerThrottlingOff" -Value 1 -Type DWord -Force
+}}
+$Options += [PSCustomObject]@{Id=469; Cat="Confidentialite"; LabelFR="UserPreferencesMask (bundle performance)"; LabelEN="UserPreferencesMask (performance bundle)"; Risk="safe"; Action={
+    $val = [byte[]](144,18,3,128,16,0,0,0); Set-ItemProperty -LiteralPath 'HKCU:\Control Panel\Desktop' -Name 'UserPreferencesMask' -Value $val -Type Binary -Force
+}}
+
+$Options += [PSCustomObject]@{Id=470; Cat="Processus"; LabelFR="Universal Windows 11 Optimisations (Process & RAM Floor)"; LabelEN="Universal Windows 11 Optimisations (Process & RAM Floor)"; Risk="moderate"; Action={
+    Get-AppxPackage -AllUsers *WebExperience* | Remove-AppxPackage -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=471; Cat="Processus"; LabelFR="Scheduled Task Purge (Kill Hidden Processes)"; LabelEN="Scheduled Task Purge (Kill Hidden Processes)"; Risk="moderate"; Action={
+    .\purge_telemetry_tasks.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=472; Cat="Nettoyage"; LabelFR="Deep system clean (temp files, event logs, OneDrive)"; LabelEN="Deep system clean (temp files, event logs, OneDrive)"; Risk="moderate"; Action={
+    taskkill /IM OneDrive /F 2>$null
+    taskkill /IM Cortana /F 2>$null
+    taskkill /IM SearchUI /F 2>$null
+    taskkill /IM GameBar /F 2>$null
+    taskkill /IM XboxApp /F 2>$null
+    taskkill /IM YourPhone /F 2>$null
+    if exist "%SystemRoot%\SysWOW64\OneDriveSetup.exe" start /wait %SystemRoot%\SysWOW64\OneDriveSetup.exe /uninstall
+    if exist "%SystemRoot%\System32\OneDriveSetup.exe" start /wait %SystemRoot%\System32\OneDriveSetup.exe /uninstall
+    Remove-Item -Recurse -Force "$env:USERPROFILE\OneDrive" -ErrorAction SilentlyContinue
+    Clear-RecycleBin -Force -ErrorAction SilentlyContinue
+    dism /online /cleanup-image /startcomponentcleanup /quiet
+    $logs = wevtutil el
+foreach ($log in $logs) {
+  wevtutil cl "$log" 2>$null
+}
+
+    del /f /s /q "%TEMP%\*" 2>nul
+    del /f /s /q "C:\Windows\Temp\*" 2>nul
+    del /f /s /q "C:\Windows\Prefetch\*" 2>nul
+}}
+
+$Options += [PSCustomObject]@{Id=473; Cat="Nettoyage"; LabelFR="Clean Start Menu (Only App List - No Pinned Apps or Groups)"; LabelEN="Clean Start Menu (Only App List - No Pinned Apps or Groups)"; Risk="moderate"; Action={
+    startmenu.cmd
+    Remove-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState\StartMenuExperienceHost.settings" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:LOCALAPPDATA\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\Settings\settings.dat" -Force -ErrorAction SilentlyContinue
+    taskkill /IM explorer /F 2>$null
+    start explorer.exe
+}}
+
+$Options += [PSCustomObject]@{Id=474; Cat="Services"; LabelFR="Services"; LabelEN="Services"; Risk="moderate"; Action={
+    Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'dmwappushservice' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'dmwappushservice' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagnosticshub.standardcollector.service' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagnosticshub.standardcollector.service' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdiServiceHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdiServiceHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdiSystemHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdiSystemHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WerSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WerSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wercplsupport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wercplsupport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PcaSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PcaSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Telemetry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Telemetry' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'pla' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'pla' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wmiApSrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wmiApSrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Wecsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Wecsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DPS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DPS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TroubleshootingSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TroubleshootingSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'OneSyncSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'OneSyncSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpnService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpnService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpnUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpnUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DataUsageSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DataUsageSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Dssvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Dssvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DsSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DsSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CloudIdSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CloudIdSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CloudBackupRestoreSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CloudBackupRestoreSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cbdhsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cbdhsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XblAuthManager' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XblAuthManager' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XblGameSave' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XblGameSave' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XboxGipSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XboxGipSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XboxNetApiSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XboxNetApiSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BcastDVRUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BcastDVRUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WSearch' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WSearch' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SysMain' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SysMain' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Themes' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Themes' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TrkWks' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TrkWks' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WMPNetworkSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WMPNetworkSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VacSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VacSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UserDataSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UserDataSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UnistoreSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UnistoreSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PimIndexMaintenanceSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PimIndexMaintenanceSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'spectrum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'spectrum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SpatialGraphFilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SpatialGraphFilter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SharedRealitySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SharedRealitySvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SharedAccess' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SharedAccess' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmAgent' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmAgent' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'perceptionsimulation' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'perceptionsimulation' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MixedRealityOpenXRSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MixedRealityOpenXRSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SensrSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SensrSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SensorService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SensorService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SensorDataService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SensorDataService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'svsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'svsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'embeddedmode' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'embeddedmode' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WPDBusEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WPDBusEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wisvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wisvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpcMonSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpcMonSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MapsBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MapsBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RetailDemo' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RetailDemo' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SessionEnv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SessionEnv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TermService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TermService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UmRdpService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UmRdpService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LicenseManager' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LicenseManager' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AutoTimeUpdater' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AutoTimeUpdater' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tzautoupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tzautoupdate' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'W32Time' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'W32Time' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'autotimesvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'autotimesvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MessagingService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MessagingService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Semgrsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Semgrsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WarpJITSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WarpJITSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'McpManagementService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'McpManagementService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Spooler' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Spooler' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'printworkflowusersvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'printworkflowusersvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'stisvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'stisvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PrintNotify' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PrintNotify' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'usbprint' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'usbprint' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PrintScanBrokerService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PrintScanBrokerService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PrintDeviceConfigurationService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PrintDeviceConfigurationService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LPTEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LPTEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Parallel' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Parallel' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BluetoothUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BluetoothUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthAvctpSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthAvctpSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthHFEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthHFEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthLEEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthLEEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthA2dp' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthA2dp' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHMODEM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHMODEM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Microsoft_Bluetooth_AvrcpTransport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Microsoft_Bluetooth_AvrcpTransport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RFCOMM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RFCOMM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bthserv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bthserv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTAGService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTAGService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BluetoothAudioSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BluetoothAudioSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthMini' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthMini' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthRadUsb' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthRadUsb' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Microsoft_Bluetooth_AvctpTransport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Microsoft_Bluetooth_AvctpTransport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SSDPSRV' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SSDPSRV' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SmsRouter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SmsRouter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'IpxlatCfgSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'IpxlatCfgSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetTcpPortSharing' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetTcpPortSharing' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'KtmRm' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'KtmRm' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MSDTC' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MSDTC' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RmSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RmSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LanmanWorkstation' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LanmanWorkstation' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LanmanServer' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LanmanServer' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lmhosts' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lmhosts' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NdisWan' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NdisWan' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PhoneSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PhoneSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TapiSrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TapiSrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lfsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lfsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SCardSvr' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SCardSvr' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ScDeviceEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ScDeviceEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SCPolicySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SCPolicySvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'scfilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'scfilter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SEMgrSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SEMgrSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AppVClient' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AppVClient' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AJRouter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AJRouter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AppIDSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AppIDSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DsmSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DsmSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DialogBlockingService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DialogBlockingService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MsKeyboardFilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MsKeyboardFilter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'icssvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'icssvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ShellHWDetection' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ShellHWDetection' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'defragsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'defragsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'FontCache' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'FontCache' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MSiSCSI' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MSiSCSI' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PenService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PenService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'P9RdrService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'P9RdrService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PNRPsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PNRPsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'p2psvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'p2psvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'p2pimsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'p2pimsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PeerDistSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PeerDistSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RasAuto' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RasAuto' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RasAcd' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RasAcd' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'terminpt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'terminpt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TsUsbGD' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TsUsbGD' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VSS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VSS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WaaSMedicSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WaaSMedicSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WalletService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WalletService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wbengine' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wbengine' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WbioSrvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WbioSrvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WEPHOSTSVC' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WEPHOSTSVC' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wdiservicehost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wdiservicehost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wdisystemhost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wdisystemhost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DisplayEnhancementService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DisplayEnhancementService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VaultSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VaultSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'EventSystem' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'EventSystem' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GraphicsPerfSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GraphicsPerfSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NVDisplay.ContainerLocalSystem' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NVDisplay.ContainerLocalSystem' -StartupType Automatic -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AxInstSV' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AxInstSV' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AarSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AarSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cloudidsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cloudidsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=475; Cat="Services"; LabelFR="Services"; LabelEN="Services"; Risk="moderate"; Action={
+    Stop-Service -Name 'dam' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'dam' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GpuEnergyDrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GpuEnergyDrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetBT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetBT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Telemetry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Telemetry' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagnosticshub.standardcollector.service' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagnosticshub.standardcollector.service' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WerSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WerSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wisvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wisvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PcaSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PcaSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdiServiceHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdiServiceHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdiSystemHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdiSystemHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tcpipreg' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tcpipreg' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'edgeupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdate' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Wecsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Wecsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UCPD' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UCPD' -StartupType Disabled -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskPath '\Microsoft\Windows\AppxDeploymentClient' -TaskName 'UCPD velocity'
+    Stop-Service -Name 'condrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'condrv' -StartupType Automatic -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=476; Cat="Services"; LabelFR="Disable Unnecessary Scheduled Tasks"; LabelEN="Disable Unnecessary Scheduled Tasks"; Risk="moderate"; Action={
+    Disable-ScheduledTask -TaskName '.NET Framework NGEN v4.0.30319 64 Critical' -TaskPath '\Microsoft\Windows\.NET Framework\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName '.NET Framework NGEN v4.0.30319 64' -TaskPath '\Microsoft\Windows\.NET Framework\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName '.NET Framework NGEN v4.0.30319 Critical' -TaskPath '\Microsoft\Windows\.NET Framework\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName '.NET Framework NGEN v4.0.30319' -TaskPath '\Microsoft\Windows\.NET Framework\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'StartupAppTask' -TaskPath '\Microsoft\Windows\Application Experience\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Proxy' -TaskPath '\Microsoft\Windows\Autochk\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'BgTaskRegistrationMaintenanceTask' -TaskPath '\Microsoft\Windows\BrokerInfrastructure\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Scheduled' -TaskPath '\Microsoft\Windows\Diagnosis\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'SilentCleanup' -TaskPath '\Microsoft\Windows\DiskCleanup\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'StorageSense' -TaskPath '\Microsoft\Windows\DiskFootprint\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Synchronize Language Settings' -TaskPath '\Microsoft\Windows\International\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'SvcRestartTaskLogon' -TaskPath '\Microsoft\Windows\SoftwareProtectionPlatform\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ForceSynchronizeTime' -TaskPath '\Microsoft\Windows\Time Synchronization\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'SynchronizeTime' -TaskPath '\Microsoft\Windows\Time Synchronization\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'UPnPHostConfig' -TaskPath '\Microsoft\Windows\UPnP\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'BfeOnServiceStartTypeChange' -TaskPath '\Microsoft\Windows\Windows Filtering Platform\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'AikCertEnrollTask' -TaskPath '\Microsoft\Windows\CertificateServicesClient\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'KeyPreGenTask' -TaskPath '\Microsoft\Windows\CertificateServicesClient\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'License Validation' -TaskPath '\Microsoft\Windows\Clip\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ScheduledDefrag' -TaskPath '\Microsoft\Windows\Defrag\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Metadata Refresh' -TaskPath '\Microsoft\Windows\Device Setup\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Microsoft-Windows-DiskDiagnosticDataCollector' -TaskPath '\Microsoft\Windows\DiskDiagnostic\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Microsoft-Windows-DiskDiagnosticResolver' -TaskPath '\Microsoft\Windows\DiskDiagnostic\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Diagnostics' -TaskPath '\Microsoft\Windows\DiskFootprint\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ScanForUpdates' -TaskPath '\Microsoft\Windows\InstallService\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ScanForUpdatesAsUser' -TaskPath '\Microsoft\Windows\InstallService\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'SmartRetry' -TaskPath '\Microsoft\Windows\InstallService\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'RegIdleBackup' -TaskPath '\Microsoft\Windows\Registry\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'IntelligentPwdlessTask' -TaskPath '\Microsoft\Windows\Security\Pwdless\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'SvcRestartTaskNetwork' -TaskPath '\Microsoft\Windows\SoftwareProtectionPlatform\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'MaintenanceTasks' -TaskPath '\Microsoft\Windows\StateRepository\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'EnableLicenseAcquisition' -TaskPath '\Microsoft\Windows\Subscription\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'LicenseAcquisition' -TaskPath '\Microsoft\Windows\Subscription\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ResPriStaticDbSync' -TaskPath '\Microsoft\Windows\Sysmain\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WsSwapAssessmentTask' -TaskPath '\Microsoft\Windows\Sysmain\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ResolutionHost' -TaskPath '\Microsoft\Windows\WDI\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'QueueReporting' -TaskPath '\Microsoft\Windows\Windows Error Reporting\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'CacheTask' -TaskPath '\Microsoft\Windows\Wininet\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'TaskScheduler' -TaskPath '\Microsoft\Windows\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WaaSMedic' -TaskPath '\Microsoft\Windows\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WindowsUpdate' -TaskPath '\Microsoft\Windows\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Scheduled Start' -TaskPath '\Microsoft\Windows\WindowsUpdate\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Report policies' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Schedule Scan' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Schedule Scan Static Task' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'USO_UxBroker' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Schedule Wake To Work' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Start Oobe Expedite Work' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'SR' -TaskPath '\Microsoft\Windows\SystemRestore\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'appuriverifierdaily' -TaskPath '\Microsoft\Windows\ApplicationData\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Microsoft Compatibility Appraiser' -TaskPath '\Microsoft\Windows\Application Experience\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'MareBackup' -TaskPath '\Microsoft\Windows\Application Experience\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Consolidator' -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'UsbCeip' -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Device User' -TaskPath '\Microsoft\Windows\Device Information\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Device' -TaskPath '\Microsoft\Windows\Device Information\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'DmClient' -TaskPath '\Microsoft\Windows\Feedback\Siuf\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'DmClientOnScenarioDownload' -TaskPath '\Microsoft\Windows\Feedback\Siuf\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ReconcileFeatures' -TaskPath '\Microsoft\Windows\Flighting\FeatureConfig\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'UsageDataFlushing' -TaskPath '\Microsoft\Windows\Flighting\FeatureConfig\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'UsageDataReporting' -TaskPath '\Microsoft\Windows\Flighting\FeatureConfig\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'LocalUserSyncDataAvailable' -TaskPath '\Microsoft\Windows\Input\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'MouseSyncDataAvailable' -TaskPath '\Microsoft\Windows\Input\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'PenSyncDataAvailable' -TaskPath '\Microsoft\Windows\Input\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'TouchpadSyncDataAvailable' -TaskPath '\Microsoft\Windows\Input\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Notifications' -TaskPath '\Microsoft\Windows\Location\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WindowsActionDialog' -TaskPath '\Microsoft\Windows\Location\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'DsSvcCleanup' -TaskPath '\Microsoft\Windows\ApplicationData\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'CreateObjectTask' -TaskPath '\Microsoft\Windows\CloudExperienceHost\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WinSAT' -TaskPath '\Microsoft\Windows\Maintenance\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Sqm-Tasks' -TaskPath '\Microsoft\Windows\PI\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'AnalyzeSystem' -TaskPath '\Microsoft\Windows\Power Efficiency Diagnostics\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'IndexerAutomaticMaintenance' -TaskPath '\Microsoft\Windows\Shell\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'MapsToastTask' -TaskPath '\Microsoft\Windows\Maps\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'MapsUpdateTask' -TaskPath '\Microsoft\Windows\Maps\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ProcessMemoryDiagnosticEvents' -TaskPath '\Microsoft\Windows\MemoryDiagnostic\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'RunFullMemoryDiagnostic' -TaskPath '\Microsoft\Windows\MemoryDiagnostic\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'TaskScheduler' -TaskPath '\Microsoft\Windows\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WaaSMedic' -TaskPath '\Microsoft\Windows\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WindowsUpdate' -TaskPath '\Microsoft\Windows\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Scheduled Start' -TaskPath '\Microsoft\Windows\WindowsUpdate\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Schedule Scan' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Schedule Scan Static Task' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Schedule Wake To Work' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Start Oobe Expedite Work' -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=477; Cat="Services"; LabelFR="services.yml"; LabelEN="services.yml"; Risk="moderate"; Action={
+    Stop-Service -Name 'diagnosticshub.standardcollector.service' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagnosticshub.standardcollector.service' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'dmwappushservice' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'dmwappushservice' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lfsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lfsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MapsBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MapsBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MessagingService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MessagingService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'OneSyncSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'OneSyncSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RetailDemo' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RetailDemo' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SessionEnv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SessionEnv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TermService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TermService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Themes' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Themes' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TroubleshootingSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TroubleshootingSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UmRdpService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UmRdpService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wercplsupport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wercplsupport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WerSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WerSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PcaSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PcaSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wisvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wisvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WSearch' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WSearch' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VacSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VacSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UserDataSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UserDataSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UnistoreSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UnistoreSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'spectrum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'spectrum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SpatialGraphFilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SpatialGraphFilter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SharedRealitySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SharedRealitySvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SharedAccess' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SharedAccess' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'sfloppy' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'sfloppy' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PimIndexMaintenanceSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PimIndexMaintenanceSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'perceptionsimulation' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'perceptionsimulation' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MixedRealityOpenXRSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MixedRealityOpenXRSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MicrosoftEdgeElevationService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MicrosoftEdgeElevationService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'FontCache3.0.0.0' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'FontCache3.0.0.0' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'flpydisk' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'flpydisk' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Filetrace' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Filetrace' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'fdc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'fdc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'edgeupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdate' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'edgeupdatem' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdatem' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'e1i68x64' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'e1i68x64' -StartupType Disabled -ErrorAction SilentlyContinue
+    xcopy  "PostInstall" "C:\PostInstall" /E /I /H /Y
+    Start-Process -FilePath 'defaultservices.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'filters.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AppVClient' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AppVClient' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AJRouter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AJRouter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AppIDSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AppIDSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DsmSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DsmSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DialogBlockingService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DialogBlockingService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'autotimesvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'autotimesvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'W32Time' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'W32Time' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DPS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DPS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DsSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DsSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DusmSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DusmSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MsKeyboardFilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MsKeyboardFilter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'icssvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'icssvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ShellHWDetection' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ShellHWDetection' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SysMain' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SysMain' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TrkWks' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TrkWks' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tzautoupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tzautoupdate' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdiSystemHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdiSystemHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdiServiceHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdiServiceHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SensorDataService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SensorDataService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SensrSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SensrSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SensorService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SensorService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Beep' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Beep' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cdfs' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cdfs' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cdrom' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cdrom' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'acpiex' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'acpiex' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cnghwassist' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cnghwassist' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Telemetry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Telemetry' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VerifierExt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VerifierExt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'udfs' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'udfs' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MsLldp' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MsLldp' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lltdio' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lltdio' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NDU' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NDU' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'fvevol' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'fvevol' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UsoSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UsoSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cbdhsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cbdhsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BcastDVRUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BcastDVRUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'rdyboost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'rdyboost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'rdpbus' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'rdpbus' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'umbus' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'umbus' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vdrvroot' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vdrvroot' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Vid' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Vid' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CompositeBus' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CompositeBus' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'rspndr' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'rspndr' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NdisCap' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NdisCap' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetBIOS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetBIOS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetBT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetBT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'spaceport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'spaceport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VaultSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VaultSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'EventSystem' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'EventSystem' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'storqosflt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'storqosflt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bowser' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bowser' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WarpJITSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WarpJITSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Wecsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Wecsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GraphicsPerfSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GraphicsPerfSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WMPNetworkSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WMPNetworkSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name '3ware' -Force -ErrorAction SilentlyContinue; Set-Service -Name '3ware' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'arcsas' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'arcsas' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'buttonconverter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'buttonconverter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'circlass' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'circlass' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Dfsc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Dfsc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ErrDev' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ErrDev' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'mrxsmb' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'mrxsmb' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'mrxsmb20' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'mrxsmb20' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PEAUTH' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PEAUTH' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'QWAVEdrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'QWAVEdrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'srv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'srv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SiSRaid2' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SiSRaid2' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SiSRaid4' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SiSRaid4' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Tcpip6' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Tcpip6' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tcpipreg' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tcpipreg' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vsmraid' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vsmraid' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VSTXRAID' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VSTXRAID' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wcnfs' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wcnfs' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WindowsTrustedRTProxy' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WindowsTrustedRTProxy' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SSDPSRV' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SSDPSRV' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SmsRouter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SmsRouter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CldFlt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CldFlt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DisplayEnhancementService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DisplayEnhancementService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'IpxlatCfgSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'IpxlatCfgSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetTcpPortSharing' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetTcpPortSharing' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'KtmRm' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'KtmRm' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LanmanWorkstation' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LanmanWorkstation' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LanmanServer' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LanmanServer' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lmhosts' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lmhosts' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MSDTC' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MSDTC' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'QWAVE' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'QWAVE' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RmSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RmSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmickvpexchange' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmickvpexchange' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicguestinterface' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicguestinterface' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicshutdown' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicshutdown' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicheartbeat' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicheartbeat' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicvmsession' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicvmsession' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vpci' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vpci' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TsUsbFlt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TsUsbFlt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tsusbhub' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tsusbhub' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'storflt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'storflt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RDPDR' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RDPDR' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RdpVideominiport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RdpVideominiport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bttflt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bttflt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicrdv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicrdv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmictimesync' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmictimesync' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicvss' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicvss' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hyperkbd' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hyperkbd' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hypervideo' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hypervideo' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'gencounter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'gencounter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmgid' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmgid' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hvservice' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hvservice' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hvcrash' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hvcrash' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'HvHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'HvHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AxInstSV' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AxInstSV' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AarSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AarSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cloudidsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cloudidsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'defragsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'defragsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ehstorclass' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ehstorclass' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ehstortcgdrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ehstortcgdrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'embeddedmode' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'embeddedmode' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'FontCache' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'FontCache' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MSiSCSI' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MSiSCSI' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Ndu' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Ndu' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'printworkflowusersvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'printworkflowusersvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PenService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PenService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'P9RdrService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'P9RdrService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PNRPsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PNRPsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'p2psvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'p2psvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'p2pimsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'p2pimsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PhoneSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PhoneSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PeerDistSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PeerDistSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RasAuto' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RasAuto' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RasAcd' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RasAcd' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SCardSvr' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SCardSvr' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ScDeviceEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ScDeviceEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SCPolicySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SCPolicySvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'scfilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'scfilter' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SEMgrSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SEMgrSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TapiSrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TapiSrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'terminpt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'terminpt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TsUsbGD' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TsUsbGD' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VSS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VSS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WaaSMedicSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WaaSMedicSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WalletService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WalletService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wbengine' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wbengine' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpnService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpnService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WbioSrvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WbioSrvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WEPHOSTSVC' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WEPHOSTSVC' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WPDBusEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WPDBusEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wdiservicehost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wdiservicehost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wdisystemhost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wdisystemhost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpcMonSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpcMonSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Spooler' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Spooler' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthA4dp' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthA4dp' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthHFEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthHFEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthLEEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthLEEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHMODEM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHMODEM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Microsoft_Bluetooth_AvrcpTransport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Microsoft_Bluetooth_AvrcpTransport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BluetoothUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BluetoothUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthAvctpSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthAvctpSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RFCOMM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RFCOMM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bthserv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bthserv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTAGService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTAGService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHUSB' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHUSB' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHPORT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHPORT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthMini' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthMini' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'HidBth' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'HidBth' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SstpSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SstpSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'IKEEXT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'IKEEXT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'iphlpsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'iphlpsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NdisVirtualBus' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NdisVirtualBus' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RasMan' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RasMan' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WinHttpAutoProxySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WinHttpAutoProxySvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'acpipagr' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'acpipagr' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GpuEnergyDrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GpuEnergyDrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AcpiPmi' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AcpiPmi' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PRM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PRM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'acpitime' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'acpitime' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bam' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bam' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'dam' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'dam' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WmiAcpi' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WmiAcpi' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'serenum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'serenum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'sermouse' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'sermouse' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'serial' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'serial' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'luafv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'luafv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DisableDefenderServices.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'sapphireosservices.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=478; Cat="Services"; LabelFR="Services"; LabelEN="Services"; Risk="moderate"; Action={
+    Stop-Service -Name 'applockerfltr' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'applockerfltr' -StartupType Manual -ErrorAction SilentlyContinue
+    $build = [System.Environment]::OSVersion.Version.Build
+Write-Host "Applying supported Defender preferences on Windows build $build."
+$mp = Get-Command Set-MpPreference -ErrorAction SilentlyContinue
+if ($mp) {
+    $preferences = @{
+        DisableRealtimeMonitoring = $true
+        DisableBehaviorMonitoring = $true
+        DisableIOAVProtection = $true
+        DisableScriptScanning = $true
+        DisableArchiveScanning = $true
+        MAPSReporting = 0
+        SubmitSamplesConsent = 2
+    }
+    foreach ($entry in $preferences.GetEnumerator()) {
+        try {
+            $param = @{}
+            $param[$entry.Key] = $entry.Value
+            Set-MpPreference -ErrorAction Stop @param
+        } catch {
+            Write-Host "Skipping Defender preference $($entry.Key): $($_.Exception.Message)"
+        }
+    }
+}
+Write-Host "Applied Defender disable preferences on Windows build $build. Protected Defender services are not stopped live to avoid access-denied timeouts and shell stalls."
+
+    $serviceNames = @(
+    'WinDefend',
+    'WdBoot',
+    'WdFilter',
+    'WdNisDrv',
+    'WdNisSvc',
+    'SecurityHealthService'
+)
+foreach ($controlSet in @('CurrentControlSet', 'ControlSet001')) {
+    foreach ($serviceName in $serviceNames) {
+        $path = "HKLM:\SYSTEM\$controlSet\Services\$serviceName"
+        try {
+            if (Test-Path -LiteralPath $path) {
+                Set-ItemProperty -LiteralPath $path -Name 'Start' -Type DWord -Value 4 -ErrorAction Stop
+                Write-Host "Disabled Defender service for next boot: $path"
+            }
+        } catch {
+            Write-Host "Skipping protected Defender service $($path): $($_.Exception.Message)"
+        }
+    }
+}
+Write-Host "Defender service startup changes were attempted without failing the playbook on protected systems."
+
+    taskkill /IM devicecensus /F 2>$null
+    taskkill /IM UsoClient /F 2>$null
+    taskkill /IM devicecensus /F 2>$null
+    taskkill /IM MoUsoCoreWorker /F 2>$null
+    taskkill /IM wuauclt /F 2>$null
+    Stop-Service -Name 'UsoSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UsoSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WaaSMedicSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WaaSMedicSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wuauserv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wuauserv' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpcMonSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpcMonSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UevAgentService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UevAgentService' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UsoSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UsoSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'iphlpsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'iphlpsvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RetailDemo' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RetailDemo' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagnosticshub.standardcollector.service' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagnosticshub.standardcollector.service' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'dmwappushservice' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'dmwappushservice' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MapsBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MapsBroker' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetTcpPortSharing' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetTcpPortSharing' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RemoteAccess' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RemoteAccess' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RemoteRegistry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RemoteRegistry' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SharedAccess' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SharedAccess' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TrkWks' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TrkWks' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WbioSrvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WbioSrvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WMPNetworkSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WMPNetworkSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BITS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BITS' -StartupType Manual -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block Services' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block SearchApp' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block SearchHost' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block StartMenuExperienceHost' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block SystemSettings' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\CurrentControlSet\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block Explorer' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block Services' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block SearchApp' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block SearchHost' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block StartMenuExperienceHost' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block SystemSettings' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Services\SharedAccess\Parameters\FirewallPolicy\FirewallRules' -Name 'Block Explorer' -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=479; Cat="Services"; LabelFR="Disabling services"; LabelEN="Disabling services"; Risk="moderate"; Action={
+    Stop-Service DiagTrack -Force -ErrorAction SilentlyContinue; Set-Service DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service dmwappushservice -Force -ErrorAction SilentlyContinue; Set-Service dmwappushservice -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WerSvc -Force -ErrorAction SilentlyContinue; Set-Service WerSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service PcaSvc -Force -ErrorAction SilentlyContinue; Set-Service PcaSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SysMain -Force -ErrorAction SilentlyContinue; Set-Service SysMain -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WSearch -Force -ErrorAction SilentlyContinue; Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WbioSrvc -Force -ErrorAction SilentlyContinue; Set-Service WbioSrvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service MapsBroker -Force -ErrorAction SilentlyContinue; Set-Service MapsBroker -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service Fax -Force -ErrorAction SilentlyContinue; Set-Service Fax -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XblAuthManager -Force -ErrorAction SilentlyContinue; Set-Service XblAuthManager -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XblGameSave -Force -ErrorAction SilentlyContinue; Set-Service XblGameSave -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XboxNetApiSvc -Force -ErrorAction SilentlyContinue; Set-Service XboxNetApiSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service RetailDemo -Force -ErrorAction SilentlyContinue; Set-Service RetailDemo -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service RemoteRegistry -Force -ErrorAction SilentlyContinue; Set-Service RemoteRegistry -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service UsoSvc -Force -ErrorAction SilentlyContinue; Set-Service UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service BDESVC -Force -ErrorAction SilentlyContinue; Set-Service BDESVC -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service iphlpsvc -Force -ErrorAction SilentlyContinue; Set-Service iphlpsvc -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service ShellHWDetection -Force -ErrorAction SilentlyContinue; Set-Service ShellHWDetection -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service CDPSvc -Force -ErrorAction SilentlyContinue; Set-Service CDPSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service PhoneSvc -Force -ErrorAction SilentlyContinue; Set-Service PhoneSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service Spooler -Force -ErrorAction SilentlyContinue; Set-Service Spooler -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service TrkWks -Force -ErrorAction SilentlyContinue; Set-Service TrkWks -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service TabletInputService -Force -ErrorAction SilentlyContinue; Set-Service TabletInputService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service StiSvc -Force -ErrorAction SilentlyContinue; Set-Service StiSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service wisvc -Force -ErrorAction SilentlyContinue; Set-Service wisvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SensorDataService -Force -ErrorAction SilentlyContinue; Set-Service SensorDataService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SensorService -Force -ErrorAction SilentlyContinue; Set-Service SensorService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SensrSvc -Force -ErrorAction SilentlyContinue; Set-Service SensrSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WpnService -Force -ErrorAction SilentlyContinue; Set-Service WpnService -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service BcastDVRUserService -Force -ErrorAction SilentlyContinue; Set-Service BcastDVRUserService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service OneSyncSvc -Force -ErrorAction SilentlyContinue; Set-Service OneSyncSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service UserDataSvc -Force -ErrorAction SilentlyContinue; Set-Service UserDataSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service UnistoreSvc -Force -ErrorAction SilentlyContinue; Set-Service UnistoreSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service PimIndexMaintenanceSvc -Force -ErrorAction SilentlyContinue; Set-Service PimIndexMaintenanceSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service MessagingService -Force -ErrorAction SilentlyContinue; Set-Service MessagingService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service wlidsvc -Force -ErrorAction SilentlyContinue; Set-Service wlidsvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WaaSMedicSvc -Force -ErrorAction SilentlyContinue; Set-Service WaaSMedicSvc -StartupType Disabled -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=480; Cat="Services"; LabelFR="Disable telemetry and compatibility scheduled tasks"; LabelEN="Disable telemetry and compatibility scheduled tasks"; Risk="moderate"; Action={
+    .\disable_telemetry_tasks.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=481; Cat="Services"; LabelFR="Aggressive Service Purge (Limit Push)"; LabelEN="Aggressive Service Purge (Limit Push)"; Risk="moderate"; Action={
+    Stop-Service SysMain -Force -ErrorAction SilentlyContinue; Set-Service SysMain -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service DiagTrack -Force -ErrorAction SilentlyContinue; Set-Service DiagTrack -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WerSvc -Force -ErrorAction SilentlyContinue; Set-Service WerSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service RemoteRegistry -Force -ErrorAction SilentlyContinue; Set-Service RemoteRegistry -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WSearch -Force -ErrorAction SilentlyContinue; Set-Service WSearch -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WbioSrvc -Force -ErrorAction SilentlyContinue; Set-Service WbioSrvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service MapsBroker -Force -ErrorAction SilentlyContinue; Set-Service MapsBroker -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service Fax -Force -ErrorAction SilentlyContinue; Set-Service Fax -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XblAuthManager -Force -ErrorAction SilentlyContinue; Set-Service XblAuthManager -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XblGameSave -Force -ErrorAction SilentlyContinue; Set-Service XblGameSave -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XboxNetApiSvc -Force -ErrorAction SilentlyContinue; Set-Service XboxNetApiSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XboxGipSvc -Force -ErrorAction SilentlyContinue; Set-Service XboxGipSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service XblAuthManager -Force -ErrorAction SilentlyContinue; Set-Service XblAuthManager -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service RetailDemo -Force -ErrorAction SilentlyContinue; Set-Service RetailDemo -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service BDESVC -Force -ErrorAction SilentlyContinue; Set-Service BDESVC -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service CDPSvc -Force -ErrorAction SilentlyContinue; Set-Service CDPSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service PhoneSvc -Force -ErrorAction SilentlyContinue; Set-Service PhoneSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service TrkWks -Force -ErrorAction SilentlyContinue; Set-Service TrkWks -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service TabletInputService -Force -ErrorAction SilentlyContinue; Set-Service TabletInputService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service StiSvc -Force -ErrorAction SilentlyContinue; Set-Service StiSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service wisvc -Force -ErrorAction SilentlyContinue; Set-Service wisvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SensorDataService -Force -ErrorAction SilentlyContinue; Set-Service SensorDataService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SensorService -Force -ErrorAction SilentlyContinue; Set-Service SensorService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SensrSvc -Force -ErrorAction SilentlyContinue; Set-Service SensrSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service BcastDVRUserService -Force -ErrorAction SilentlyContinue; Set-Service BcastDVRUserService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service OneSyncSvc -Force -ErrorAction SilentlyContinue; Set-Service OneSyncSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service UserDataSvc -Force -ErrorAction SilentlyContinue; Set-Service UserDataSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service UnistoreSvc -Force -ErrorAction SilentlyContinue; Set-Service UnistoreSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service PimIndexMaintenanceSvc -Force -ErrorAction SilentlyContinue; Set-Service PimIndexMaintenanceSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service MessagingService -Force -ErrorAction SilentlyContinue; Set-Service MessagingService -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service wlidsvc -Force -ErrorAction SilentlyContinue; Set-Service wlidsvc -StartupType Disabled -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=482; Cat="Bloatwares"; LabelFR="Store"; LabelEN="Store"; Risk="moderate"; Action={
+    Stop-Service -Name 'AppXSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AppXSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ClipSVC' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ClipSVC' -StartupType Manual -ErrorAction SilentlyContinue
+    taskkill /IM WinStore.App /F 2>$null
+    taskkill /IM WinStore.App.Host /F 2>$null
+    taskkill /IM WSService /F 2>$null
+    taskkill /IM InstallAgent /F 2>$null
+    taskkill /IM InstallAgentUserSvc /F 2>$null
+    Stop-Service -Name 'InstallService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'InstallService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TokenBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TokenBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WalletService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WalletService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WSService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WSService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsStore*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.StorePurchaseApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.StoreExtensions*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxIdentityProvider*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Xbox.TCUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGameOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxSpeechToTextOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Xbox*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    $paths = @(
+  "$env:ProgramFiles\WindowsApps\Microsoft.WindowsStore*",
+  "$env:ProgramFiles\WindowsApps\Microsoft.StorePurchaseApp*",
+  "$env:LOCALAPPDATA\Packages\Microsoft.WindowsStore*",
+  "$env:LOCALAPPDATA\Packages\Microsoft.StorePurchaseApp*"
+); foreach ($p in $paths) { Get-Item $p -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
+    $paths = @(
+  "$env:ProgramFiles\WindowsApps\Microsoft.Xbox*"
+); foreach ($p in $paths) { Get-Item $p -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsStore\WindowsUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName 'SmartRetry' -TaskPath '\Microsoft\Windows\InstallService\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WSRefreshBannedAppsListTask' -TaskPath '\Microsoft\Windows\WS\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WSTask' -TaskPath '\Microsoft\Windows\WS\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'WiFiTask' -TaskPath '\Microsoft\Windows\WCM\' -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=483; Cat="Bloatwares"; LabelFR="APPX"; LabelEN="APPX"; Risk="moderate"; Action={
+    .\APPX-REMOVER.ps1 -Packages @(
+  'Microsoft.Windows.SecureAssessmentBrowser',
+  'Microsoft.Windows.PeopleExperienceHost',
+  'Microsoft.WindowsCamera',
+  'MicrosoftWindows.Client.WebExperience',
+  'Microsoft.WidgetsPlatformRuntime',
+  'Microsoft.WindowsAlarms',
+  'Microsoft.WindowsMaps',
+  'Microsoft.MicrosoftStickyNotes',
+  'microsoft.windowscommunicationsapps',
+  'Microsoft.People',
+  'Microsoft.BingNews',
+  'Microsoft.BingSearch',
+  'Microsoft.BingWeather',
+  'Microsoft.MicrosoftSolitaireCollection',
+  'Microsoft.WindowsFeedbackHub',
+  'Microsoft.GetHelp',
+  'Microsoft.Getstarted',
+  'Microsoft.Todos',
+  'Microsoft.PowerAutomateDesktop',
+  'Microsoft.549981C3F5F10', # Cortana
+  'MicrosoftCorporationII.QuickAssist',
+  'MicrosoftCorporationII.MicrosoftFamily',
+  'Microsoft.ZuneMusic',
+  'Microsoft.ZuneVideo',
+  'Microsoft.WindowsSoundRecorder',
+  'Clipchamp.Clipchamp',
+  'Microsoft.Whiteboard',
+  'Microsoft.MicrosoftTeamsforSurfaceHub',
+  'MicrosoftCorporationII.MailforSurfaceHub',
+  'Microsoft.MicrosoftPowerBIForWindows',
+  'Microsoft.SkypeApp',
+  'Microsoft.MicrosoftOfficeHub',
+  'Microsoft.Office.Excel',
+  'Microsoft.Office.PowerPoint',
+  'Microsoft.Office.Word',
+  'Microsoft.Office.OneNote',
+  'Microsoft.OutlookForWindows',
+  'SpotifyAB.SpotifyMusic',
+  'OutlookPWA',
+  'Microsoft.Microsoft3DViewer',
+  'Microsoft.Advertising',
+  'MixedReality.Portal',
+  'Microsoft.MSPaint', # Paint 3D
+  'Microsoft.StartExperiencesApp'
+)
+    .\APPX-REMOVER.ps1 -Packages 'Microsoft.Windows.Photos'
+    .\APPX-REMOVER.ps1 -Packages 'Microsoft.Windows.DevHome'
+    .\APPX-REMOVER.ps1 -Packages @(
+  'Microsoft.Xbox',
+  'Microsoft.XboxApp', # Xbox Console Companion is deprecated
+  'Microsoft.GamingApp',
+  'Microsoft.Edge.GameAssist'
+) -ExcludePackages 'Microsoft.XboxGameCallableUI'
+    New-Item -Path 'Registry::HKCR\ms-gamebar\shell\open\command' -Force -ErrorAction SilentlyContinue | Out-Null
+    .\APPX-REMOVER.ps1 -Packages @(
+  'Microsoft.YourPhone',
+  'MicrosoftWindows.CrossDevice'
+)
+}}
+
+$Options += [PSCustomObject]@{Id=484; Cat="Bloatwares"; LabelFR="Configure Deprovisioned Apps"; LabelEN="Configure Deprovisioned Apps"; Risk="moderate"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.549981C3F5F10_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.549981C3F5F10_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingNews_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingWeather_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.ECApp_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.GetHelp_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Getstarted_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge.Stable_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdgeDevToolsClient_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftSolitaireCollection_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.People_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.PowerAutomateDesktop_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Todos_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Apprep.ChxApp_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.ContentDeliveryManager_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.PeopleExperienceHost_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Photos_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.SecureAssessmentBrowser_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsAlarms_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsCamera_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsFeedbackHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsMaps_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsSoundRecorder_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.ZuneMusic_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.ZuneVideo_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\microsoft.windowscommunicationsapps_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Advertising.Xaml_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Microsoft3DViewer_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MixedReality.Portal_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MSPaint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Paint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsNotepad_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\clipchamp.clipchamp_yxz26nhyzhsrt' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.SecHealthUI_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsCalculator_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.MicrosoftFamily_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Whiteboard_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\microsoft.microsoftskydrive_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftTeamsforSurfaceHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.MailforSurfaceHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftPowerBIForWindows_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.SkypeApp_kzf8qxf38zg5c' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftOfficeHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.OneNote_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.Excel_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.PowerPoint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.Word_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.DevHome_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.OutlookForWindows_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MSTeams_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=485; Cat="Bloatwares"; LabelFR="Appx"; LabelEN="Appx"; Risk="moderate"; Action={
+    Get-AppxPackage -AllUsers -Name '*Disney*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*microsoft.microsoftedge.stable*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftEdge*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Edge*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftEdgeDevToolsClient*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Remove-Item -Path 'C:\Windows\SystemApps\Microsoft.MicrosoftEdgeDevToolsClient_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*OneDrive*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Spotify*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*SecureAssessmentBrowser*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*PeopleExperienceHost*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.Photos*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.WindowsCamera*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage MicrosoftWindows.Client.WebExperience | Remove-AppxPackage
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.Client.WebExperience*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.WindowsAlarms*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.WindowsMaps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftStickyNotes*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage *windowscommunicationsapps* | Remove-AppxPackage
+    Get-AppxPackage -AllUsers -Name '*microsoft.windowscommunicationsapps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.People*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.BingNews*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*BingSearch*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.BingWeather*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftSolitaireCollection*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.WindowsFeedbackHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.GetHelp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Getstarted*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WebExperienceHost*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Todos*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.PowerAutomateDesktop*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.549981C3F5F10*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftCorporationII.QuickAssist*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftCorporationII.MicrosoftFamily*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.ZuneMusic*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.ZuneVideo*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.WindowsSoundRecorder*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Clipchamp.Clipchamp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Whiteboard*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*microsoft.microsoftskydrive*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftTeamsforSurfaceHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftCorporationII.MailforSurfaceHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftPowerBIForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.SkypeApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MicrosoftOfficeHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Office.Excel*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Office.PowerPoint*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Office.Word*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Office.OneNote*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*OutlookForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*OutlookPWA*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Microsoft3DViewer*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Advertising*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MixedReality.Portal*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.MSPaint*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    taskkill /IM *teams* /F 2>$null
+    Get-AppxPackage -AllUsers -Name '*MicrosoftTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MSTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*DevHome*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WindowsBackup*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Flipgrid*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Xbox*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.GamingApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.XboxApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.YourPhone*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.CrossDevice*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.Ai.Copilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.Client.AIX*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WindowsBackup*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Getstarted*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=486; Cat="Bloatwares"; LabelFR="APPX"; LabelEN="APPX"; Risk="moderate"; Action={
+    Stop-Process -Name msedgewebview2,Widgets,msedge,msteams,Teams,OneDrive,Cortana,SearchUI,XboxApp,XboxPcApp,YourPhone,PhoneExperienceHost,Spotify,Skype,SkypeBackgroundHost,HxOutlook,HxTsr,GameAssist -Force -ErrorAction SilentlyContinue
+exit 0
+
+    Get-AppxPackage -AllUsers -Name '*3DViewer*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Bing*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*CamoStudio*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Client.WebExperience*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Clipchamp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*CommsPhone*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Disney*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*FeedbackHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*GamingApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Getstarted*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.549981C3F5F10*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.GetHelp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Messaging*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.OneConnect*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.People*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Todos*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.WindowsAlarms*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftOfficeHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MSTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MixedReality*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*OneDrive*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*OneNote*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*OutlookForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*PowerAutomate*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*QuickAssist*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*SkypeApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Solit*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Spotify*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Sticky*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Sway*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Wallet*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Windows.DevHome*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WindowsCamera*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*windowscommunicationsapps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WindowsMaps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WindowsPhone*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*WindowsSoundRecorder*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*YourPhone*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Zune*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftFamily*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Edge.GameAssist*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    if ([System.Environment]::OSVersion.Version.Build -le 19045) {
+    $pkgs = @('Whiteboard', 'PowerBI', 'Advertising', 'OutlookPWA', 'Xbox')
+    foreach ($p in $pkgs) {
+        Get-AppxPackage -AllUsers "*$p*" 2>$null | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+        Get-AppxProvisionedPackage -Online 2>$null | Where-Object DisplayName -like "*$p*" | Remove-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue
+    }
+}
+
+}}
+
+$Options += [PSCustomObject]@{Id=487; Cat="Bloatwares"; LabelFR="Removing Bloat Apps"; LabelEN="Removing Bloat Apps"; Risk="moderate"; Action={
+    .\appx_remover.ps1 -Packages @(
+  'Microsoft.Windows.SecureAssessmentBrowser',
+  'Microsoft.Windows.PeopleExperienceHost',
+  'Microsoft.WindowsCamera',
+  'MicrosoftWindows.Client.WebExperience',
+  'Microsoft.WidgetsPlatformRuntime',
+  'Microsoft.WindowsAlarms',
+  'Microsoft.WindowsMaps',
+  'Microsoft.MicrosoftStickyNotes',
+  'microsoft.windowscommunicationsapps',
+  'Microsoft.People',
+  'Microsoft.BingNews',
+  'Microsoft.BingSearch',
+  'Microsoft.BingWeather',
+  'Microsoft.MicrosoftSolitaireCollection',
+  'Microsoft.WindowsFeedbackHub',
+  'Microsoft.GetHelp',
+  'Microsoft.Getstarted',
+  'Microsoft.Todos',
+  'Microsoft.PowerAutomateDesktop',
+  'Microsoft.549981C3F5F10',
+  'MicrosoftCorporationII.QuickAssist',
+  'MicrosoftCorporationII.MicrosoftFamily',
+  'Microsoft.ZuneMusic',
+  'Microsoft.ZuneVideo',
+  'Microsoft.WindowsSoundRecorder',
+  'Clipchamp.Clipchamp',
+  'Microsoft.Whiteboard',
+  'Microsoft.MicrosoftTeamsforSurfaceHub',
+  'MicrosoftCorporationII.MailforSurfaceHub',
+  'Microsoft.MicrosoftPowerBIForWindows',
+  'Microsoft.SkypeApp',
+  'Microsoft.MicrosoftOfficeHub',
+  'Microsoft.Office.Excel',
+  'Microsoft.Office.PowerPoint',
+  'Microsoft.Office.Word',
+  'Microsoft.Office.OneNote',
+  'Microsoft.OutlookForWindows',
+  'SpotifyAB.SpotifyMusic',
+  'OutlookPWA',
+  'Microsoft.Microsoft3DViewer',
+  'Microsoft.Advertising',
+  'MixedReality.Portal',
+  'Microsoft.MSPaint',
+  'Microsoft.StartExperiencesApp',
+  'Microsoft.Copilot',
+  'MicrosoftTeams',
+  'MSTeams',
+  'Disney.37853FC22B2CE',
+  'Netflix',
+  'Microsoft.XboxApp',
+  'Microsoft.XboxGamingOverlay',
+  'Microsoft.XboxIdentityProvider',
+  'Microsoft.XboxSpeechToTextOverlay',
+  'Microsoft.Xbox.TCUI',
+  'Microsoft.XboxGameCallableUI',
+  'Microsoft.GamingApp',
+  'Microsoft.YourPhone',
+  'MicrosoftWindows.CrossDevice',
+  'Microsoft.WindowsCalculator',
+  'Microsoft.Windows.Photos',
+  'Microsoft.WindowsStore',
+  'Microsoft.ScreenSketch',
+  'Microsoft.StorePurchaseApp'
+)
+
+    .\appx_remover.ps1 -Packages "Microsoft.Windows.Photos"
+    .\appx_remover.ps1 -Packages "Microsoft.Windows.DevHome"
+    .\appx_remover.ps1 -Packages @("Microsoft.Xbox", "Microsoft.XboxApp", "Microsoft.GamingApp", "Microsoft.Edge.GameAssist") -ExcludePackages "Microsoft.XboxGameCallableUI"
+    New-Item -Path 'Registry::HKCR\ms-gamebar\shell\open\command' -Force -ErrorAction SilentlyContinue | Out-Null
+    .\appx_remover.ps1 -Packages @("Microsoft.YourPhone", "MicrosoftWindows.CrossDevice")
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.Client.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.Search*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    $WshShell = New-Object -comObject WScript.Shell
+$DesktopPath = [System.Environment]::GetFolderPath('Desktop')
+
+$Shortcut = $WshShell.CreateShortcut($DesktopPath + '\Download NVIDIA Drivers.url')
+$Shortcut.TargetPath = 'https://www.nvidia.com/Download/index.aspx'
+$Shortcut.Save()
+
+$Shortcut2 = $WshShell.CreateShortcut($DesktopPath + '\Download AMD Drivers.url')
+$Shortcut2.TargetPath = 'https://www.amd.com/en/support'
+$Shortcut2.Save()
+
+$Shortcut3 = $WshShell.CreateShortcut($DesktopPath + '\Download Intel Drivers.url')
+$Shortcut3.TargetPath = 'https://www.intel.com/content/www/us/en/download-center/home.html'
+$Shortcut3.Save()
+
+    .\software.ps1
+    .\software.ps1 -Brave
+    .\software.ps1 -OperaGX
+    .\software.ps1 -Chrome
+}}
+
+$Options += [PSCustomObject]@{Id=488; Cat="Gaming"; LabelFR="Gaming"; LabelEN="Gaming"; Risk="moderate"; Action={
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set disabledynamictick yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set useplatformtick yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set tscsyncpolicy enhanced' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMIN 100; powercfg /setacvalueindex SCHEME_CURRENT SUB_PROCESSOR PROCTHROTTLEMAX 100; powercfg /setactive SCHEME_CURRENT
+    Get-WmiObject Win32_DiskDrive | ForEach-Object {
+  $disk = $_.Index;
+  $partitions = "HKLM:\SYSTEM\CurrentControlSet\Services\disk\Enum";
+  Get-ItemProperty $partitions -ErrorAction SilentlyContinue | ForEach-Object {
+    $_.PSObject.Properties | Where-Object { $_.Value -like "*$disk*" } | ForEach-Object {
+      $regPath = "HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e967-e325-11ce-bfc1-08002be10318}\$($_.Name.Substring($_.Name.LastIndexOf('\')+1))";
+      if (Test-Path $regPath) {
+        Set-ItemProperty $regPath -Name 'WriteCacheEnabled' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
+}
+    Get-NetAdapterAdvancedProperty -DisplayName "Interrupt Moderation" -ErrorAction SilentlyContinue | Set-NetAdapterAdvancedProperty -DisplayValue "Disabled" -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=489; Cat="Gaming"; LabelFR="Gaming Tweaks"; LabelEN="Gaming Tweaks"; Risk="moderate"; Action={
+    Start-Process -FilePath 'powercfg' -ArgumentList '/hibernate off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $sx = [byte[]]@(0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xC0,0xCC,0x0C,0x00,0x00,0x00,0x00,0x00,0x80,0x99,0x19,0x00,0x00,0x00,0x00,0x00,0x40,0x66,0x26,0x00,0x00,0x00,0x00,0x00,0x00,0x33,0x33,0x00,0x00,0x00,0x00,0x00)
+$sy = [byte[]]@(0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x38,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x70,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xA8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xE0,0x00,0x00,0x00,0x00,0x00)
+foreach ($scope in @('Registry::HKEY_CURRENT_USER','Registry::HKEY_USERS\.DEFAULT')) {
+  $mouse = """$scope\Control Panel\Mouse"""
+  $desktop = """$scope\Control Panel\Desktop"""
+  New-Item -Path $mouse -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $mouse -Name 'SmoothMouseXCurve' -Value $sx -Type Binary -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $mouse -Name 'SmoothMouseYCurve' -Value $sy -Type Binary -Force -ErrorAction SilentlyContinue
+  Remove-ItemProperty -Path $desktop -Name 'SCRNSAVE.EXE' -Force -ErrorAction SilentlyContinue
+}
+
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set disabledynamictick yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WerSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WerSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    $nicClass = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e972-e325-11ce-bfc1-08002be10318}'
+if (Test-Path $nicClass) {
+  Get-ChildItem -Path $nicClass -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' } | ForEach-Object {
+    $key = $_.PSPath
+    try {
+      $driverDesc = (Get-ItemProperty -Path $key -Name 'DriverDesc' -ErrorAction SilentlyContinue).DriverDesc
+      if (-not $driverDesc) { return }
+      if ($driverDesc -match 'WAN Miniport|Kernel Debug|Virtual|Loopback|Teredo|ISATAP|6to4|Bluetooth') { return }
+      Set-ItemProperty -Path $key -Name 'PnPCapabilities' -Value 24 -Type DWord -Force -ErrorAction SilentlyContinue
+      foreach ($prop in @('*EEE','AdvancedEEE','EnableGreenEthernet','EnablePME','ULPMode','EnableSavePowerNow','ReduceSpeedOnPowerDown','WakeOnMagicPacket','WakeOnPattern','WolShutdownLinkSpeed','EnableWakeOnLan')) {
+        try {
+          $existing = Get-ItemProperty -Path $key -Name $prop -ErrorAction SilentlyContinue
+          if ($existing) {
+            Set-ItemProperty -Path $key -Name $prop -Value '0' -Type String -Force -ErrorAction SilentlyContinue
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $usbRoot = 'HKLM:\SYSTEM\CurrentControlSet\Enum\USB'
+if (Test-Path $usbRoot) {
+  Get-ChildItem -Path $usbRoot -ErrorAction SilentlyContinue | ForEach-Object {
+    Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue | ForEach-Object {
+      $params = Join-Path $_.PSPath 'Device Parameters'
+      if (Test-Path $params) {
+        try {
+          Set-ItemProperty -Path $params -Name 'EnhancedPowerManagementEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path $params -Name 'SelectiveSuspendEnabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path $params -Name 'AllowIdleIrpInD3' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+          Set-ItemProperty -Path $params -Name 'DeviceSelectiveSuspended' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+        } catch {}
+      }
+    }
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Start-Process -FilePath 'powercfg' -ArgumentList '-attributes 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 -ATTRIB_HIDE' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/setacvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/setdcvalueindex scheme_current 2a737441-1930-4402-8d77-b2bebba308a3 48e6b7a6-50f5-4782-a5d4-53bb8f07e226 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/setactive scheme_current' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $dispClass = 'HKLM:\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+if (Test-Path $dispClass) {
+  Get-ChildItem -Path $dispClass -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^\d{4}$' } | ForEach-Object {
+    $key = $_.PSPath
+    try {
+      $driverDesc = (Get-ItemProperty -Path $key -Name 'DriverDesc' -ErrorAction SilentlyContinue).DriverDesc
+      $provider = (Get-ItemProperty -Path $key -Name 'ProviderName' -ErrorAction SilentlyContinue).ProviderName
+      if (($driverDesc -and $driverDesc -match 'NVIDIA|GeForce|Quadro|RTX|GTX') -or ($provider -and $provider -match 'NVIDIA')) {
+        Set-ItemProperty -Path $key -Name 'DisableDynamicPstate' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+      }
+    } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $sys32 = Join-Path $env:windir 'System32'
+$q = [char]34
+foreach ($name in @('mcupdate_GenuineIntel.dll','mcupdate_AuthenticAMD.dll')) {
+  $src = Join-Path $sys32 $name
+  if (Test-Path $src) {
+    try {
+      $tkArgs = '/F ' + $q + $src + $q
+      Start-Process -FilePath 'takeown.exe' -ArgumentList $tkArgs -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+      $icArgs = $q + $src + $q + ' /grant administrators:F'
+      Start-Process -FilePath 'icacls.exe' -ArgumentList $icArgs -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+      $dst = $src + '.old'
+      if (Test-Path $dst) { Remove-Item -Path $dst -Force -ErrorAction SilentlyContinue }
+      Move-Item -Path $src -Destination $dst -Force -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+}}
+
+$Options += [PSCustomObject]@{Id=490; Cat="Gaming"; LabelFR="ZLAG Gaming Core Engine"; LabelEN="ZLAG Gaming Core Engine"; Risk="moderate"; Action={
+    bcdedit /deletevalue useplatformclock
+    bcdedit /set disabledynamictick yes
+    .\final_push.ps1
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Process explorer
+
+}}
+
+$Options += [PSCustomObject]@{Id=491; Cat="Gaming"; LabelFR="Extreme Network Latency Reduction (Competitive Gaming)"; LabelEN="Extreme Network Latency Reduction (Competitive Gaming)"; Risk="moderate"; Action={
+    .\disable_network_offload.ps1
+    reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\Psched" /v "NonBestEffortLimit" /t REG_DWORD /d 0 /f
+    netsh int tcp set global autotuninglevel=normal
+    ipconfig /flushdns
+    netsh int ip reset
+}}
+
+$Options += [PSCustomObject]@{Id=492; Cat="Apps"; LabelFR="Wallpaper"; LabelEN="Wallpaper"; Risk="moderate"; Action={
+    Start-Process -FilePath 'NSudoLC.exe' -ArgumentList '-U:T -P:E -M:S -Priority:RealTime -UseCurrentConsole -Wait icacls.exe "%WINDIR%\Resources\Themes\aero.theme" /reset /t' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'PowerShell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File WALLPAPER-APPLY.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=493; Cat="Apps"; LabelFR="Remove Win32 apps"; LabelEN="Remove Win32 apps"; Risk="moderate"; Action={
+    taskkill /IM MicrosoftEdgeUpdate /F 2>$null
+    taskkill /IM msedge /F 2>$null
+    taskkill /IM MicrosoftEdge* /F 2>$null
+    taskkill /IM setup /F 2>$null
+    .\EDGE.ps1 -Mode EdgeBrowser
+    .\APPX-REMOVER.ps1 -Packages @(
+  'Microsoft.MicrosoftEdge',
+  'Microsoft.MicrosoftEdgeDevToolsClient',
+  'Microsoft.Edge.GameAssist'
+)
+    .\APPX-REMOVER.ps1 -Packages 'Microsoft.Copilot'
+    taskkill /IM OneDriveStandaloneUpdater /F 2>$null
+    taskkill /IM OneDriveSetup /F 2>$null
+    taskkill /IM OneDrive* /F 2>$null
+    Start-Process -FilePath 'ONED.cmd' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\OneDriveTemp' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%ProgramData%\Microsoft OneDrive' -Force -ErrorAction SilentlyContinue
+    .\APPX-REMOVER.ps1 -Packages @(
+  'OneDrive',
+  'microsoft.microsoftskydrive'
+)
+    taskkill /IM Teams /F 2>$null
+    taskkill /IM Update /F 2>$null
+    taskkill /IM ms-teamsupdate /F 2>$null
+    .\APPX-REMOVER.ps1 -Packages @(
+  'MicrosoftTeams',
+  'MSTeams', # New Teams
+  'Flipgrid'
+)
+    Start-Process -FilePath 'msiexec.exe' -ArgumentList '/qn /norestart /X{A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91}' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=494; Cat="Apps"; LabelFR="Optional Features"; LabelEN="Optional Features"; Risk="moderate"; Action={
+    DISM-FEATURES.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=495; Cat="Apps"; LabelFR="Packages"; LabelEN="Packages"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'winpackage --install system-components-removal' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks security defender disable --force' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks security defender enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'winpackage --install ai-removal' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'winpackage --install onedrive-removal' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=496; Cat="Apps"; LabelFR="Software"; LabelEN="Software"; Risk="moderate"; Action={
+    Start-Process -FilePath 'BraveBrowserStandaloneSetup.exe' -ArgumentList '/silent /install' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'BraveBrowserStandaloneSetupArm64.exe' -ArgumentList '/silent /install' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    robocopy "BraveSoftware" "%ProgramFiles%\BraveSoftware" /E /IM /IT /NP & robocopy "BraveSoftware" "%localappdata%\BraveSoftware" /E /IM /IT /NP
+}}
+
+$Options += [PSCustomObject]@{Id=497; Cat="Apps"; LabelFR="Software"; LabelEN="Software"; Risk="moderate"; Action={
+    Start-Process -FilePath 'FIREFOX.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'LIBREWOLF.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'BRAVE.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'STARTMENU.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'NOMACSCONF.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'SOFTSHRT.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'FILEASSOC.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'VLCASSOC.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'WALLPAPER.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=498; Cat="Apps"; LabelFR="Set Z LAG wallpaper"; LabelEN="Set Z LAG wallpaper"; Risk="moderate"; Action={
+    .\set_wallpaper.ps1
+    .\pfp.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=499; Cat="Power"; LabelFR="configure-power-control"; LabelEN="configure-power-control"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks utilities hibernation disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks utilities fast-startup disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks utilities hibernation enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks utilities fast-startup enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=500; Cat="Confidentialite"; LabelFR="Defender"; LabelEN="Defender"; Risk="moderate"; Action={
+    taskkill /IM NisSrv /F 2>$null
+    taskkill /IM SecurityHealthHost /F 2>$null
+    taskkill /IM SecurityHealthService /F 2>$null
+    taskkill /IM SecurityHealthSystray /F 2>$null
+    taskkill /IM MsMpEng /F 2>$null
+    taskkill /IM smartscreen /F 2>$null
+    Stop-Service -Name 'WinDefend' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WinDefend' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Sense' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Sense' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdNisSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdNisSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SecurityHealthService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SecurityHealthService' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmBroker' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmAgent' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmAgent' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MsSecCore' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MsSecCore' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'webthreatdefusersvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'webthreatdefusersvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'webthreatdefsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'webthreatdefsvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MDCoreSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MDCoreSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName 'Windows Defender Cache Maintenance' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Windows Defender Cleanup' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Windows Defender Scheduled Scan' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Windows Defender Verification' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Classes\*\ShellEx\ContextMenuHandlers\EPP' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Classes\Drive\ShellEx\ContextMenuHandlers\EPP' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Classes\Directory\ShellEx\ContextMenuHandlers\EPP' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.Apprep.ChxApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Disable-Feature /FeatureName:"Windows-Defender-Default-Definitions" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $paths = @(
+  "$env:SystemRoot\System32\SecurityHealthSystray.exe",
+  "$env:SystemRoot\System32\SecurityHealthService.exe",
+  "$env:SystemRoot\System32\SecurityHealthAgent.dll",
+  "$env:SystemRoot\System32\SecurityHealthHost.exe",
+  "$env:SystemRoot\System32\SecurityHealthCore.dll",
+  "$env:SystemRoot\System32\SecurityHealthProxyStub.dll",
+  "$env:SystemRoot\System32\SecurityHealthUdk.dll",
+  "$env:SystemRoot\System32\drivers\WdNisDrv.sys"
+); foreach ($p in $paths) { if (Test-Path $p) { Remove-Item $p -Force -ErrorAction SilentlyContinue } }
+    Stop-Service -Name 'WdFilter' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdFilter' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WdBoot' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WdBoot' -StartupType Manual -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.SecHealthUI_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=501; Cat="Confidentialite"; LabelFR="Privacy"; LabelEN="Privacy"; Risk="moderate"; Action={
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Remove-Capability /CapabilityName:"App.StepsRecorder~~~~0.0.1.0" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Remove-Package /PackageName:"Microsoft-Windows-MediaPlayer-Package~31bf3856ad364e35~amd64~~10.0.19041.1" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Remove-Capability /CapabilityName:"Media.WindowsMediaPlayer~~~~0.0.12.0" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=502; Cat="Confidentialite"; LabelFR="Configure Privacy -> Content Delivery Manager"; LabelEN="Configure Privacy -> Content Delivery Manager"; Risk="moderate"; Action={
+    New-Item -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscriptions' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\Subscriptions' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SuggestedApps' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager\SuggestedApps' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=503; Cat="Confidentialite"; LabelFR="Privacy Hardening"; LabelEN="Privacy Hardening"; Risk="moderate"; Action={
+    $caps = @('documentsLibrary','downloadsFolder','musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess','appDiagnostics','generativeAI','passkeys','userDataTasks','userAccountInformation','contacts','appointments','phoneCall','phoneCallHistory','email','chat','location','activity','humanPresence','eyeTracker','gazeInput')
+foreach ($scope in @('HKLM:\\SOFTWARE','Registry::HKEY_USERS\\.DEFAULT\\Software')) {
+  foreach ($cap in $caps) {
+    $base = $scope + '\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\' + $cap
+    try { New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $base -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+    $np = $base + '\\NonPackaged'
+    try { New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $np -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+Get-ChildItem -Path 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$' } | ForEach-Object {
+  $sid = $_.PSChildName
+  foreach ($cap in $caps) {
+    $base = 'Registry::HKEY_USERS\\' + $sid + '\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\' + $cap
+    try { New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $base -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+    $np = $base + '\\NonPackaged'
+    try { New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $np -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $caps = @('documentsLibrary','downloadsFolder','musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess','appDiagnostics')
+$scopes = @('HKLM:\\SOFTWARE','Registry::HKEY_USERS\\.DEFAULT\\Software')
+foreach ($scope in $scopes) {
+  foreach ($cap in $caps) {
+    $base = $scope + '\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\' + $cap
+    try { New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $base -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+    try { Set-ItemProperty -Path $base -Name 'LastUsedTimeStop' -Value 0 -Type QWord -Force -ErrorAction SilentlyContinue } catch {}
+    $np = $base + '\\NonPackaged'
+    try { New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $np -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+foreach ($sidKey in (Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$' })) {
+  $sid = $sidKey.PSChildName
+  foreach ($cap in $caps) {
+    $base = 'Registry::HKEY_USERS\\' + $sid + '\\Software\\Microsoft\\Windows\\CurrentVersion\\CapabilityAccessManager\\ConsentStore\\' + $cap
+    try { New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $base -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+    $np = $base + '\\NonPackaged'
+    try { New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    try { Set-ItemProperty -Path $np -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+exit 0
+
+    $fsosDir = Join-Path $env:windir 'FSOS'
+foreach ($f in @('fsos-options','fsos-pkgs-current')) {
+  $p = Join-Path $fsosDir "$f.txt"
+  if (Test-Path $p) { & cmd.exe /c del /f /q """$p""" 2>$null | Out-Null }
+}
+$winreAgent = Join-Path $env:SystemDrive '$WinREAgent'
+if (Test-Path $winreAgent) {
+  & cmd.exe /c rd /s /q """$winreAgent""" 2>$null | Out-Null
+}
+$global:LASTEXITCODE = 0
+
+    Get-Process -Name 'StartMenuExperienceHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+$profiles = @('C:\Users\Default')
+Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Default User','Public','All Users','Default','WDAGUtilityAccount')
+} | ForEach-Object { $profiles += $_.FullName }
+foreach ($profile in $profiles) {
+  $shellDir = Join-Path $profile 'AppData\Local\Microsoft\Windows\Shell'
+  if (Test-Path $shellDir) {
+    Get-ChildItem -Path $shellDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  $smehBase = Join-Path $profile 'AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy'
+  foreach ($sub in @('LocalState','TempState','LocalCache')) {
+    $d = Join-Path $smehBase $sub
+    if (Test-Path $d) {
+      Get-ChildItem -Path $d -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+  $iconCache = Join-Path $profile 'AppData\Local\Microsoft\Windows\Caches'
+  if (Test-Path $iconCache) {
+    Get-ChildItem -Path $iconCache -Force -ErrorAction SilentlyContinue -Filter '*.db' | Remove-Item -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+}}
+
+$Options += [PSCustomObject]@{Id=504; Cat="Confidentialite"; LabelFR="Block Microsoft telemetry via hosts file"; LabelEN="Block Microsoft telemetry via hosts file"; Risk="moderate"; Action={
+    .\add_telemetry_hosts.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=505; Cat="Confidentialite"; LabelFR="Aggressive Windows Defender removal"; LabelEN="Aggressive Windows Defender removal"; Risk="moderate"; Action={
+    Stop-Service WinDefend -Force -ErrorAction SilentlyContinue; Set-Service WinDefend -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WdNisSvc -Force -ErrorAction SilentlyContinue; Set-Service WdNisSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service SecurityHealthService -Force -ErrorAction SilentlyContinue; Set-Service SecurityHealthService -StartupType Disabled -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=506; Cat="Confidentialite"; LabelFR="Performance"; LabelEN="Performance"; Risk="moderate"; Action={
+    Disable-MMAgent -mc
+    Start-Process -FilePath 'powercfg' -ArgumentList '/h off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Get-NetAdapter | Set-NetAdapterAdvancedProperty -RegistryKeyword "*RSS" -RegistryValue 1 -ErrorAction SilentlyContinue
+    Get-NetAdapter | Set-NetAdapterAdvancedProperty -RegistryKeyword "*NumRssQueues" -RegistryValue 2 -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global chimney=disabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global dca=enabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global netdma=enabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global timestamps=disabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global rss=enabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set supplemental template=Internet congestionprovider=ctcp' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set supplemental template=InternetCustom congestionprovider=ctcp' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set disabledynamictick yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/deletevalue useplatformclock' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} nx optin' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} recoveryenabled no' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} disableelamdrivers yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set bootmenupolicy Legacy' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} hypervisorlaunchtype off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=507; Cat="Confidentialite"; LabelFR="UI"; LabelEN="UI"; Risk="moderate"; Action={
+    # Clear Taskband registry (pinned taskbar items)
+$taskband = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband'
+if (Test-Path $taskband) {
+    Remove-ItemProperty -Path $taskband -Name 'Favorites' -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $taskband -Name 'FavoritesResolve' -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $taskband -Name 'QuickLaunch' -Force -ErrorAction SilentlyContinue
+}
+# Clear Jump List caches
+$jumpListPaths = @(
+    "$env:APPDATA\Microsoft\Windows\Recent\AutomaticDestinations"
+    "$env:APPDATA\Microsoft\Windows\Recent\CustomDestinations"
+    "$env:APPDATA\Microsoft\Windows\Recent\Destinations"
+)
+foreach ($jl in $jumpListPaths) {
+    if (Test-Path $jl) { Remove-Item "$jl\*" -Force -ErrorAction SilentlyContinue }
+}
+# Clear recent items
+$recent = "$env:APPDATA\Microsoft\Windows\Recent"
+if (Test-Path $recent) { Remove-Item "$recent\*" -Force -ErrorAction SilentlyContinue }
+
+    New-Item -Path 'Registry::HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32' -Force -ErrorAction SilentlyContinue | Out-Null
+    taskkill /IM explorer /F 2>$null
+    Start-Process explorer.exe
+    $folders = @(
+  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Accessibility",
+  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Maintenance",
+  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Windows Accessories",
+  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Windows PowerShell",
+  "$env:SystemDrive\Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Accessibility",
+  "$env:SystemDrive\Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Accessories",
+  "$env:SystemDrive\Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Maintenance",
+  "$env:SystemDrive\Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Windows PowerShell",
+  "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Accessibility",
+  "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Accessories",
+  "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Maintenance",
+  "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Windows PowerShell"
+); foreach ($f in $folders) {
+  if (Test-Path $f) { Remove-Item $f -Recurse -Force -ErrorAction SilentlyContinue }
+}
+}}
+
+$Options += [PSCustomObject]@{Id=508; Cat="Confidentialite"; LabelFR="Updates"; LabelEN="Updates"; Risk="moderate"; Action={
+    Stop-Service -Name 'wuauserv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wuauserv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UsoSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UsoSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WaaSMedicSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WaaSMedicSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BITS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BITS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName 'Scheduled Start' -TaskPath '\Microsoft\Windows\WindowsUpdate\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'sih' -TaskPath '\Microsoft\Windows\WindowsUpdate\' -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=509; Cat="Confidentialite"; LabelFR="Final"; LabelEN="Final"; Risk="moderate"; Action={
+    Start-Process -FilePath 'NSudoLC.exe' -ArgumentList '-U:T -P:E -M:S -Priority:RealTime -UseCurrentConsole -Wait PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File CLEANUP.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'NSudoLC.exe' -ArgumentList '-U:T -P:E -M:S -Priority:RealTime -UseCurrentConsole -Wait PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File CLEANUP.ps1 -FullWinSxS -Extreme' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    del /q /f /s "%TEMP%\*" 2>nul & del /q /f /s "%WINDIR%\Temp\*" 2>nul & del /q /f /s "%WINDIR%\Prefetch\*" 2>nul & del /q /f /s "%WINDIR%\Logs\*.log" 2>nul & del /q /f /s "%LOCALAPPDATA%\Microsoft\Windows\INetCache\*" 2>nul & del /q /f /s "%LOCALAPPDATA%\Microsoft\Windows\Temporary Internet Files\*" 2>nul & del /q /f /s "%WINDIR%\Minidump\*" 2>nul & del /q /f /s "%WINDIR%\MEMORY.DMP" 2>nul & del /q /f /s "%LOCALAPPDATA%\CrashDumps\*" 2>nul
+    schtasks /Change /TN "\Microsoft\Windows\Power Efficiency Diagnostics\AnalyzeSystem" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\MemoryDiagnostic\ProcessMemoryDiagnosticEvents" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\MemoryDiagnostic\RunFullMemoryDiagnostic" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Windows Error Reporting\QueueReporting" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Application Experience\AitAgent" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Customer Experience Improvement Program\Consolidator" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask" /Disable 2>nul
+    schtasks /Change /TN "\Microsoft\Windows\WindowsUpdate\Scheduled Start" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScanAfterUpdate" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\UpdateOrchestrator\Start Oobe Expedite Work" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\UpdateOrchestrator\Schedule Scan" /Disable 2>nul
+    Get-ScheduledTask | Where-Object { $_.TaskPath -match '\\Microsoft\\Windows\\Application Experience\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Autochk\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\CloudExperienceHost\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Customer Experience Improvement Program\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\DiskDiagnostic\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Feedback\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Maps\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Office\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\PI\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Power Efficiency Diagnostics\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Windows Error Reporting\\' } | Disable-ScheduledTask -ErrorAction SilentlyContinue
+    Get-ScheduledTask | Where-Object { $_.TaskPath -match '\\Microsoft\\XblGameSave\\' } | Disable-ScheduledTask -ErrorAction SilentlyContinue
+    Get-ScheduledTask | Where-Object { $_.TaskPath -match '\\Microsoft\\Windows\\WindowsUpdate\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\UpdateOrchestrator\\' } | Disable-ScheduledTask -ErrorAction SilentlyContinue
+    setx DOTNET_CLI_TELEMETRY_OPTOUT 1
+    setx POWERSHELL_TELEMETRY_OPTOUT 1
+    Start-Process -FilePath 'gpupdate.exe' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'schtasks' -ArgumentList '/Delete /TN "\Microsoft\Windows\AppxAllUserStore\UScheduler" /F 2>nul' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    compact.exe /CompactOS:always
+    compact.exe /C /S:"C:\Windows" /I /Q /EXE:LZX
+    Start-Process -FilePath 'label' -ArgumentList 'C: "Project Atom"' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 2
+Start-Process explorer
+
+}}
+
+$Options += [PSCustomObject]@{Id=510; Cat="Confidentialite"; LabelFR="Copy PostInstall Folder"; LabelEN="Copy PostInstall Folder"; Risk="moderate"; Action={
+    Start-Process -FilePath 'PowerShell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File Copy-PostInstall.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'PowerShell.exe' -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File Install-AtomToolBox.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=511; Cat="Confidentialite"; LabelFR="Configuration"; LabelEN="Configuration"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance ntfs-last-access disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance ntfs-8dot3-naming disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Disable-MMAgent -mc
+    setx DOTNET_CLI_TELEMETRY_OPTOUT 1
+    setx POWERSHELL_TELEMETRY_OPTOUT 1
+    Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -ExecutionPolicy Bypass -File CLEANER.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Get-ScheduledTask -TaskPath "\Microsoft\Office\*" | Disable-ScheduledTask
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance service-grouping set recommended' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'FINALIZE.cmd' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'STARTMENU.cmd' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'FILEASSOC.cmd' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    robocopy "Wallpapers" "%systemroot%\Web\Wallpaper\MeetRevision\v2" /E /PURGE /IM /IT /NP
+    .\WALLPAPER.ps1 -Mode Desktop -ImagePath $env:systemroot\Web\Wallpaper\MeetRevision\v2\desktop.jpg
+    .\WALLPAPER.ps1 -Mode LockScreen -ImagePath $env:systemroot\Web\Wallpaper\MeetRevision\v2\lockscreen.jpg
+    Copy-Item -Path .\WALLPAPER.ps1 -Destination "$env:systemroot\Web\Wallpaper\MeetRevision" -Force
+    Copy-Item -Path .\WallpaperStartup.cmd -Destination "$env:systemroot\Web\Wallpaper\MeetRevision" -Force
+    .\\Set-Theme.ps1 -Path (Join-Path $env:SystemRoot "Resources\\Themes\\dark.theme")
+    .\Set-Theme.ps1 -New @{ WallpaperPath = (Join-Path $env:SystemRoot 'Web\Wallpaper\MeetRevision\v2\desktop.jpg'); ThemeExportPath = (Join-Path $env:SystemRoot 'Resources\Themes\revi.theme'); SystemMode = 'Light'; AppMode = 'Light' }
+    .\Set-Theme.ps1 -New @{ WallpaperPath = (Join-Path $env:SystemRoot 'Web\Wallpaper\MeetRevision\v2\desktop.jpg'); ThemeExportPath = (Join-Path $env:SystemRoot 'Resources\Themes\revi.theme'); SystemMode = 'Dark'; AppMode = 'Dark' }
+    Get-AppxPackage -AllUsers -Name '*Client.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*StartMenuExperienceHost*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Windows.Search*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*TCUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'gpupdate.exe' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks patches' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $explorerProcess = Get-Process -Name explorer -ErrorAction SilentlyContinue
+if ($explorerProcess) {
+  Stop-Process -Name explorer -Force
+}
+Start-Process explorer
+
+}}
+
+$Options += [PSCustomObject]@{Id=512; Cat="Confidentialite"; LabelFR="Configure Control Panel"; LabelEN="Configure Control Panel"; Risk="moderate"; Action={
+    Remove-ItemProperty -Path 'Registry::HKCU\Control Panel\Accessibility\MouseKeys' -Name 'MaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Control Panel\Accessibility\MouseKeys' -Name 'MaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Control Panel\Accessibility\MouseKeys' -Name 'TimeToMaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Control Panel\Accessibility\MouseKeys' -Name 'TimeToMaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\MouseKeys' -Name 'MaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\MouseKeys' -Name 'MaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\MouseKeys' -Name 'TimeToMaximumSpeed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\MouseKeys' -Name 'TimeToMaximumSpeed' -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\MouseKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\AudioDescription' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\Blind Access' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\HighContrast' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\Keyboard Preference' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\Keyboard Response' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\MouseKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\On' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\ShowSounds' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\SlateLaunch' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\SoundSentry' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\StickyKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\TimeOut' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\Control Panel\Accessibility\ToggleKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\AudioDescription' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\Blind Access' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\HighContrast' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\Keyboard Preference' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\Keyboard Response' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\MouseKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\On' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\ShowSounds' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\SlateLaunch' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\SoundSentry' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\StickyKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\TimeOut' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKU\.DEFAULT\Control Panel\Accessibility\ToggleKeys' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=513; Cat="Confidentialite"; LabelFR="Configure Explorer"; LabelEN="Configure Explorer"; Risk="moderate"; Action={
+    $folderTypesKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\FolderTypes'
+$downloadsFolderID = '{885a186e-a440-4ada-812b-db871b942259}'
+
+$path = Join-Path -Path $folderTypesKey -ChildPath $downloadsFolderID
+Get-ChildItem -Path $path -Recurse | ForEach-Object {
+  if ((Get-ItemProperty -Path $_.PSPath).GroupBy) {
+      Set-ItemProperty -Path $_.PSPath -Name GroupBy -Value ''
+    }
+}
+
+    $downloadsFolderID = '{885a186e-a440-4ada-812b-db871b942259}'
+$bagsPath = 'HKCU:\Software\Classes\Local Settings\Software\Microsoft\Windows\Shell\Bags'
+Get-ChildItem -Path $bagsPath | ForEach-Object {
+  $fullPath = Join-Path -Path $_.PSPath -ChildPath 'Shell\{885A186E-A440-4ADA-812B-DB871B942259}'
+  if (Test-Path -Path $fullPath) {
+    Remove-Item -Path $fullPath -Recurse
+  } 
+}
+
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'TaskbarAnimations' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'TaskbarAnimations' -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=514; Cat="Confidentialite"; LabelFR="Configure Windows Settings"; LabelEN="Configure Windows Settings"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'registry hide-page --value "cortana,privacy-feedback,windowsinsider,home"' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'registry hide-page --value "crossdevice"' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Id' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Id' -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks personalization input-personalization disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Siuf\Rules' -Name 'PeriodInNanoSeconds' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Software\Microsoft\Siuf\Rules' -Name 'PeriodInNanoSeconds' -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=515; Cat="Confidentialite"; LabelFR="disable-system-restore-pre-defined-config"; LabelEN="disable-system-restore-pre-defined-config"; Risk="moderate"; Action={
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SPP\Clients' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=516; Cat="Confidentialite"; LabelFR="fixes"; LabelEN="fixes"; Risk="moderate"; Action={
+    New-Item -Path 'Registry::HKCU\Software\Microsoft\Internet Explorer\LowRegistry\Audio\PolicyConfig\PropertyStore' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=517; Cat="Confidentialite"; LabelFR="Configure Security"; LabelEN="Configure Security"; Risk="moderate"; Action={
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=518; Cat="Confidentialite"; LabelFR="Configure Security -> Virtualization Based Security"; LabelEN="Configure Security -> Virtualization Based Security"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks security vbs disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=519; Cat="Confidentialite"; LabelFR="configure-kernel"; LabelEN="configure-kernel"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance intel-tsx enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=520; Cat="Confidentialite"; LabelFR="Configure Updates -> Drivers"; LabelEN="Configure Updates -> Drivers"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance wu-drivers disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=521; Cat="Confidentialite"; LabelFR="Configure general updates settings"; LabelEN="Configure general updates settings"; Risk="moderate"; Action={
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance wu-pause-updates enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\OutlookUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=522; Cat="Confidentialite"; LabelFR="Rollback Tweaks"; LabelEN="Rollback Tweaks"; Risk="moderate"; Action={
+    Remove-ItemProperty -Path 'Registry::HKCU\SOFTWARE\Policies\Microsoft\Internet Explorer\Security' -Name 'DisableSecuritySettingsCheck' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Security' -Name 'DisableSecuritySettingsCheck' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\SOFTWARE\Policies\Microsoft\Internet Explorer\Security' -Name 'DisableFixSecuritySettings' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Security' -Name 'DisableFixSecuritySettings' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Download' -Name 'CheckExeSignatures' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\SOFTWARE\Policies\Microsoft\Internet Explorer\Privacy' -Name 'ClearBrowsingHistoryOnExit' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Internet Explorer\Privacy' -Name 'ClearBrowsingHistoryOnExit' -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set supplemental internet congestionprovider=default' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'RegisteredOrganisation' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\Software\Classes\CLSID' -Name 'IsModernRCEnabled' -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bam' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bam' -StartupType Manual -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\GameDVR' -Name 'AppCaptureEnabled' -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Beep' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Beep' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GraphicsPerfSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GraphicsPerfSvc' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Ndu' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Ndu' -StartupType Automatic -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCU\SOFTWARE\Policies\Microsoft\Windows NT\MitigationOptions\ProcessMitigationOptions' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows NT\MitigationOptions\ProcessMitigationOptions' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Control\Session Manager\Memory Management' -Name 'FeatureSettings' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverride' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SYSTEM\ControlSet001\Control\Session Manager\Memory Management' -Name 'FeatureSettingsOverrideMask' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Schedule\Maintenance' -Name 'MaintenanceDisabled' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows\ScheduledDiagnostics' -Name 'EnabledExecution' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows\CloudContent' -Name 'DisableWindowsConsumerFeatures' -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\Software\Policies\Microsoft\Windows\WindowsUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Servicing' -Name 'RepairContentServerSource' -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance superfetch enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Dfrg\BootOptimizeFunction' -Name 'Enable' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\OptimalLayout' -Name 'EnableAutoLayout' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\InputPersonalization' -Name 'AllowInputPersonalization' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Speech_OneCore\Preferences' -Name 'ModelDownloadAllowed' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\Software\Policies\Microsoft\Windows\OneDrive' -Name 'DisableFileSyncNGSC' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Policies\Microsoft\InternetManagement' -Name 'RestrictCommunication' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\Software\Policies\Microsoft\InternetManagement' -Name 'RestrictCommunication' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\SystemCertificates\AuthRoot' -Name 'DisableRootAutoUpdate' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows NT\CurrentVersion\Software Protection Platform' -Name 'AllowWindowsEntitlementReactivation' -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\Software\Policies\Microsoft\Windows Defender\Signature Updates' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer' -Name 'EnableAutoTray' -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Biometrics' -Recurse -Force -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance background-apps enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*XboxGamingOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCU\Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\Software\Policies\Microsoft\Windows\CurrentVersion\Internet Settings' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCU\Software\Policies\Microsoft\Internet Explorer' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\Software\Policies\Microsoft\Internet Explorer' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Control Panel\Mouse' -Name 'MouseHoverTime' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Policies\Microsoft\Windows\Windows Search' -Name 'ConnectedSearchSafeSearch' -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DPS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DPS' -StartupType Automatic -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=523; Cat="Confidentialite"; LabelFR="Initialization"; LabelEN="Initialization"; Risk="moderate"; Action={
+    robocopy "Licenses" "%SystemDrive%\Licenses" /E /PURGE /IM /IT /NP
+    copy /y "hosts" "%WINDIR%\System32\drivers\etc\hosts"
+    ipconfig /flushdns
+    Start-Process -FilePath 'vc_redist.x64.exe' -ArgumentList '/quiet /norestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'RevisionTool-Setup.exe' -ArgumentList '/VERYSILENT /TASKS="desktopicon"' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'revitool.exe' -ArgumentList 'tweaks performance powerplan enable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -ExecutionPolicy Bypass -File ngen.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=524; Cat="Confidentialite"; LabelFR="Prepare"; LabelEN="Prepare"; Risk="moderate"; Action={
+    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
+$title = 'FSOS-X Cannot Install'
+$url = 'www.microsoft.com/software-download/windows11'
+$stockMsg = 'FSOS can only be installed over stock Windows. Supported versions are Windows 11 23H2, 24H2 and 25H2. The latest version can be downloaded from ' + $url
+if (Test-Path -LiteralPath ($env:windir + '\FSOS')) {
+  $global:LASTEXITCODE = 0
+  return
+}
+$detected = $null
+$productName = ''
+try {
+  $pn = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'ProductName' -ErrorAction SilentlyContinue).ProductName
+  if ($pn) { $productName = [string]$pn }
+} catch {}
+$editionId = ''
+try {
+  $ed = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'EditionID' -ErrorAction SilentlyContinue).EditionID
+  if ($ed) { $editionId = [string]$ed }
+} catch {}
+$haystack = ($productName + ' ' + $editionId).ToLower()
+if ($haystack -match '\bfsos\b' -and $haystack -notmatch 'fsos-x') {
+  $oldFsosLabel = $productName.Trim()
+  if (-not $oldFsosLabel) { $oldFsosLabel = 'a previous FSOS version' }
+  $msg = 'FSOS-X cannot be installed over ' + $oldFsosLabel + '. Please reinstall stock Windows first. The latest version can be downloaded from ' + $url
+  [System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly) | Out-Null
+  Stop-Process -Name 'AME Beta','AME Wizard Beta','AME','TrustedUninstaller.CLI' -Force -ErrorAction SilentlyContinue
+  $global:LASTEXITCODE = 1
+  exit 1
+}
+$osList = @(
+  @{ Name = 'AtlasOS';        Patterns = @('atlasos','atlas os');                  Paths = @('C:\Atlas');          Keys = @('HKLM:\SOFTWARE\AtlasOS') },
+  @{ Name = 'ReviOS';         Patterns = @('revios','revi os');                    Paths = @('C:\ReviOS');         Keys = @('HKLM:\SOFTWARE\Revision','HKLM:\SOFTWARE\ReviOS') },
+  @{ Name = 'Tiny11';         Patterns = @('tiny11','tiny 11');                    Paths = @('C:\Tiny11');         Keys = @() },
+  @{ Name = 'Ghost Spectre';  Patterns = @('ghost spectre','ghostspectre','spectre'); Paths = @('C:\Ghost Spectre'); Keys = @() },
+  @{ Name = 'Windows X-Lite'; Patterns = @('x-lite','xlite','windows x lite');     Paths = @('C:\X-Lite');         Keys = @() },
+  @{ Name = 'CactusOS';       Patterns = @('cactusos','cactus os');                Paths = @('C:\CactusOS');       Keys = @() },
+  @{ Name = 'KernelOS';       Patterns = @('kernelos','kernel os');                Paths = @('C:\KernelOS');       Keys = @() },
+  @{ Name = 'YukiOS';         Patterns = @('yukios','yuki os');                    Paths = @('C:\YukiOS');         Keys = @() },
+  @{ Name = 'NovaOS';         Patterns = @('novaos','nova os');                    Paths = @('C:\NovaOS');         Keys = @() },
+  @{ Name = 'FoxOS';          Patterns = @('foxos','fox os');                      Paths = @('C:\FoxOS');          Keys = @() },
+  @{ Name = 'ggOS';           Patterns = @('ggos','gg os');                        Paths = @('C:\ggOS');           Keys = @() },
+  @{ Name = 'SapphireOS';     Patterns = @('sapphireos','sapphire os');            Paths = @('C:\SapphireOS');     Keys = @() },
+  @{ Name = 'VainOS';         Patterns = @('vainos','vain os');                    Paths = @('C:\VainOS');         Keys = @() },
+  @{ Name = 'BlitzOS';        Patterns = @('blitzos','blitz os');                  Paths = @('C:\BlitzOS');        Keys = @() },
+  @{ Name = 'AtomOS';         Patterns = @('atomos','atom os');                    Paths = @('C:\AtomOS');         Keys = @() },
+  @{ Name = 'IrisOS';         Patterns = @('irisos','iris os');                    Paths = @('C:\IrisOS');         Keys = @() },
+  @{ Name = 'PeakOS';         Patterns = @('peakos','peak os');                    Paths = @('C:\PeakOS');         Keys = @() },
+  @{ Name = 'xOS';            Patterns = @(' xos ',' x os ');                      Paths = @('C:\xOS');            Keys = @() },
+  @{ Name = 'SOS';            Patterns = @(' sos ');                               Paths = @('C:\SOS');            Keys = @() },
+  @{ Name = 'WinterOS';       Patterns = @('winteros','winter os');                Paths = @('C:\WinterOS');       Keys = @() }
+)
+foreach ($os in $osList) {
+  if ($detected) { break }
+  foreach ($pat in $os.Patterns) {
+    if ($haystack.Contains($pat)) { $detected = $os.Name; break }
+  }
+  if ($detected) { break }
+  foreach ($pth in $os.Paths) {
+    if (Test-Path -LiteralPath $pth) { $detected = $os.Name; break }
+  }
+  if ($detected) { break }
+  foreach ($k in $os.Keys) {
+    if (Test-Path -LiteralPath $k) { $detected = $os.Name; break }
+  }
+}
+if ($detected) {
+  $msg = 'FSOS cannot be installed over ' + $detected + '. Supported versions are stock Windows 11 23H2, 24H2 and 25H2. The latest version can be downloaded from ' + $url
+  [System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly) | Out-Null
+  Stop-Process -Name 'AME Beta','AME Wizard Beta','AME','TrustedUninstaller.CLI' -Force -ErrorAction SilentlyContinue
+  $global:LASTEXITCODE = 1
+  exit 1
+}
+$oemHit = $false
+try {
+  $oem = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation' -ErrorAction SilentlyContinue
+  if ($oem) {
+    foreach ($n in @('Manufacturer','Model','SupportURL')) {
+      $v = $oem.$n
+      if ($v -and ([string]$v).Trim().Length -gt 0) { $oemHit = $true; break }
+    }
+  }
+} catch {}
+if ($oemHit) {
+  [System.Windows.Forms.MessageBox]::Show($stockMsg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly) | Out-Null
+  Stop-Process -Name 'AME Beta','AME Wizard Beta','AME','TrustedUninstaller.CLI' -Force -ErrorAction SilentlyContinue
+  $global:LASTEXITCODE = 1
+  exit 1
+}
+$global:LASTEXITCODE = 0
+
+    mkdir "%WINDIR%\FSOS" 2>nul
+    mkdir "%WINDIR%\FSOS\Tools" 2>nul
+    powershell -NoP -C "try{Add-MpPreference -ExclusionPath $env:windir\FSOS -Force -EA SilentlyContinue}catch{}" >nul 2>nul || exit /b 0
+    copy /y "FSToolkit.exe" "%WINDIR%\FSOS\Tools\FSToolkit.exe" >nul 2>nul || exit /b 0
+    copy /y "nuke-defender.bat" "%WINDIR%\FSOS\Tools\nuke-defender.bat" >nul 2>nul || exit /b 0
+    copy /y "nuke-defender-files.ps1" "%WINDIR%\FSOS\Tools\nuke-defender-files.ps1" >nul 2>nul || exit /b 0
+    copy /y "nuke-defender-launcher.vbs" "%WINDIR%\FSOS\Tools\nuke-defender-launcher.vbs" >nul 2>nul || exit /b 0
+    cmd /c echo remove-bloat>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo remove-xbox>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo remove-store>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo remove-edge>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo remove-ai>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo disable-defender>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo disable-bluetooth>>"%WINDIR%\FSOS\fsos-options.txt"
+    cmd /c echo disable-wifi>>"%WINDIR%\FSOS\fsos-options.txt"
+    powercfg -setactive 381b4222-f694-41f0-9685-ff5bb260df2e
+Start-Sleep -Milliseconds 300
+
+$amdGuid = 'e4c7a13f-5b9d-42a0-9e61-3a3f620460bc'
+$intelGuid = 'a1c7b13e-6f90-4720-8178-836cd5339e8c'
+$ultimateSourceGuid = 'e9a42b02-d5df-448d-aa00-03f14749eb61'
+
+powercfg -delete $amdGuid 2>$null | Out-Null
+powercfg -delete $intelGuid 2>$null | Out-Null
+
+function Import-PowPlan {
+  param($file, $targetGuid, $name, $desc)
+  $out = powercfg -import (Resolve-Path $file).Path 2>&1
+  $line = $out | Where-Object { $_ -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' } | Select-Object -First 1
+  if ($line -and $line -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+    $newGuid = $matches[1]
+    powercfg -duplicatescheme $newGuid $targetGuid 2>$null | Out-Null
+    powercfg -delete $newGuid 2>$null | Out-Null
+    powercfg -changename $targetGuid $name $desc 2>$null | Out-Null
+    return $true
+  }
+  return $false
+}
+
+Import-PowPlan 'power-amd.pow' $amdGuid 'FSOS AMD Gaming' 'FrameSync Labs AMD gaming power profile'
+
+$dupOut = powercfg -duplicatescheme $ultimateSourceGuid 2>&1
+$dupLine = $dupOut | Where-Object { $_ -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' } | Select-Object -First 1
+if ($dupLine -and $dupLine -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+  $newUltGuid = $matches[1]
+  powercfg -duplicatescheme $newUltGuid $intelGuid 2>$null | Out-Null
+  powercfg -delete $newUltGuid 2>$null | Out-Null
+  powercfg -changename $intelGuid 'Intel Gaming Power Plan' 'FrameSync Labs Intel gaming power profile' 2>$null | Out-Null
+} else {
+  $highPerfGuid = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
+  $fbOut = powercfg -duplicatescheme $highPerfGuid 2>&1
+  $fbLine = $fbOut | Where-Object { $_ -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' } | Select-Object -First 1
+  if ($fbLine -and $fbLine -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
+    $newFbGuid = $matches[1]
+    powercfg -duplicatescheme $newFbGuid $intelGuid 2>$null | Out-Null
+    powercfg -delete $newFbGuid 2>$null | Out-Null
+    powercfg -changename $intelGuid 'Intel Gaming Power Plan' 'FrameSync Labs Intel gaming power profile' 2>$null | Out-Null
+  }
+}
+
+    powercfg -s e4c7a13f-5b9d-42a0-9e61-3a3f620460bc
+    powercfg -s a1c7b13e-6f90-4720-8178-836cd5339e8c
+    powercfg -s 381b4222-f694-41f0-9685-ff5bb260df2e
+    Start-Process -FilePath 'vcredist.exe' -ArgumentList '/install /quiet /norestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $dxDir = Join-Path $PWD 'dxredist'
+$dx = Join-Path $dxDir 'DXSETUP.exe'
+if (Test-Path $dx) {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = $dx
+  $psi.Arguments = '/silent'
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.WindowStyle = 'Hidden'
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $proc.WaitForExit(300000) | Out-Null
+}
+$global:LASTEXITCODE = 0
+
+    Start-Process -FilePath 'FirefoxSetup.exe' -ArgumentList '/S' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $target = """$env:ProgramFiles\Mozilla Firefox\firefox.exe"""
+if (Test-Path $target) {
+  $shell = New-Object -ComObject WScript.Shell
+  $sc = $shell.CreateShortcut("""$env:PUBLIC\Desktop\Firefox.lnk""")
+  $sc.TargetPath = $target
+  $sc.IconLocation = """$target,0"""
+  $sc.Save()
+}
+
+    Start-Process -FilePath 'BraveSetup.exe' -ArgumentList '/silent /install' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $candidates = @(
+  """$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe""",
+  """${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe"""
+)
+$target = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($target) {
+  $shell = New-Object -ComObject WScript.Shell
+  $sc = $shell.CreateShortcut("""$env:PUBLIC\Desktop\Brave.lnk""")
+  $sc.TargetPath = $target
+  $sc.IconLocation = """$target,0"""
+  $sc.Save()
+}
+
+    
+$masterPrefs = '{"distribution":{"skip_first_run_ui":true,"do_not_create_any_shortcuts":false,"do_not_create_desktop_shortcut":false,"do_not_create_quick_launch_shortcut":true,"do_not_create_taskbar_shortcut":true,"do_not_launch_chrome":true,"do_not_register_for_update_launch":true,"make_chrome_default":false,"make_chrome_default_for_user":false,"suppress_first_run_bubble":true,"suppress_first_run_default_browser_prompt":true,"import_bookmarks":false,"import_history":false,"import_home_page":false,"import_search_engine":false,"ping_delay":-1,"verbose_logging":false},"first_run_tabs":[]}'
+$braveDirs = @(
+  """$env:ProgramFiles\BraveSoftware\Brave-Browser\Application""",
+  """${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application"""
+)
+foreach ($d in $braveDirs) {
+  if (Test-Path $d) {
+    Set-Content -Path (Join-Path $d 'master_preferences') -Value $masterPrefs -Encoding UTF8 -Force -ErrorAction SilentlyContinue
+    Set-Content -Path (Join-Path $d 'initial_preferences') -Value $masterPrefs -Encoding UTF8 -Force -ErrorAction SilentlyContinue
+  }
+}
+
+Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object {
+  $_.TaskName -like 'BraveSoftwareUpdate*' -or $_.TaskName -like 'BraveUpdate*'
+} | ForEach-Object {
+  try { Disable-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -ErrorAction SilentlyContinue | Out-Null } catch {}
+  try { Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+}
+
+foreach ($activeSetupRoot in @(
+  'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components',
+  'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Active Setup\Installed Components'
+)) {
+  if (Test-Path $activeSetupRoot) {
+    Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
+      try {
+        $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+        $stub = (Get-ItemProperty -Path $_.PSPath -Name 'StubPath' -ErrorAction SilentlyContinue).StubPath
+        if (($name -and $name -match 'Brave') -or ($stub -and $stub -match 'Brave')) {
+          Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+      } catch {}
+    }
+  }
+}
+foreach ($activeSetupRoot in @(
+  'HKCU:\SOFTWARE\Microsoft\Active Setup\Installed Components'
+)) {
+  if (Test-Path $activeSetupRoot) {
+    Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
+      try {
+        $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+        if ($name -and $name -match 'Brave') {
+          Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+      } catch {}
+    }
+  }
+}
+
+foreach ($activeSetupRoot in @(
+  'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components',
+  'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Active Setup\Installed Components'
+)) {
+  if (Test-Path $activeSetupRoot) {
+    Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
+      try {
+        $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+        $stub = (Get-ItemProperty -Path $_.PSPath -Name 'StubPath' -ErrorAction SilentlyContinue).StubPath
+        $isVendor = $false
+        if ($name -and $name -match 'Brave|MicrosoftEdge|Microsoft Edge|Edge Update|OneDrive|GoogleChrome|Google Chrome|Chrome Update|Mozilla|Firefox') { $isVendor = $true }
+        if ($stub -and $stub -match 'Brave|MicrosoftEdge|msedge|OneDrive|GoogleChrome|chrome\.exe|firefox|Mozilla') { $isVendor = $true }
+        if ($isVendor -and $stub) {
+          Set-ItemProperty -Path $_.PSPath -Name 'StubPath' -Value '' -Type ExpandString -Force -ErrorAction SilentlyContinue
+        }
+      } catch {}
+    }
+  }
+}
+
+foreach ($runKey in @(
+  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run',
+  'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run',
+  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
+)) {
+  if (Test-Path $runKey) {
+    foreach ($valName in @('OneDriveSetup','OneDrive','BraveUpdate','BraveUpdateOnDemand')) {
+      try { Remove-ItemProperty -Path $runKey -Name $valName -Force -ErrorAction SilentlyContinue } catch {}
+    }
+    try {
+      $props = Get-Item -Path $runKey -ErrorAction SilentlyContinue
+      if ($props) {
+        foreach ($vn in $props.GetValueNames()) {
+          if ($vn -like 'MicrosoftEdgeAutoLaunch*') {
+            try { Remove-ItemProperty -Path $runKey -Name $vn -Force -ErrorAction SilentlyContinue } catch {}
+          }
+        }
+      }
+    } catch {}
+  }
+}
+
+$edgeHiveTargets = @('Registry::HKEY_USERS\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Run')
+if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
+  $edgeHiveTargets += 'Registry::HKEY_USERS\AME_UserHive_Default\Software\Microsoft\Windows\CurrentVersion\Run'
+}
+Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | ForEach-Object {
+  $edgeHiveTargets += ('Registry::HKEY_USERS\' + $_.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Run')
+}
+foreach ($runKey in $edgeHiveTargets) {
+  if (Test-Path $runKey) {
+    try {
+      $props = Get-Item -Path $runKey -ErrorAction SilentlyContinue
+      if ($props) {
+        foreach ($vn in $props.GetValueNames()) {
+          if ($vn -like 'MicrosoftEdgeAutoLaunch*') {
+            try { Remove-ItemProperty -Path $runKey -Name $vn -Force -ErrorAction SilentlyContinue } catch {}
+          }
+        }
+      }
+    } catch {}
+  }
+}
+
+$userProfiles = Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Public','All Users','Default','Default User','WDAGUtilityAccount')
+}
+foreach ($prof in $userProfiles) {
+  $ntu = Join-Path $prof.FullName 'NTUSER.DAT'
+  if (-not (Test-Path $ntu)) { continue }
+  $key = 'FSOS_EDGE_' + ($prof.Name -replace '[^A-Za-z0-9]','')
+  & reg.exe load ('HKU\' + $key) $ntu 2>&1 | Out-Null
+  if ($LASTEXITCODE -eq 0) {
+    try {
+      $runKey = 'Registry::HKEY_USERS\' + $key + '\Software\Microsoft\Windows\CurrentVersion\Run'
+      if (Test-Path $runKey) {
+        $props = Get-Item -Path $runKey -ErrorAction SilentlyContinue
+        if ($props) {
+          foreach ($vn in $props.GetValueNames()) {
+            if ($vn -like 'MicrosoftEdgeAutoLaunch*') {
+              try { Remove-ItemProperty -Path $runKey -Name $vn -Force -ErrorAction SilentlyContinue } catch {}
+            }
+          }
+        }
+      }
+    } catch {}
+    [gc]::Collect(); Start-Sleep -Milliseconds 300
+    & reg.exe unload ('HKU\' + $key) 2>&1 | Out-Null
+  }
+}
+
+foreach ($p in @('BraveUpdate','BraveUpdateOnDemand','BraveCrashHandler','BraveCrashHandler64','BraveUpdateBroker','BraveUpdateCore')) {
+  Get-Process -Name $p -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+}
+
+foreach ($svc in @('BraveVPNService','BraveVPNWireguardService')) {
+  try { Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue } catch {}
+  try { Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue } catch {}
+}
+
+$updateDirs = @(
+  (Join-Path ${env:ProgramFiles(x86)} 'BraveSoftware\Update'),
+  (Join-Path $env:ProgramFiles 'BraveSoftware\Update')
+)
+$sids = Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+}
+foreach ($s in $sids) {
+  $profileList = 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $s.PSChildName
+  $profPath = (Get-ItemProperty -Path $profileList -Name 'ProfileImagePath' -ErrorAction SilentlyContinue).ProfileImagePath
+  if ($profPath -and (Test-Path $profPath)) {
+    $updateDirs += (Join-Path $profPath 'AppData\Local\BraveSoftware\Update')
+  }
+}
+foreach ($d in $updateDirs) {
+  if (Test-Path $d) {
+    & takeown.exe /F $d /R /D Y 2>&1 | Out-Null
+    & icacls.exe $d /grant administrators:F /T /C 2>&1 | Out-Null
+    Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+
+foreach ($k in @('HKLM:\SOFTWARE\BraveSoftware\Update','HKLM:\SOFTWARE\WOW6432Node\BraveSoftware\Update')) {
+  Remove-Item -Path $k -Recurse -Force -ErrorAction SilentlyContinue
+}
+foreach ($runKey in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Run','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run')) {
+  if (Test-Path $runKey) {
+    $props = (Get-Item $runKey).Property
+    foreach ($p in $props) {
+      if ($p -like 'BraveUpdate*' -or $p -like '*BraveSoftware*') {
+        Remove-ItemProperty -Path $runKey -Name $p -Force -ErrorAction SilentlyContinue
+      }
+    }
+  }
+}
+
+    Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i ChromeSetup.msi /qn /norestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    $candidates = @(
+  """$env:ProgramFiles\Google\Chrome\Application\chrome.exe""",
+  """${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"""
+)
+$target = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+if ($target) {
+  $shell = New-Object -ComObject WScript.Shell
+  $sc = $shell.CreateShortcut("""$env:PUBLIC\Desktop\Google Chrome.lnk""")
+  $sc.TargetPath = $target
+  $sc.IconLocation = """$target,0"""
+  $sc.Save()
+}
+
+    foreach ($activeSetupRoot in @('HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components','HKLM:\SOFTWARE\Wow6432Node\Microsoft\Active Setup\Installed Components')) {
+  if (-not (Test-Path $activeSetupRoot)) { continue }
+  Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
+    try {
+      $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
+      $stub = (Get-ItemProperty -Path $_.PSPath -Name 'StubPath' -ErrorAction SilentlyContinue).StubPath
+      $isVendor = $false
+      if ($name -and $name -match 'Brave|MicrosoftEdge|Microsoft Edge|Edge Update|OneDrive|GoogleChrome|Google Chrome|Chrome Update|Mozilla|Firefox') { $isVendor = $true }
+      if ($stub -and $stub -match 'Brave|MicrosoftEdge|msedge|OneDrive|GoogleChrome|chrome\.exe|firefox|Mozilla') { $isVendor = $true }
+      if ($isVendor) {
+        if ($stub -and $stub.Length -gt 0) {
+          try { Set-ItemProperty -Path $_.PSPath -Name 'StubPath' -Value '' -Type ExpandString -Force -ErrorAction SilentlyContinue } catch {}
+          try { Remove-ItemProperty -Path $_.PSPath -Name 'StubPath' -Force -ErrorAction SilentlyContinue } catch {}
+        }
+        if ($name -and $name -match 'Brave|Firefox|Mozilla|Google Chrome|Microsoft Edge') {
+          try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+        }
+      }
+    } catch {}
+  }
+}
+
+}}
+
+$Options += [PSCustomObject]@{Id=525; Cat="Confidentialite"; LabelFR="Strip"; LabelEN="Strip"; Risk="moderate"; Action={
+    $snapPath = Join-Path $env:TEMP 'fsos-appx-snapshot.txt'
+(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue).PackageFamilyName |
+  Sort-Object -Unique | Out-File -FilePath $snapPath -Encoding ASCII -Force
+$global:LASTEXITCODE = 0
+
+    $opts = @()
+$optsFile = Join-Path $env:windir 'FSOS\fsos-options.txt'
+if (Test-Path $optsFile) { $opts = Get-Content $optsFile -ErrorAction SilentlyContinue }
+$unpin = @('Copilot','Microsoft Copilot','Outlook','Outlook (new)','Outlook for Windows','Microsoft Outlook','Dev Home','Phone Link','Microsoft Teams','Teams')
+if ($opts -contains 'remove-xbox') { $unpin += @('Xbox','Game Bar','Xbox Game Bar') }
+if ($opts -contains 'remove-store') { $unpin += @('Microsoft Store') }
+if ($opts -contains 'remove-edge') { $unpin += @('Microsoft Edge','Edge') }
+$shell = New-Object -ComObject Shell.Application
+$apps = $shell.NameSpace('shell:::{4234d49b-0245-4df3-b780-3893943456e1}')
+$apps.Items() | ForEach-Object {
+  if ($unpin -contains $_.Name) {
+    $_.InvokeVerb('taskbarunpin')
+  }
+}
+
+    Get-AppxPackage -AllUsers -Name 'Microsoft.549981C3F5F10*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingNews*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingWeather*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingSearch*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.Bing*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Clipchamp.Clipchamp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.GetHelp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MSPaint*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Paint*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsCalculator*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '7EE7776C.LinkedInforWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WebMediaExtensions*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.HEIFImageExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.HEVCVideoExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.RawImageExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.VP9VideoExtensions*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WebpImageExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MPEG2VideoExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.AV1VideoExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Microsoft3DViewer*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftOfficeHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftSolitaireCollection*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftStickyNotes*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Office.OneNote*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.People*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.PowerAutomateDesktop*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.SkypeApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.StartExperiencesApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Todos*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Whiteboard*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WidgetsPlatformRuntime*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.PeopleExperienceHost*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.SecureAssessmentBrowser*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsAlarms*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsCamera*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsMaps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsSoundRecorder*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.ZuneMusic*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.ZuneVideo*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.MicrosoftFamily*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.QuickAssist*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.WebExperience*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'SpotifyAB.SpotifyMusic*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'microsoft.windowscommunicationsapps*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.DevHome*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Advertising.Xaml*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftPowerBIForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MixedReality.Portal*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Office.Word*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Office.Excel*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Office.PowerPoint*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookPWA*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Flipgrid*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdgeDevToolsClient*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftCorporationII.MailforSurfaceHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftTeamsforSurfaceHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.Client.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    $profiles = @('C:\Users\Default')
+Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Default User','Public','All Users','Default')
+} | ForEach-Object { $profiles += $_.FullName }
+
+foreach ($profile in $profiles) {
+  $shellDir = Join-Path $profile 'AppData\Local\Microsoft\Windows\Shell'
+  if (Test-Path $shellDir) {
+    Get-ChildItem -Path $shellDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.549981C3F5F10_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingNews_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingWeather_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Clipchamp.Clipchamp_yxz26nhyzhsrt' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.GetHelp_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Getstarted_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftOfficeHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftSolitaireCollection_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftStickyNotes_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.OutlookForWindows_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.People_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.PowerAutomateDesktop_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.SkypeApp_kzf8qxf38zg5c' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Todos_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsAlarms_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsFeedbackHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsMaps_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.YourPhone_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.ZuneMusic_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.ZuneVideo_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Copilot_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.AIX_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Ai.Copilot.Provider_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.XboxApp_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.GamingApp_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.XboxGameCallableUI_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.XboxGamingOverlay_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.XboxIdentityProvider_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.XboxSpeechToTextOverlay_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Xbox.TCUI_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsCalculator_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Paint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MSPaint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingSearch_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.MicrosoftFamily_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.QuickAssist_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.WebExperience_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.DevHome_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Advertising.Xaml_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftPowerBIForWindows_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MixedReality.Portal_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.Word_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.Excel_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Office.PowerPoint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.OutlookPWA_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Flipgrid_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdgeDevToolsClient_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.MailforSurfaceHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftTeamsforSurfaceHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\7EE7776C.LinkedInforWindows_w1wdnht996qgy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.OneDrive_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\microsoft.microsoftskydrive_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.SkyDrive_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    taskkill /IM OneDriveStandaloneUpdater /F 2>$null
+    taskkill /IM OneDriveSetup /F 2>$null
+    taskkill /IM OneDrive /F 2>$null
+    $dotDefault = 'Registry::HKEY_USERS\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Run'
+try { Remove-ItemProperty -Path $dotDefault -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue } catch {}
+try { Remove-ItemProperty -Path $dotDefault -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue } catch {}
+
+if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
+  $ameh = 'Registry::HKEY_USERS\AME_UserHive_Default\Software\Microsoft\Windows\CurrentVersion\Run'
+  try { Remove-ItemProperty -Path $ameh -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue } catch {}
+  try { Remove-ItemProperty -Path $ameh -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue } catch {}
+}
+
+Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | ForEach-Object {
+  $p = 'Registry::HKEY_USERS\' + $_.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Run'
+  try { Remove-ItemProperty -Path $p -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue } catch {}
+  try { Remove-ItemProperty -Path $p -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue } catch {}
+}
+
+$ntu = 'C:\Users\Default\NTUSER.DAT'
+if (Test-Path $ntu) {
+  reg load 'HKLM\FSOS_OD' $ntu 2>$null | Out-Null
+  try {
+    $run = 'HKLM:\FSOS_OD\Software\Microsoft\Windows\CurrentVersion\Run'
+    if (Test-Path $run) {
+      Remove-ItemProperty -Path $run -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $run -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue
+    }
+    $runOnce = 'HKLM:\FSOS_OD\Software\Microsoft\Windows\CurrentVersion\RunOnce'
+    if (Test-Path $runOnce) {
+      Remove-ItemProperty -Path $runOnce -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $runOnce -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
+  [gc]::Collect(); Start-Sleep -Milliseconds 300
+  reg unload 'HKLM\FSOS_OD' 2>$null | Out-Null
+}
+
+foreach ($exe in @(
+  """$env:SystemRoot\System32\OneDriveSetup.exe""",
+  """$env:SystemRoot\SysWOW64\OneDriveSetup.exe"""
+)) {
+  if (Test-Path $exe) {
+    try {
+      & takeown.exe /F $exe 2>&1 | Out-Null
+      & icacls.exe $exe /grant 'administrators:F' 2>&1 | Out-Null
+      Remove-Item -Path $exe -Force -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+
+$winsxs = """$env:SystemRoot\WinSxS"""
+if (Test-Path $winsxs) {
+  Get-ChildItem -Path $winsxs -Directory -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -like '*microsoft-windows-onedrive-setup*' } |
+    ForEach-Object {
+      $target = Join-Path $_.FullName 'OneDriveSetup.exe'
+      if (Test-Path $target) {
+        try {
+          & takeown.exe /F $target 2>&1 | Out-Null
+          & icacls.exe $target /grant 'administrators:F' 2>&1 | Out-Null
+          Remove-Item -Path $target -Force -ErrorAction SilentlyContinue
+        } catch {}
+      }
+    }
+}
+
+$ntu = 'C:\Users\Default\NTUSER.DAT'
+if (Test-Path $ntu) {
+  reg load 'HKLM\FSOS_OD' $ntu 2>$null | Out-Null
+  try {
+    $run = 'HKLM:\FSOS_OD\Software\Microsoft\Windows\CurrentVersion\Run'
+    if (Test-Path $run) {
+      Remove-ItemProperty -Path $run -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $run -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue
+    }
+    $runOnce = 'HKLM:\FSOS_OD\Software\Microsoft\Windows\CurrentVersion\RunOnce'
+    if (Test-Path $runOnce) {
+      Remove-ItemProperty -Path $runOnce -Name 'OneDriveSetup' -Force -ErrorAction SilentlyContinue
+      Remove-ItemProperty -Path $runOnce -Name 'OneDrive'      -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
+  [gc]::Collect(); Start-Sleep -Milliseconds 300
+  reg unload 'HKLM\FSOS_OD' 2>$null | Out-Null
+}
+
+$defaultOD = 'C:\Users\Default\AppData\Local\Microsoft\OneDrive'
+if (Test-Path $defaultOD) {
+  try {
+    & takeown.exe /F $defaultOD /R /D Y 2>&1 | Out-Null
+    & icacls.exe $defaultOD /grant 'administrators:F' /T /C 2>&1 | Out-Null
+    Remove-Item -Path $defaultOD -Recurse -Force -ErrorAction SilentlyContinue
+  } catch {}
+  if (Test-Path $defaultOD) {
+    & cmd.exe /c ('rmdir /s /q ' + [char]34 + $defaultOD + [char]34) 2>&1 | Out-Null
+  }
+}
+$defaultODLegacy = 'C:\Users\Default\OneDrive'
+if (Test-Path $defaultODLegacy) {
+  Remove-Item -Path $defaultODLegacy -Recurse -Force -ErrorAction SilentlyContinue
+}
+$defaultODLnk = 'C:\Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\OneDrive.lnk'
+if (Test-Path $defaultODLnk) {
+  Remove-Item -Path $defaultODLnk -Force -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -EP Bypass -File .\\strip-onedrive.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    .\appx-remover.ps1 -Packages @(
+  'Microsoft.OneDrive',
+  'microsoft.microsoftskydrive',
+  'Microsoft.SkyDrive'
+)
+    Remove-Item -Path '%SystemDrive%\OneDriveTemp' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%ProgramData%\Microsoft OneDrive' -Force -ErrorAction SilentlyContinue
+    try {
+  $csv = & schtasks.exe /Query /FO CSV 2>$null | ConvertFrom-Csv
+  foreach ($t in $csv) {
+    $name = $t.TaskName
+    if ($name -and ($name -match 'OneDrive')) {
+      try { & schtasks.exe /Delete /TN $name /F 2>$null | Out-Null } catch {}
+    }
+  }
+} catch {}
+$taskRoots = @(
+  (Join-Path $env:windir 'System32\Tasks'),
+  (Join-Path $env:windir 'SysWOW64\Tasks')
+)
+foreach ($root in $taskRoots) {
+  if (Test-Path $root) {
+    Get-ChildItem -Path $root -Recurse -File -Force -ErrorAction SilentlyContinue | Where-Object {
+      $_.Name -match 'OneDrive'
+    } | ForEach-Object {
+      try { Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{018D5C66-4533-4307-9B53-224DE2ED1FE6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{018D5C66-4533-4307-9B53-224DE2ED1FE6}' -Name 'None' -ErrorAction SilentlyContinue
+    $clsid = '{018D5C66-4533-4307-9B53-224DE2ED1FE6}'
+$hives = @('Registry::HKEY_USERS\.DEFAULT')
+if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
+  $hives += 'Registry::HKEY_USERS\AME_UserHive_Default'
+}
+Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | ForEach-Object { $hives += ('Registry::HKEY_USERS\' + $_.PSChildName) }
+foreach ($h in $hives) {
+  $p = Join-Path $h ('Software\Classes\CLSID\' + $clsid)
+  try {
+    New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $p -Name 'System.IsPinnedToNameSpaceTree' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  } catch {}
+  $p2 = Join-Path $h ('Software\Classes\Wow6432Node\CLSID\' + $clsid)
+  try {
+    New-Item -Path $p2 -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $p2 -Name 'System.IsPinnedToNameSpaceTree' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+$userProfiles = Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Public','All Users','Default','Default User','WDAGUtilityAccount')
+}
+foreach ($prof in $userProfiles) {
+  $ntu = Join-Path $prof.FullName 'NTUSER.DAT'
+  if (-not (Test-Path $ntu)) { continue }
+  $key = 'FSOS_OD_' + ($prof.Name -replace '[^A-Za-z0-9]','')
+  & reg.exe load ('HKU\' + $key) $ntu 2>&1 | Out-Null
+  if ($LASTEXITCODE -eq 0) {
+    try {
+      $p = 'Registry::HKEY_USERS\' + $key + '\Software\Classes\CLSID\' + $clsid
+      New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+      Set-ItemProperty -Path $p -Name 'System.IsPinnedToNameSpaceTree' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+      $p2 = 'Registry::HKEY_USERS\' + $key + '\Software\Classes\Wow6432Node\CLSID\' + $clsid
+      New-Item -Path $p2 -Force -ErrorAction SilentlyContinue | Out-Null
+      Set-ItemProperty -Path $p2 -Name 'System.IsPinnedToNameSpaceTree' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    } catch {}
+    [gc]::Collect(); Start-Sleep -Milliseconds 300
+    & reg.exe unload ('HKU\' + $key) 2>&1 | Out-Null
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Xbox*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.GamingApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGameOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxIdentityProvider*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxSpeechToTextOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Edge.GameAssist*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    $hideKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+New-Item -Path $hideKey -Force -ErrorAction SilentlyContinue | Out-Null
+$existing = (Get-ItemProperty -Path $hideKey -Name 'SettingsPageVisibility' -ErrorAction SilentlyContinue).SettingsPageVisibility
+$hidePages = 'gaming-gamebar;gaming-gamemode;gaming-xboxnetworking;gaming-broadcasting;gaming-trueplay;gaming-gamedvr'
+if ([string]::IsNullOrEmpty($existing)) {
+  $newVal = 'hide:' + $hidePages
+} elseif ($existing -like 'hide:*') {
+  $current = $existing.Substring(5)
+  $merged = ($current + ';' + $hidePages) -split ';' | Where-Object { $_ } | Select-Object -Unique
+  $newVal = 'hide:' + ($merged -join ';')
+} else {
+  $newVal = $existing
+}
+Set-ItemProperty -Path $hideKey -Name 'SettingsPageVisibility' -Value $newVal -Type String -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    $hideKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\Explorer'
+New-Item -Path $hideKey -Force -ErrorAction SilentlyContinue | Out-Null
+$existing = (Get-ItemProperty -Path $hideKey -Name 'SettingsPageVisibility' -ErrorAction SilentlyContinue).SettingsPageVisibility
+$hidePages = 'maps;maps-downloadmaps;windowsinsider'
+if ([string]::IsNullOrEmpty($existing)) {
+  $newVal = 'hide:' + $hidePages
+} elseif ($existing -like 'hide:*') {
+  $current = $existing.Substring(5)
+  $merged = ($current + ';' + $hidePages) -split ';' | Where-Object { $_ } | Select-Object -Unique
+  $newVal = 'hide:' + ($merged -join ';')
+} else {
+  $newVal = $existing
+}
+Set-ItemProperty -Path $hideKey -Name 'SettingsPageVisibility' -Value $newVal -Type String -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    $patterns = @('*Microsoft Store*')
+$extensions = @('.lnk','.url','.appref-ms')
+$roots = New-Object System.Collections.ArrayList
+[void]$roots.Add((Join-Path $env:SystemDrive 'ProgramData\Microsoft\Windows\Start Menu'))
+[void]$roots.Add((Join-Path $env:SystemDrive 'Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu'))
+[void]$roots.Add((Join-Path $env:SystemDrive 'Users\Default\AppData\Local\Microsoft\Windows\WinX'))
+Get-ChildItem (Join-Path $env:SystemDrive 'Users') -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -notin @('Public','Default','All Users','WDAGUtilityAccount') } |
+  ForEach-Object {
+    [void]$roots.Add((Join-Path $_.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu'))
+    [void]$roots.Add((Join-Path $_.FullName 'AppData\Local\Microsoft\Windows\WinX'))
+  }
+$shell = New-Object -ComObject WScript.Shell -ErrorAction SilentlyContinue
+foreach ($root in $roots) {
+  if (Test-Path $root) {
+    try {
+      $allLnks = Get-ChildItem -Path $root -Recurse -Force -File -ErrorAction SilentlyContinue | Where-Object {
+        $extensions -contains $_.Extension.ToLower()
+      }
+      foreach ($item in $allLnks) {
+        $matched = $false
+        foreach ($pat in $patterns) { if ($item.Name -like $pat) { $matched = $true; break } }
+        $orphan = $false
+        if (-not $matched -and $item.Extension.ToLower() -eq '.lnk' -and $shell) {
+          try {
+            $sc = $shell.CreateShortcut($item.FullName)
+            $tgt = $sc.TargetPath
+            if ($tgt -and -not (Test-Path $tgt) -and $tgt -notmatch '^https?://' -and $tgt -notmatch '^[a-z]+:[^\\]') {
+              $orphan = $true
+            }
+          } catch {}
+        }
+        if ($matched -or $orphan) {
+          try { Remove-Item -Path $item.FullName -Force -ErrorAction SilentlyContinue } catch {}
+        }
+      }
+    } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsStore*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.StorePurchaseApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    try {
+  $patterns = @('Microsoft.WindowsStore','Microsoft.StorePurchaseApp')
+  Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object {
+    $n = $_.Name
+    $patterns | Where-Object { $n -eq $_ -or $n -like ($_ + '.*') }
+  } | ForEach-Object {
+    try { Remove-AppxPackage -Package $_.PackageFullName -AllUsers -ErrorAction SilentlyContinue } catch {}
+  }
+  Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
+    $dn = $_.DisplayName
+    $patterns | Where-Object { $dn -eq $_ -or $dn -like ($_ + '*') }
+  } | ForEach-Object {
+    try { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue } catch {}
+  }
+  $appRepo = Join-Path $env:ProgramData 'Microsoft\Windows\AppRepository\Packages'
+  if (Test-Path $appRepo) {
+    Get-ChildItem -Path $appRepo -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+      $name = $_.Name
+      $patterns | Where-Object { $name -like ($_ + '_*') }
+    } | ForEach-Object {
+      $dir = $_.FullName
+      try {
+        Start-Process -FilePath 'takeown.exe' -ArgumentList ('/F','"' + $dir + '"','/R','/D','Y') -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+        Start-Process -FilePath 'icacls.exe' -ArgumentList ('"' + $dir + '"','/grant','administrators:F','/T','/C') -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+        Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
+      } catch {}
+    }
+  }
+  $stagingRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications'
+  if (Test-Path $stagingRoot) {
+    Get-ChildItem -Path $stagingRoot -ErrorAction SilentlyContinue | Where-Object {
+      $n = $_.PSChildName
+      $patterns | Where-Object { $n -like ($_ + '_*') }
+    } | ForEach-Object {
+      try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+  $stateChange = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel\StateChange\PackageList'
+  if (Test-Path $stateChange) {
+    Get-ChildItem -Path $stateChange -ErrorAction SilentlyContinue | Where-Object {
+      $n = $_.PSChildName
+      $patterns | Where-Object { $n -like ($_ + '_*') }
+    } | ForEach-Object {
+      try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+  $repoCache = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages'
+  if (Test-Path $repoCache) {
+    Get-ChildItem -Path $repoCache -ErrorAction SilentlyContinue | Where-Object {
+      $n = $_.PSChildName
+      $patterns | Where-Object { $n -like ($_ + '_*') }
+    } | ForEach-Object {
+      try {
+        $key = $_.PSPath
+        & takeown.exe /F ('HKLM\' + ($key -replace '^Registry::HKEY_LOCAL_MACHINE\\','')) 2>&1 | Out-Null
+        Remove-Item -Path $key -Recurse -Force -ErrorAction SilentlyContinue
+      } catch {}
+    }
+  }
+  $classRoot = 'HKLM:\SOFTWARE\Classes\Local Settings\Software\Microsoft\Windows\CurrentVersion\AppModel\Repository\Packages'
+  if (Test-Path $classRoot) {
+    Get-ChildItem -Path $classRoot -ErrorAction SilentlyContinue | Where-Object {
+      $n = $_.PSChildName
+      $patterns | Where-Object { $n -like ($_ + '_*') }
+    } | ForEach-Object {
+      try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+} catch {}
+$global:LASTEXITCODE = 0
+
+    Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$' } | ForEach-Object {
+  $sid = $_.PSChildName
+  try {
+    $auxPath = 'Registry::HKU\' + $sid + '\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Taskband\AuxilliaryPins'
+    if (-not (Test-Path $auxPath)) { New-Item -Path $auxPath -Force -ErrorAction SilentlyContinue | Out-Null }
+    Set-ItemProperty -Path $auxPath -Name 'StorePin' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+try {
+  $sig = '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
+  $type = Add-Type -MemberDefinition $sig -Name 'NativeMethodsStore' -Namespace 'FSOS' -PassThru -ErrorAction SilentlyContinue
+  if ($type) {
+    $HWND_BROADCAST = [IntPtr]0xffff
+    $WM_SETTINGCHANGE = 0x001A
+    $SMTO_ABORTIFHUNG = 0x0002
+    $result = [UIntPtr]::Zero
+    [void]$type::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, 'TraySettings', $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+    [void]$type::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, 'Policy', $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+  }
+} catch {}
+Start-Sleep -Milliseconds 500
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'InstallService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'InstallService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PushToInstall' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PushToInstall' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'LicenseManager' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'LicenseManager' -StartupType Disabled -ErrorAction SilentlyContinue
+    foreach ($p in @('NisSrv','SecurityHealthHost','SecurityHealthService','SecurityHealthSystray','MsMpEng')) {
+  try { Get-Process -Name $p -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name '*SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.Apprep.ChxApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.SecHealthUI_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife\S-1-5-18\Microsoft.Windows.SecHealthUI_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    $svcList = @('Sense','WinDefend','MsSecCore','wscsvc','WdFilter','WdBoot','WdNisDrv','WdNisSvc','MsSecWfp','MsSecFlt','wtd','webthreatdefusersvc','webthreatdefsvc','SecurityHealthService')
+
+function Take-RegKeyOwnership {
+  param([string]$subKey)
+  try {
+    $defPriv = [System.Security.AccessControl.RegistryRights]'TakeOwnership,ChangePermissions,ReadKey,QueryValues,SetValue'
+    $adminSid = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'
+    $systemSid = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'
+    $root = [Microsoft.Win32.Registry]::LocalMachine
+    $k = $root.OpenSubKey($subKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, [System.Security.AccessControl.RegistryRights]'TakeOwnership,ReadPermissions,ChangePermissions')
+    if (-not $k) { return $false }
+    $acl = $k.GetAccessControl([System.Security.AccessControl.AccessControlSections]::All)
+    $acl.SetOwner($adminSid)
+    $k.SetAccessControl($acl)
+    $k.Close()
+    $k = $root.OpenSubKey($subKey, [Microsoft.Win32.RegistryKeyPermissionCheck]::ReadWriteSubTree, [System.Security.AccessControl.RegistryRights]::ChangePermissions)
+    $acl = $k.GetAccessControl([System.Security.AccessControl.AccessControlSections]::All)
+    $ruleAdmin = New-Object System.Security.AccessControl.RegistryAccessRule($adminSid,'FullControl','ContainerInherit','None','Allow')
+    $ruleSys = New-Object System.Security.AccessControl.RegistryAccessRule($systemSid,'FullControl','ContainerInherit','None','Allow')
+    $acl.AddAccessRule($ruleAdmin)
+    $acl.AddAccessRule($ruleSys)
+    $k.SetAccessControl($acl)
+    $k.Close()
+    return $true
+  } catch { return $false }
+}
+
+foreach ($s in $svcList) {
+  $subKey = 'SYSTEM\CurrentControlSet\Services\' + $s
+  $subKeyPS = 'HKLM:\' + $subKey
+  if (-not (Test-Path $subKeyPS)) { continue }
+  [void](Take-RegKeyOwnership -subKey $subKey)
+  try {
+    $rk = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($subKey, $true)
+    if ($rk) {
+      try { $rk.SetValue('Start', 4, [Microsoft.Win32.RegistryValueKind]::DWord) } catch {}
+      try { $rk.DeleteValue('DelayedAutoStart', $false) } catch {}
+      if ($s -eq 'WinDefend') {
+        try { $rk.SetValue('LaunchProtected', 0, [Microsoft.Win32.RegistryValueKind]::DWord) } catch {}
+      }
+      $rk.Close()
+    }
+  } catch {}
+  $trigger = Join-Path $subKeyPS 'TriggerInfo'
+  if (Test-Path $trigger) {
+    [void](Take-RegKeyOwnership -subKey ($subKey + '\TriggerInfo'))
+    try { Remove-Item -Path $trigger -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+
+foreach ($s in $svcList) {
+  try {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'sc.exe'
+    $psi.Arguments = 'stop ' + $s
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = 'Hidden'
+    $p = [System.Diagnostics.Process]::Start($psi)
+    if ($p) { [void]$p.WaitForExit(2000); if (-not $p.HasExited) { try { $p.Kill() } catch {} } }
+  } catch {}
+}
+foreach ($s in $svcList) {
+  try {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'sc.exe'
+    $psi.Arguments = 'delete ' + $s
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = 'Hidden'
+    $p = [System.Diagnostics.Process]::Start($psi)
+    if ($p) { [void]$p.WaitForExit(2000); if (-not $p.HasExited) { try { $p.Kill() } catch {} } }
+  } catch {}
+}
+
+foreach ($s in $svcList) {
+  $subKey = 'SYSTEM\CurrentControlSet\Services\' + $s
+  $subKeyPS = 'HKLM:\' + $subKey
+  if (-not (Test-Path $subKeyPS)) { continue }
+  try {
+    $rk = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($subKey, $true)
+    if ($rk) {
+      $cur = $rk.GetValue('Start')
+      if ($cur -ne 4) {
+        try { $rk.SetValue('Start', 4, [Microsoft.Win32.RegistryValueKind]::DWord) } catch {}
+      }
+      $rk.Close()
+    }
+  } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'WindowsDefender' -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthSystray.exe' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthService.exe' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthAgent.dll' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthHost.exe' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthCore.dll' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthProxyStub.dll' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\SecurityHealthUdk.dll' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%systemroot%\System32\drivers\WdNisDrv.sys' -Force -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName 'Windows Defender Cache Maintenance' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Windows Defender Cleanup' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Windows Defender Scheduled Scan' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Windows Defender Verification' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Disable-Feature /FeatureName:"Windows-Defender-Default-Definitions" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    "%WINDIR%\FSOS\Tools\nuke-defender.bat"
+    schtasks /Create /TN FSOSDefenderCleanup /TR "wscript.exe //B //Nologo \"%WINDIR%\FSOS\Tools\nuke-defender-launcher.vbs\"" /SC ONLOGON /RL HIGHEST /RU SYSTEM /F >nul 2>nul || exit /b 0
+    Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PcaSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PcaSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'InventorySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'InventorySvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NPSMSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NPSMSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WpnService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WpnService' -StartupType Disabled -ErrorAction SilentlyContinue
+    foreach ($s in @('DiagTrack','PcaSvc','InventorySvc','NPSMSvc','WpnService')) {
+  try { Stop-Service -Name $s -Force -ErrorAction SilentlyContinue } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    foreach ($feat in @('Microsoft-Hyper-V-All','HypervisorPlatform','VirtualMachinePlatform')) {
+  try {
+    $f = Get-WindowsOptionalFeature -Online -FeatureName $feat -ErrorAction SilentlyContinue
+    if ($f -and $f.State -eq 'Enabled') {
+      Disable-WindowsOptionalFeature -Online -FeatureName $feat -NoRestart -ErrorAction SilentlyContinue | Out-Null
+    }
+  } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set hypervisorlaunchtype off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    taskkill /IM smartscreen /F 2>$null
+    Set-ProcessMitigation -System -Disable EmulateAtlThunks,SEHOP,ForceRelocateImages,BottomUp,HighEntropy,StrictHandle,SuppressExports,DisableExtensionPoints,BlockDynamicCode,AuditDynamicCode,AuditFont,BlockRemoteImageLoads,AuditRemoteImageLoads -ErrorAction SilentlyContinue
+Set-ProcessMitigation -System -Enable DEP,CFG -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    taskkill /IM Teams /F 2>$null
+    taskkill /IM ms-teams /F 2>$null
+    taskkill /IM msteams /F 2>$null
+    taskkill /IM TeamsBackground /F 2>$null
+    taskkill /IM Outlook /F 2>$null
+    .\appx-remover.ps1 -Packages @(
+  'MicrosoftTeams',
+  'MSTeams',
+  'Flipgrid'
+)
+    Start-Process -FilePath 'msiexec.exe' -ArgumentList '/qn /norestart /X{A7AB73A3-CB10-4AA5-9D38-6AEFFBDE4C91}' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    foreach ($uninstallPath in @(
+  'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+  'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall',
+  'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall'
+)) {
+  if (Test-Path $uninstallPath) {
+    Get-ChildItem -Path $uninstallPath -ErrorAction SilentlyContinue | ForEach-Object {
+      try {
+        $dn = (Get-ItemProperty -Path $_.PSPath -Name 'DisplayName' -ErrorAction SilentlyContinue).DisplayName
+        if ($dn -and ($dn -match 'Teams Meeting Add-?in' -or $dn -match 'TeamsMeetingAddin' -or $dn -match 'Teams Machine-Wide Installer')) {
+          $productCode = $_.PSChildName
+          if ($productCode -match '^\{[A-F0-9\-]+\}$') {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName = 'msiexec.exe'
+            $psi.Arguments = '/x ' + $productCode + ' /qn /norestart'
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow = $true
+            $psi.WindowStyle = 'Hidden'
+            try { $p = [System.Diagnostics.Process]::Start($psi); $p.WaitForExit(300000) | Out-Null } catch {}
+          }
+        }
+      } catch {}
+    }
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Teams Machine-Wide Installer' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Teams Machine-Wide Installer' -Recurse -Force -ErrorAction SilentlyContinue
+    try { & schtasks.exe /Delete /TN '\\Microsoft\\Windows\\TeamsUpdaterDaemon' /F 2>$null | Out-Null } catch {}
+try { & schtasks.exe /Delete /TN 'TeamsMachineUninstallerFallBack' /F 2>$null | Out-Null } catch {}
+try { & schtasks.exe /Delete /TN 'TeamsMachineUninstallerLogonFallBack' /F 2>$null | Out-Null } catch {}
+$global:LASTEXITCODE = 0
+
+    Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -EP Bypass -File .\\strip-edge.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like 'MicrosoftEdgeUpdateTaskMachine*' -or $_.TaskName -like 'MicrosoftEdgeUpdateTaskUser*' -or $_.TaskName -like 'MicrosoftEdgeUpdateBrowserReplacement*' } | ForEach-Object {
+  Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -ErrorAction SilentlyContinue
+}
+Get-Process -Name 'MicrosoftEdgeUpdate*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    $q = [char]39
+$inner = 'foreach ($r in @(' + $q + 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' + $q + ',' + $q + 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run' + $q + ',' + $q + 'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run' + $q + ')) { if (Test-Path $r) { try { $i = Get-Item -Path $r -ErrorAction SilentlyContinue; if ($i) { foreach ($v in $i.GetValueNames()) { if ($v -like ' + $q + 'MicrosoftEdgeAutoLaunch*' + $q + ') { Remove-ItemProperty -Path $r -Name $v -Force -ErrorAction SilentlyContinue } } } } catch {} } }'
+$ps = 'powershell.exe -NoP -EP Bypass -WindowStyle Hidden -Command ' + $q + $inner + $q
+New-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce' -Force -ErrorAction SilentlyContinue | Out-Null
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce' -Name 'FSOSEdgeAutoLaunchNuke' -Value $ps -Type String -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'Spooler' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Spooler' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PrintNotify' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PrintNotify' -StartupType Disabled -ErrorAction SilentlyContinue
+    try {
+  $svc = Get-Service -Name 'lfsvc' -ErrorAction SilentlyContinue
+  if ($svc) {
+    try { Stop-Service -Name 'lfsvc' -Force -ErrorAction SilentlyContinue } catch {}
+    Start-Sleep -Milliseconds 500
+    $svc2 = Get-Service -Name 'lfsvc' -ErrorAction SilentlyContinue
+  } else {
+  }
+} catch {}
+$sensorGuid = '{BFA794E4-F964-4FDB-90F6-51056BFE4B44}'
+foreach ($basePair in @(
+  @('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides', 'Overrides'),
+  @('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Permissions', 'Permissions')
+)) {
+  $base = $basePair[0]
+  $label = $basePair[1]
+  $target = Join-Path $base $sensorGuid
+  try {
+    New-Item -Path $target -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $target -Name 'SensorPermissionState' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    $verify = (Get-ItemProperty -Path $target -Name 'SensorPermissionState' -ErrorAction SilentlyContinue).SensorPermissionState
+  } catch {}
+}
+try {
+  $svcCfg = 'HKLM:\SYSTEM\CurrentControlSet\Services\lfsvc\Service\Configuration'
+  New-Item -Path $svcCfg -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $svcCfg -Name 'Status' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  $verify = (Get-ItemProperty -Path $svcCfg -Name 'Status' -ErrorAction SilentlyContinue).Status
+} catch {}
+try {
+  $csPath = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location'
+  New-Item -Path $csPath -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $csPath -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue
+  $verify = (Get-ItemProperty -Path $csPath -Name 'Value' -ErrorAction SilentlyContinue).Value
+} catch {}
+try {
+  $triggerKey = 'HKLM:\SYSTEM\CurrentControlSet\Services\lfsvc\TriggerInfo'
+  if (Test-Path $triggerKey) {
+    Remove-Item -Path $triggerKey -Recurse -Force -ErrorAction SilentlyContinue
+  } else {
+  }
+} catch {}
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'lfsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lfsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    $allowCaps = @('webcam','microphone')
+$skipCaps = @('radios','bluetoothSync','bluetooth','wifiData','cellularData','wifiDirect','nearShareLegacy','otherDevices')
+
+$hklmStore = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore'
+$discoveredCaps = @()
+try {
+  $discoveredCaps = Get-ChildItem -Path $hklmStore -ErrorAction SilentlyContinue |
+                    ForEach-Object { $_.PSChildName }
+} catch {}
+$knownCaps = @(
+  'userAccountInformation','contacts','appointments','phoneCall',
+  'phoneCallHistory','email','userDataTasks','voiceActivation',
+  'userNotificationListener','chat',
+  'appDiagnostics','automaticFileDownloads','documentsLibrary',
+  'downloadsFolder','musicLibrary','picturesLibrary','videosLibrary',
+  'broadFileSystemAccess','graphicsCaptureWithoutBorder',
+  'graphicsCaptureProgrammatic','generativeAi','credentialAccess',
+  'location','activity','humanPresence',
+  'eyeTracker','gazeInput','sensors.custom',
+  'phoneCallHistoryPublic','sms','textAndImageGeneration',
+  'screenshotsAndScreenRecording','screenshotBorders','passkeys','voipCall'
+)
+$allCaps = @($discoveredCaps + $knownCaps | Sort-Object -Unique)
+$denyCaps = $allCaps | Where-Object { $_ -notin $allowCaps -and $_ -notin $skipCaps }
+
+$mappingsRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\CapabilityMappings'
+$capToGuids = @{}
+try {
+  Get-ChildItem -Path $mappingsRoot -ErrorAction SilentlyContinue | ForEach-Object {
+    $capName = $_.PSChildName
+    $guids = @()
+    try {
+      $guids = Get-ChildItem -Path $_.PSPath -ErrorAction SilentlyContinue |
+               ForEach-Object { $_.PSChildName } |
+               Where-Object { $_ -match '^\{[0-9A-Fa-f-]+\}$' }
+    } catch {}
+    if ($guids.Count -gt 0) { $capToGuids[$capName] = $guids }
+  }
+} catch {}
+
+function Set-ConsentStore($storeBase, $capName, $state) {
+  $capPath = Join-Path $storeBase $capName
+  try {
+    New-Item -Path $capPath -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $capPath -Name 'Value' -Value $state -Type String -Force -ErrorAction SilentlyContinue
+    $np = Join-Path $capPath 'NonPackaged'
+    New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $np -Name 'Value' -Value $state -Type String -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+function Set-DeviceAccess($daBase, $guid, $state) {
+  $gPath = Join-Path $daBase $guid
+  try {
+    New-Item -Path $gPath -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $gPath -Name 'Value' -Value $state -Type String -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+function Apply-PrivacyToHive($hiveRoot) {
+  $csBase = Join-Path $hiveRoot 'Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore'
+  $daBase = Join-Path $hiveRoot 'Microsoft\Windows\CurrentVersion\DeviceAccess\Global'
+  foreach ($c in $denyCaps)  {
+    Set-ConsentStore $csBase $c 'Deny'
+    if ($capToGuids.ContainsKey($c)) {
+      foreach ($g in $capToGuids[$c]) { Set-DeviceAccess $daBase $g 'Deny' }
+    }
+  }
+  foreach ($c in $allowCaps) {
+    Set-ConsentStore $csBase $c 'Allow'
+    if ($capToGuids.ContainsKey($c)) {
+      foreach ($g in $capToGuids[$c]) { Set-DeviceAccess $daBase $g 'Allow' }
+    }
+  }
+}
+
+Apply-PrivacyToHive 'HKLM:\SOFTWARE'
+Apply-PrivacyToHive 'Registry::HKEY_USERS\.DEFAULT\SOFTWARE'
+if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
+  Apply-PrivacyToHive 'Registry::HKEY_USERS\AME_UserHive_Default\SOFTWARE'
+}
+Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | ForEach-Object {
+  $liveRoot = 'Registry::HKEY_USERS\' + $_.PSChildName + '\SOFTWARE'
+  Apply-PrivacyToHive $liveRoot
+}
+
+try { Restart-Service -Name camsvc -Force -ErrorAction SilentlyContinue } catch {}
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name 'Microsoft.YourPhone*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.CrossDevice*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.CrossDevice*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.CrossDevice_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    Stop-Service -Name 'PhoneSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PhoneSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CDPSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CDPSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName 'ReconcileFeatures' -TaskPath '\Microsoft\Windows\Flighting\FeatureConfig\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'CleanupResumeTimelineData' -TaskPath '\Microsoft\Windows\CrossDevice\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Resume on Boot' -TaskPath '\Microsoft\Windows\SystemUptime\' -ErrorAction SilentlyContinue | Out-Null
+    try {
+  New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume' -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume' -Name 'Enabled' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration' -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CrossDeviceResume\Configuration' -Name 'IsResumeAllowed' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP' -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP' -Name 'RomeSdkChannelUserAuthzPolicy' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP' -Name 'CdpSessionUserAuthzPolicy' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\CDP' -Name 'NearShareChannelUserAuthzPolicy' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+} catch {}
+Get-Process -Name 'CrossDeviceResume' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    Get-Process -Name 'CrossDeviceResume' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-AppxPackage -AllUsers 'MicrosoftWindows.CrossDevice*' -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
+Get-AppxPackage 'MicrosoftWindows.CrossDevice*' -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
+Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+  Where-Object { $_.DisplayName -like 'MicrosoftWindows.CrossDevice*' } |
+  ForEach-Object { Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue }
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'WlanSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WlanSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wcncsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wcncsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'bthserv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'bthserv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthAvctpSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthAvctpSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BluetoothUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BluetoothUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    $opts = Join-Path $env:windir 'FSOS\fsos-options.txt'
+if (Test-Path $opts) {
+  $lines = Get-Content $opts -ErrorAction SilentlyContinue
+  $wifiOff = $lines -contains 'disable-wifi'
+  $btOff = $lines -contains 'disable-bluetooth'
+  if ($wifiOff -and $btOff) {
+    $svcRoot = 'HKLM:\SYSTEM\CurrentControlSet\Services'
+    foreach ($s in @('RmSvc','DisplayEnhancementService')) {
+      $k = Join-Path $svcRoot $s
+      if (Test-Path $k) {
+        try { Set-ItemProperty -Path $k -Name 'Start' -Value 4 -Type DWord -Force -ErrorAction SilentlyContinue } catch {}
+      }
+    }
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $targets = @()
+if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
+  $targets += 'Registry::HKEY_USERS\AME_UserHive_Default\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings'
+}
+Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | ForEach-Object {
+  $targets += ('Registry::HKEY_USERS\' + $_.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Notifications\Settings')
+}
+foreach ($t in $targets) {
+  try {
+    New-Item -Path $t -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $t -Name 'NOC_GLOBAL_SETTING_SHOW_IN_SETTINGS' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | ForEach-Object {
+  $sid = $_.PSChildName
+  try {
+    $advPath = 'Registry::HKU\' + $sid + '\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+    if (-not (Test-Path $advPath)) { New-Item -Path $advPath -Force -ErrorAction SilentlyContinue | Out-Null }
+    Set-ItemProperty -Path $advPath -Name 'ShowCopilotButton' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  } catch {}
+  try {
+    $auxPath = 'Registry::HKU\' + $sid + '\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Taskband\AuxilliaryPins'
+    if (-not (Test-Path $auxPath)) { New-Item -Path $auxPath -Force -ErrorAction SilentlyContinue | Out-Null }
+    foreach ($n in @('CopilotPin','CopilotPWAPin')) {
+      Set-ItemProperty -Path $auxPath -Name $n -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
+  try {
+    $bingPath = 'Registry::HKU\' + $sid + '\Software\Microsoft\Windows\Shell\Copilot\BingChat'
+    if (-not (Test-Path $bingPath)) { New-Item -Path $bingPath -Force -ErrorAction SilentlyContinue | Out-Null }
+    Set-ItemProperty -Path $bingPath -Name 'IsUserEligible' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+try {
+  $sig = '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
+  $type = Add-Type -MemberDefinition $sig -Name 'NativeMethods' -Namespace 'FSOS' -PassThru -ErrorAction SilentlyContinue
+  if ($type) {
+    $HWND_BROADCAST = [IntPtr]0xffff
+    $WM_SETTINGCHANGE = 0x001A
+    $SMTO_ABORTIFHUNG = 0x0002
+    $result = [UIntPtr]::Zero
+    [void]$type::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, 'TraySettings', $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+    [void]$type::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, 'Policy', $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+  }
+} catch {}
+Start-Sleep -Milliseconds 500
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.Copilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.Copilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftCopilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MSCopilot*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Copilot365*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.AIX*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.CoreAI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.AugLoop.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.UndockedDevKit*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.AVCEncoderVideoExtension*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.ApplicationCompatibilityEnhancements*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Disney.*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MSTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftTeams*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    try {
+  $appxList = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -match 'Copilot|Cortana|Recall|Client\.AIX|Client\.Photon|Microsoft365'
+  })
+  foreach ($pkg in $appxList) {
+    try { Remove-AppxPackage -Package $pkg.PackageFullName -AllUsers -ErrorAction SilentlyContinue } catch {}
+  }
+  $provList = @(Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
+    $_.DisplayName -match 'Copilot|Cortana|Recall|Client\.AIX|Client\.Photon|Microsoft365'
+  })
+  foreach ($prov in $provList) {
+    try { Remove-AppxProvisionedPackage -Online -PackageName $prov.PackageName -ErrorAction SilentlyContinue } catch {}
+  }
+} catch {}
+try {
+  $uninstallRoots = @('HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall','HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall')
+  foreach ($root in $uninstallRoots) {
+    if (-not (Test-Path $root)) { continue }
+    $entries = @(Get-ChildItem -Path $root -ErrorAction SilentlyContinue)
+    foreach ($entry in $entries) {
+      try {
+        $props = Get-ItemProperty -Path $entry.PSPath -ErrorAction SilentlyContinue
+        $dn = $props.DisplayName
+        if ($dn -and $dn -match 'Copilot|Cortana|Recall') {
+          $us = $props.QuietUninstallString
+          if (-not $us) { $us = $props.UninstallString }
+          if ($us) {
+            try {
+              $exe = ''
+              $args = ''
+              if ($us -match '^"([^"]+)"\s*(.*)$') { $exe = $matches[1]; $args = $matches[2] }
+              elseif ($us -match '^(\S+)\s*(.*)$') { $exe = $matches[1]; $args = $matches[2] }
+              if ($exe -and (Test-Path $exe)) {
+                if ($args -notmatch '/quiet|/silent|--force-uninstall') { $args = $args + ' --force-uninstall --system-level' }
+                Start-Process -FilePath $exe -ArgumentList $args -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+              }
+            } catch {}
+          }
+          Remove-Item -Path $entry.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+      } catch {}
+    }
+  }
+} catch {}
+try {
+  $copilotDirs = @(
+    'C:\Program Files\Microsoft\Copilot',
+    'C:\Program Files (x86)\Microsoft\Copilot',
+    'C:\Program Files\WindowsApps\Microsoft.Copilot*',
+    'C:\Program Files\Microsoft Copilot',
+    'C:\Program Files (x86)\Microsoft Copilot'
+  )
+  foreach ($pat in $copilotDirs) {
+    $dirs = @(Get-Item -Path $pat -ErrorAction SilentlyContinue)
+    foreach ($d in $dirs) {
+      if ($d -and (Test-Path $d.FullName)) {
+        try {
+          $tkArgs = '/F "' + $d.FullName + '" /R /D Y'
+          Start-Process -FilePath 'takeown.exe' -ArgumentList $tkArgs -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+          $icArgs = '"' + $d.FullName + '" /grant administrators:F /T /C'
+          Start-Process -FilePath 'icacls.exe' -ArgumentList $icArgs -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+          Remove-Item -Path $d.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {}
+      }
+    }
+  }
+} catch {}
+try {
+  foreach ($task in @('\Microsoft\Windows\WindowsCopilot\*','\Microsoft\Windows\Copilot\*','*Copilot*','*MSCopilot*')) {
+    Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -like $task -or $_.TaskPath -like $task } | ForEach-Object {
+      try { Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+} catch {}
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.AIX*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Windows.Ai.Copilot.Provider*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.549981C3F5F10*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Copilot_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.AIX_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Ai.Copilot.Provider_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftCopilot_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MSCopilot_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Copilot365_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.AIX_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife\S-1-5-18\Microsoft.Copilot_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife\S-1-5-18\Microsoft.Windows.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife\S-1-5-18\MicrosoftWindows.Client.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife\S-1-5-18\Microsoft.Windows.Ai.Copilot.Provider_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.549981C3F5F10_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    Get-WindowsPackage -Online | Where-Object { $_.PackageName -match 'Recall|Copilot|Client.AIX|Client.Photon|Cortana' } | ForEach-Object {
+  Remove-WindowsPackage -Online -PackageName $_.PackageName -NoRestart -ErrorAction SilentlyContinue
+}
+Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
+  $_.DisplayName -match 'Copilot|Client\.AIX|Client\.Photon|Cortana|549981C3F5F10'
+} | ForEach-Object {
+  Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -AllUsers -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    .\appx-remover.ps1 -Packages @(
+  'Microsoft.Copilot',
+  'Microsoft.Windows.Copilot',
+  'MicrosoftWindows.Client.Copilot',
+  'Microsoft.Windows.Ai.Copilot.Provider',
+  'MicrosoftWindows.Client.AIX',
+  'MicrosoftWindows.Client.Photon',
+  'Microsoft.549981C3F5F10',
+  'Microsoft.MicrosoftOfficeHub'
+)
+    $copilotPackages = @(
+  'Microsoft.Copilot_8wekyb3d8bbwe',
+  'Microsoft.Windows.Copilot_cw5n1h2txyewy',
+  'MicrosoftWindows.Client.Copilot_cw5n1h2txyewy',
+  'MicrosoftWindows.Client.AIX_cw5n1h2txyewy',
+  'MicrosoftWindows.Client.Photon_cw5n1h2txyewy'
+)
+$eolBase = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife'
+$sids = @('S-1-5-18','S-1-5-19','S-1-5-20')
+try {
+  Get-ChildItem 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
+    $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+  } | ForEach-Object { $sids += $_.PSChildName }
+} catch {}
+foreach ($sid in ($sids | Select-Object -Unique)) {
+  foreach ($pkg in $copilotPackages) {
+    $eolPath = Join-Path $eolBase (Join-Path $sid $pkg)
+    try {
+      New-Item -Path $eolPath -Force -ErrorAction SilentlyContinue | Out-Null
+    } catch {}
+  }
+}
+try {
+  Get-ChildItem 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
+    $_.PSChildName -match 'AME_UserHive'
+  } | ForEach-Object {
+    foreach ($pkg in $copilotPackages) {
+      $eolPath = Join-Path $eolBase (Join-Path $_.PSChildName $pkg)
+      try { New-Item -Path $eolPath -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+    }
+  }
+} catch {}
+$global:LASTEXITCODE = 0
+
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\CopilotUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\CopilotUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\MicrosoftWindowsClientAIXUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\MicrosoftWindowsClientAIXUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\MicrosoftWindowsClientCopilotUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\MicrosoftWindowsClientCopilotUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    $nraPaths = @(
+  'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\ApplicationManagement',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Appx',
+  'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx'
+)
+foreach ($nra in $nraPaths) {
+  if (Test-Path $nra) {
+    try { Remove-ItemProperty -Path $nra -Name 'NonRemovableAppsPolicyList' -Force -ErrorAction SilentlyContinue } catch {}
+    try { Remove-ItemProperty -Path $nra -Name 'NonRemovableApps' -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+try {
+  $policyMod = Get-Command Set-NonRemovableAppsPolicy -ErrorAction SilentlyContinue
+  if ($policyMod) {
+    foreach ($pkg in @('Microsoft.Copilot','MicrosoftWindows.Client.Copilot','MicrosoftWindows.Client.AIX','MicrosoftWindows.Client.Photon','Microsoft.Windows.Copilot','Microsoft.Windows.Ai.Copilot.Provider')) {
+      try { Set-NonRemovableAppsPolicy -PackageFamilyName $pkg -NonRemovable 0 -ErrorAction SilentlyContinue } catch {}
+    }
+  }
+} catch {}
+foreach ($taskPath in @(
+  '\Microsoft\Windows\WindowsAI\Recall\PolicyConfiguration',
+  '\Microsoft\Windows\WindowsAI\Settings\InitialConfiguration',
+  '\Microsoft\Windows\WindowsAI\Settings\SettingsConfiguration',
+  '\Microsoft\Windows\UpdateOrchestrator\Start Oobe Expedite Work',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScanAfterUpdate'
+)) {
+  try { Disable-ScheduledTask -TaskName $taskPath -ErrorAction SilentlyContinue | Out-Null } catch {}
+  try { Unregister-ScheduledTask -TaskName $taskPath -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    $copilotPatterns = @(
+  'Microsoft.Copilot',
+  'MicrosoftWindows.Client.Copilot',
+  'MicrosoftWindows.Client.AIX',
+  'MicrosoftWindows.Client.Photon',
+  'Microsoft.Windows.Ai.Copilot.Provider',
+  'Microsoft.Windows.Copilot'
+)
+$winAppsDir = Join-Path $env:ProgramFiles 'WindowsApps'
+if (Test-Path $winAppsDir) {
+  Get-ChildItem -Path $winAppsDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+    $name = $_.Name
+    $copilotPatterns | Where-Object { $name -like ($_ + '_*') }
+  } | ForEach-Object {
+    $dir = $_.FullName
+    try {
+      & takeown.exe /F $dir /R /D Y 2>&1 | Out-Null
+      & icacls.exe $dir /grant 'administrators:F' /T /C 2>&1 | Out-Null
+      Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+$winsxs = Join-Path $env:SystemRoot 'WinSxS'
+if (Test-Path $winsxs) {
+  Get-ChildItem -Path $winsxs -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+    $n = $_.Name.ToLower()
+    ($n -like '*microsoft-windows-copilot*') -or ($n -like '*microsoft-windows-client-copilot*') -or ($n -like '*client.aix*') -or ($n -like '*client.photon*') -or ($n -like '*windowsai*')
+  } | ForEach-Object {
+    $dir = $_.FullName
+    try {
+      & takeown.exe /F $dir /R /D Y 2>&1 | Out-Null
+      & icacls.exe $dir /grant 'administrators:F' /T /C 2>&1 | Out-Null
+      Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+$appRepo = Join-Path $env:ProgramData 'Microsoft\Windows\AppRepository\Packages'
+if (Test-Path $appRepo) {
+  Get-ChildItem -Path $appRepo -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+    $name = $_.Name
+    $copilotPatterns | Where-Object { $name -like ($_ + '_*') }
+  } | ForEach-Object {
+    $dir = $_.FullName
+    try {
+      & takeown.exe /F $dir /R /D Y 2>&1 | Out-Null
+      & icacls.exe $dir /grant 'administrators:F' /T /C 2>&1 | Out-Null
+      Remove-Item -Path $dir -Recurse -Force -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+$stagingRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications'
+if (Test-Path $stagingRoot) {
+  Get-ChildItem -Path $stagingRoot -ErrorAction SilentlyContinue | Where-Object {
+    $n = $_.PSChildName
+    $copilotPatterns | Where-Object { $n -like ($_ + '_*') }
+  } | ForEach-Object {
+    try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+$inboxRoot = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\InboxApplications'
+if (Test-Path $inboxRoot) {
+  Get-ChildItem -Path $inboxRoot -ErrorAction SilentlyContinue | Where-Object {
+    $n = $_.PSChildName
+    $copilotPatterns | Where-Object { $n -like ($_ + '_*') }
+  } | ForEach-Object {
+    try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+try {
+  $uso = Join-Path $env:SystemRoot 'System32\UsoClient.exe'
+  if (Test-Path $uso) {
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $uso
+    $psi.Arguments = 'CancelAll'
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.WindowStyle = 'Hidden'
+    try { [System.Diagnostics.Process]::Start($psi).WaitForExit(5000) } catch {}
+  }
+} catch {}
+try {
+  & schtasks.exe /Change /TN '\Microsoft\Windows\WindowsUpdate\Scheduled Start' /DISABLE 2>&1 | Out-Null
+} catch {}
+$global:LASTEXITCODE = 0
+
+    try {
+  $srpV2Paths = @(
+    'HKLM:\SOFTWARE\Policies\Microsoft\Windows\SrpV2',
+    'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppLocker'
+  )
+  foreach ($p in $srpV2Paths) {
+    if (Test-Path $p) { Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+  Stop-Service -Name AppIDSvc -Force -ErrorAction SilentlyContinue
+  Set-Service -Name AppIDSvc -StartupType Disabled -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\AppIDSvc' -Name 'Start' -Value 4 -Type DWord -Force -ErrorAction SilentlyContinue
+} catch {}
+$global:LASTEXITCODE = 0
+
+    taskkill /IM SearchApp /F 2>$null
+    taskkill /IM SearchHost /F 2>$null
+    taskkill /IM Widgets /F 2>$null
+    $snapPath = Join-Path $env:TEMP 'fsos-appx-snapshot.txt'
+if (-not (Test-Path $snapPath)) { return }
+try {
+  $before = Get-Content -Path $snapPath -ErrorAction SilentlyContinue | Where-Object { $_ }
+  $after = (Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue).PackageFamilyName | Sort-Object -Unique
+  $removed = @($before | Where-Object { $after -notcontains $_ })
+  $deprovBase = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned'
+  $appsBase = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Applications'
+  $inboxBase = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\InboxApplications'
+  $eolBase = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\EndOfLife'
+  $winAppsDir = Join-Path $env:ProgramFiles 'WindowsApps'
+  $appRepo = Join-Path $env:ProgramData 'Microsoft\Windows\AppRepository\Packages'
+  $winsxs = Join-Path $env:SystemRoot 'WinSxS'
+  $sids = @('S-1-5-18','S-1-5-19','S-1-5-20')
+  try {
+    Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+      $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+    } | ForEach-Object { $sids += $_.PSChildName }
+  } catch {}
+  $sids = $sids | Select-Object -Unique
+  foreach ($family in $removed) {
+    if ([string]::IsNullOrWhiteSpace($family)) { continue }
+    try {
+      $dp = Join-Path $deprovBase $family
+      if (-not (Test-Path $dp)) { New-Item -Path $dp -Force -ErrorAction SilentlyContinue | Out-Null }
+    } catch {}
+    foreach ($sid in $sids) {
+      try {
+        $eol = Join-Path $eolBase (Join-Path $sid $family)
+        New-Item -Path $eol -Force -ErrorAction SilentlyContinue | Out-Null
+      } catch {}
+    }
+    $shortName = ($family -split '_')[0]
+    if ([string]::IsNullOrWhiteSpace($shortName)) { continue }
+    if (Test-Path $winAppsDir) {
+      Get-ChildItem -Path $winAppsDir -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -like ($shortName + '_*')
+      } | ForEach-Object {
+        try {
+          & takeown.exe /F $_.FullName /R /D Y 2>&1 | Out-Null
+          & icacls.exe $_.FullName /grant 'administrators:F' /T /C 2>&1 | Out-Null
+          Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {}
+      }
+    }
+    if (Test-Path $appRepo) {
+      Get-ChildItem -Path $appRepo -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name -like ($shortName + '_*')
+      } | ForEach-Object {
+        try {
+          & takeown.exe /F $_.FullName /R /D Y 2>&1 | Out-Null
+          & icacls.exe $_.FullName /grant 'administrators:F' /T /C 2>&1 | Out-Null
+          Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {}
+      }
+    }
+    if (Test-Path $appsBase) {
+      Get-ChildItem -Path $appsBase -ErrorAction SilentlyContinue | Where-Object {
+        $_.PSChildName -like ($shortName + '_*')
+      } | ForEach-Object {
+        try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+      }
+    }
+    if (Test-Path $inboxBase) {
+      Get-ChildItem -Path $inboxBase -ErrorAction SilentlyContinue | Where-Object {
+        $_.PSChildName -like ($shortName + '_*')
+      } | ForEach-Object {
+        try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+      }
+    }
+    $winsxsPattern = '*' + ($shortName -replace '\.','*').ToLower() + '*'
+    if (Test-Path $winsxs) {
+      Get-ChildItem -Path $winsxs -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+        $_.Name.ToLower() -like $winsxsPattern
+      } | ForEach-Object {
+        try {
+          & takeown.exe /F $_.FullName /R /D Y 2>&1 | Out-Null
+          & icacls.exe $_.FullName /grant 'administrators:F' /T /C 2>&1 | Out-Null
+          Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        } catch {}
+      }
+    }
+  }
+} catch {}
+Remove-Item -Path $snapPath -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    try {
+  $newPkgs = @(Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | ForEach-Object { $_.PackageFamilyName })
+  $marker = Join-Path $env:windir 'FSOS\fsos-pkgs-current.txt'
+  $newPkgs | Sort-Object -Unique | Set-Content -Path $marker -ErrorAction SilentlyContinue
+} catch {}
+$global:LASTEXITCODE = 0
+
+    $profiles = @('C:\Users\Default')
+Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Default User','Public','All Users','Default','WDAGUtilityAccount')
+} | ForEach-Object { $profiles += $_.FullName }
+foreach ($profile in $profiles) {
+  $shellDir = Join-Path $profile 'AppData\Local\Microsoft\Windows\Shell'
+  if (Test-Path $shellDir) {
+    Get-ChildItem -Path $shellDir -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  $startState = Join-Path $profile 'AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState'
+  if (Test-Path $startState) {
+    Get-ChildItem -Path $startState -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+  $tempState = Join-Path $profile 'AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\TempState'
+  if (Test-Path $tempState) {
+    Get-ChildItem -Path $tempState -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+}}
+
+$Options += [PSCustomObject]@{Id=526; Cat="Confidentialite"; LabelFR="Harden"; LabelEN="Harden"; Risk="moderate"; Action={
+    $denyCaps = @('userAccountInformation','contacts','appointments','phoneCall','phoneCallHistory','email','userDataTasks','chat','documentsLibrary','downloadsFolder','musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess','graphicsCaptureProgrammatic','graphicsCaptureWithoutBorder','generativeAi','credentialAccess','activity','appDiagnostics','userNotificationListener','location','humanPresence','eyeTracker','gazeInput','sensors.custom')
+$allowCaps = @('webcam','microphone')
+$scope = 'HKLM:'
+foreach ($cap in $denyCaps) {
+  $base = """$scope\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$cap"""
+  New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $base -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue
+  $np = """$base\NonPackaged"""
+  New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $np -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue
+}
+foreach ($cap in $allowCaps) {
+  $base = """$scope\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$cap"""
+  New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $base -Name 'Value' -Value 'Allow' -Type String -Force -ErrorAction SilentlyContinue
+  $np = """$base\NonPackaged"""
+  New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $np -Name 'Value' -Value 'Allow' -Type String -Force -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    $denyCaps = @('userAccountInformation','contacts','appointments','phoneCall','phoneCallHistory','email','userDataTasks','chat','documentsLibrary','downloadsFolder','musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess','graphicsCaptureProgrammatic','graphicsCaptureWithoutBorder','generativeAi','credentialAccess','activity','appDiagnostics','userNotificationListener','location','humanPresence','eyeTracker','gazeInput','sensors.custom')
+$allowCaps = @('webcam','microphone')
+foreach ($scope in @('Registry::HKEY_CURRENT_USER','Registry::HKEY_USERS\.DEFAULT')) {
+  foreach ($cap in $denyCaps) {
+    $base = """$scope\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$cap"""
+    New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $base -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue
+    $np = Join-Path $base 'NonPackaged'
+    New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $np -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue
+  }
+  foreach ($cap in $allowCaps) {
+    $base = """$scope\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\$cap"""
+    New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $base -Name 'Value' -Value 'Allow' -Type String -Force -ErrorAction SilentlyContinue
+    $np = Join-Path $base 'NonPackaged'
+    New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $np -Name 'Value' -Value 'Allow' -Type String -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'diagnosticshub.standardcollector.service' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagnosticshub.standardcollector.service' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'dmwappushservice' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'dmwappushservice' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wisvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wisvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MapsBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MapsBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lfsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lfsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CDPUserSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CDPUserSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    $sids = Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
+  ($_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$') -or $_.PSChildName -match '^AME_UserHive_' -or $_.PSChildName -eq '.DEFAULT'
+}
+foreach ($s in $sids) {
+  $k = 'Registry::HKU\' + $s.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Feeds'
+  New-Item -Path $k -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $k -Name 'ShellFeedsTaskbarViewMode' -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    taskkill /IM SearchHost /F 2>$null
+    taskkill /IM SearchApp /F 2>$null
+    Stop-Service -Name 'Telemetry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Telemetry' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GpuEnergyDrv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GpuEnergyDrv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'NetBT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'NetBT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'icssvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'icssvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'lmhosts' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'lmhosts' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TrkWks' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TrkWks' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'edgeupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdate' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'edgeupdatem' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdatem' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'svsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'svsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RetailDemo' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RetailDemo' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WMPNetworkSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WMPNetworkSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DialogBlockingService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DialogBlockingService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AssignedAccessManagerSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AssignedAccessManagerSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'AppVClient' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'AppVClient' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DevQueryBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DevQueryBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'GraphicsPerfSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'GraphicsPerfSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WSAIFabricSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WSAIFabricSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PimIndexMaintenanceSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PimIndexMaintenanceSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'shpamsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'shpamsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ssh-agent' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ssh-agent' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmBroker' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmBroker' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SgrmAgent' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SgrmAgent' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BcastDVRUserService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BcastDVRUserService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'xbgm' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'xbgm' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XblAuthManager' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XblAuthManager' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XblGameSave' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XblGameSave' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'XboxNetApiSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'XboxNetApiSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'uhssvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'uhssvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'whesvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'whesvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Fax' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Fax' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RemoteRegistry' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RemoteRegistry' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RemoteAccess' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RemoteAccess' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SharedAccess' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SharedAccess' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tzautoupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tzautoupdate' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MessagingService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MessagingService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'EFS' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'EFS' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CscService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CscService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'fdc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'fdc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'flpydisk' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'flpydisk' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'sfloppy' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'sfloppy' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'serial' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'serial' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'serenum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'serenum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'sermouse' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'sermouse' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ErrDev' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ErrDev' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'CompositeBus' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'CompositeBus' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'cdrom' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'cdrom' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name '3ware' -Force -ErrorAction SilentlyContinue; Set-Service -Name '3ware' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SiSRaid2' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SiSRaid2' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SiSRaid4' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SiSRaid4' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'VSTXRAID' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'VSTXRAID' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'arcsas' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'arcsas' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vsmraid' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vsmraid' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'spaceport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'spaceport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SEMgrSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SEMgrSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SCardSvr' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SCardSvr' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'ScDeviceEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'ScDeviceEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TermService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TermService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UmRdpService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UmRdpService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'SessionEnv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'SessionEnv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RDPDR' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RDPDR' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RdpVideominiport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RdpVideominiport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TsUsbFlt' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TsUsbFlt' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'TsUsbGD' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'TsUsbGD' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'rdpbus' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'rdpbus' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'tsusbhub' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'tsusbhub' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'HvHost' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'HvHost' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hvservice' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hvservice' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hvcrash' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hvcrash' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hyperkbd' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hyperkbd' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'hypervideo' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'hypervideo' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Vid' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Vid' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicguestinterface' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicguestinterface' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicheartbeat' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicheartbeat' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmickvpexchange' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmickvpexchange' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicrdv' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicrdv' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicshutdown' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicshutdown' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmictimesync' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmictimesync' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicvmsession' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicvmsession' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'vmicvss' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'vmicvss' -StartupType Disabled -ErrorAction SilentlyContinue
+    $restore = @{
+  'iphlpsvc'            = 2
+  'tcpipreg'            = 2
+  'Dnscache'            = 2
+  'NlaSvc'              = 2
+}
+foreach ($kv in $restore.GetEnumerator()) {
+  $k = 'HKLM:\SYSTEM\CurrentControlSet\Services\' + $kv.Key
+  if (Test-Path $k) {
+    try { Set-ItemProperty -Path $k -Name 'Start' -Value $kv.Value -Type DWord -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $tasks = @(
+  '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser',
+  '\Microsoft\Windows\Application Experience\StartupAppTask',
+  '\Microsoft\Windows\Customer Experience Improvement Program\Consolidator',
+  '\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip',
+  '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector',
+  '\Microsoft\Windows\Feedback\Siuf\DmClient',
+  '\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload',
+  '\Microsoft\Windows\Flighting\FeatureConfig\ReconcileFeatures',
+  '\Microsoft\Windows\Flighting\FeatureConfig\UsageDataFlushing',
+  '\Microsoft\Windows\Flighting\FeatureConfig\UsageDataReporting',
+  '\Microsoft\Windows\Power Efficiency Diagnostics\AnalyzeSystem',
+  '\Microsoft\Windows\Windows Error Reporting\QueueReporting',
+  '\Microsoft\Windows\DiskFootprint\Diagnostics',
+  '\Microsoft\Windows\Device Information\Device',
+  '\Microsoft\Windows\Device Information\Device User',
+  '\Microsoft\Windows\Diagnosis\Scheduled',
+  '\Microsoft\Windows\Diagnosis\RecommendedTroubleshootingScanner',
+  '\Microsoft\Windows\MemoryDiagnostic\ProcessMemoryDiagnosticEvents',
+  '\Microsoft\Windows\MemoryDiagnostic\RunFullMemoryDiagnostic',
+  '\Microsoft\Windows\PI\Sqm-Tasks',
+  '\Microsoft\Windows\UpdateOrchestrator\Schedule Scan',
+  '\Microsoft\Windows\UpdateOrchestrator\Schedule Wake To Work',
+  '\Microsoft\Windows\UpdateOrchestrator\Start Oobe Expedite Work',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScanAfterUpdate',
+  '\Microsoft\Windows\WindowsUpdate\Scheduled Start',
+  '\Microsoft\Windows\WindowsAI\Recall\PolicyConfiguration',
+  '\Microsoft\Windows\WindowsAI\Settings\InitialConfiguration',
+  '\Microsoft\Windows\Input\LocalUserSyncDataAvailable',
+  '\Microsoft\Windows\Input\MouseSyncDataAvailable'
+)
+foreach ($t in $tasks) { Disable-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
+$global:LASTEXITCODE = 0
+
+    $tasks = @(
+  '\Microsoft\Windows\Maps\MapsToastTask',
+  '\Microsoft\Windows\Maps\MapsUpdateTask',
+  '\Microsoft\Windows\Location\Notifications',
+  '\Microsoft\Windows\Location\WindowsActionDialog'
+)
+foreach ($t in $tasks) { Disable-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
+$global:LASTEXITCODE = 0
+
+}}
+
+$Options += [PSCustomObject]@{Id=527; Cat="Confidentialite"; LabelFR="Apply"; LabelEN="Apply"; Risk="moderate"; Action={
+    New-Item -ItemType Directory -Path """$env:windir\FSOS""" -Force -ErrorAction SilentlyContinue | Out-Null
+if (Test-Path (Join-Path $PWD 'framesync.ico')) {
+  Copy-Item -Path (Join-Path $PWD 'framesync.ico') -Destination """$env:windir\FSOS\framesync.ico""" -Force
+}
+if (Test-Path (Join-Path $PWD 'discord.ico')) {
+  Copy-Item -Path (Join-Path $PWD 'discord.ico') -Destination """$env:windir\FSOS\discord.ico""" -Force
+}
+$publicDesktop = 'C:\Users\Public\Desktop'
+New-Item -ItemType Directory -Path $publicDesktop -Force -ErrorAction SilentlyContinue | Out-Null
+$fsIcon = Join-Path $env:windir 'FSOS\framesync.ico'
+$dcIcon = Join-Path $env:windir 'FSOS\discord.ico'
+$fsLines = @('[InternetShortcut]', 'URL=https://framesynclabs.com', ('IconFile=' + $fsIcon), 'IconIndex=0')
+$dcLines = @('[InternetShortcut]', 'URL=https://discord.gg/FSL', ('IconFile=' + $dcIcon), 'IconIndex=0')
+Set-Content -Path (Join-Path $publicDesktop 'FrameSync Labs.url') -Value $fsLines -Encoding ASCII -Force
+Set-Content -Path (Join-Path $publicDesktop 'FSOS Discord.url') -Value $dcLines -Encoding ASCII -Force
+$global:LASTEXITCODE = 0
+
+    mkdir "%systemroot%\Web\Wallpaper\FSOS" 2>nul & copy /y "wallpaper.png" "%systemroot%\Web\Wallpaper\FSOS\wallpaper.png" & copy /y "lockscreen.png" "%systemroot%\Web\Wallpaper\FSOS\lockscreen.png"
+    .\apply-darkmode.ps1
+    .\\set-wallpaper.ps1 -Mode Desktop -ImagePath $env:systemroot\Web\Wallpaper\FSOS\wallpaper.png
+    .\\set-wallpaper.ps1 -Mode LockScreen -ImagePath $env:systemroot\Web\Wallpaper\FSOS\lockscreen.png
+    $globalStart = Join-Path $env:SystemDrive 'ProgramData\Microsoft\Windows\Start Menu\Programs'
+if (Test-Path $globalStart) {
+  Get-ChildItem -Path $globalStart -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
+    -not $_.PSIsContainer -and
+    $_.FullName -notmatch '\\(Windows Tools|Administrative Tools|Windows PowerShell|Accessories|System Tools)\\'
+  } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+$defaultStart = Join-Path $env:SystemDrive 'Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs'
+if (Test-Path $defaultStart) {
+  Get-ChildItem -Path $defaultStart -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
+    -not $_.PSIsContainer -and
+    $_.FullName -notmatch '\\(Windows Tools|Administrative Tools|Windows PowerShell|Accessories|System Tools)\\'
+  } | Remove-Item -Force -ErrorAction SilentlyContinue
+}
+Get-ChildItem """$env:SystemDrive\Users""" -Directory -ErrorAction SilentlyContinue |
+  Where-Object { $_.Name -notin @('Public','Default','Default User','All Users','WDAGUtilityAccount') } |
+  ForEach-Object {
+    $userStart = Join-Path $_.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs'
+    if (Test-Path $userStart) {
+      Get-ChildItem -Path $userStart -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
+        -not $_.PSIsContainer -and
+        $_.FullName -notmatch '\\(Windows Tools|Administrative Tools|Windows PowerShell|Accessories|System Tools)\\'
+      } | Remove-Item -Force -ErrorAction SilentlyContinue
+    }
+  }
+
+$userHives = @()
+Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | ForEach-Object {
+  $name = $_.PSChildName
+  if ($name -match '^S-1-5-21-' -and $name -notlike '*_Classes' -or $name -like 'AME_UserHive_*' -or $name -eq '.DEFAULT') {
+    $userHives += $name
+  }
+}
+foreach ($hive in $userHives) {
+  $cacheRoot = """Registry::HKEY_USERS\$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\CloudStore\Store\Cache\DefaultAccount"""
+  if (Test-Path $cacheRoot) {
+    Get-ChildItem -Path $cacheRoot -Recurse -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name -match 'start\.tilegrid' } |
+      ForEach-Object { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+  $startKey = """Registry::HKEY_USERS\$hive\Software\Microsoft\Windows\CurrentVersion\Start"""
+  if (Test-Path $startKey) {
+    Remove-ItemProperty -Path $startKey -Name 'Config' -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $sids = Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
+  ($_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$') -or $_.PSChildName -match '^AME_UserHive_' -or $_.PSChildName -eq '.DEFAULT'
+}
+foreach ($s in $sids) {
+  $k = 'Registry::HKU\' + $s.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+  New-Item -Path $k -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $k -Name 'TaskbarDa' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    .\taskbar-pins.ps1
+    .\start-menu.ps1
+    Get-Process -Name 'StartMenuExperienceHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+$layoutPaths = @(
+  (Join-Path $env:SystemDrive 'Users\Default\AppData\Local\Microsoft\Windows\Shell\LayoutModification.json'),
+  (Join-Path $env:windir 'Shell\LayoutModification.json')
+)
+foreach ($lp in $layoutPaths) {
+  if (Test-Path $lp) { Remove-Item -Path $lp -Force -ErrorAction SilentlyContinue }
+}
+$taskDir = Join-Path $env:windir 'System32\Tasks\Microsoft\Windows\UpdateOrchestrator'
+foreach ($tf in @('StartOobeAppsScan','StartOobeAppsScan_LicenseAccepted','StartOobeAppsScan_OobeAppReady','StartOobeAppsScanAfterUpdate')) {
+  $taskFile = Join-Path $taskDir $tf
+  if (Test-Path $taskFile) {
+    try { takeown /f $taskFile /a 2>&1 | Out-Null } catch {}
+    try { icacls $taskFile /grant Administrators:F 2>&1 | Out-Null } catch {}
+    Remove-Item -Path $taskFile -Force -ErrorAction SilentlyContinue
+  }
+}
+Start-Sleep -Seconds 2
+try {
+  $sig = '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
+  $type = Add-Type -MemberDefinition $sig -Name 'FSOSRefreshFinal' -Namespace 'FSOS' -PassThru -ErrorAction SilentlyContinue
+  if ($type) {
+    $r = [UIntPtr]::Zero
+    [void]$type::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'TraySettings', 0x0002, 1000, [ref]$r)
+    [void]$type::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'Policy', 0x0002, 1000, [ref]$r)
+  }
+} catch {}
+$global:LASTEXITCODE = 0
+
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\Shell\Bags\1\Desktop' -Name 'ViewState2' -ErrorAction SilentlyContinue
+    $packages = @(
+  'MicrosoftWindows.Client.CBS_cw5n1h2txyewy',
+  'Microsoft.UI.Xaml.CBS_8wekyb3d8bbwe',
+  'MicrosoftWindows.Client.Core_cw5n1h2txyewy'
+)
+$sysApps = Join-Path $env:windir 'SystemApps'
+foreach ($pkg in $packages) {
+  $manifestPath = Join-Path $sysApps ($pkg + '\appxmanifest.xml')
+  if (Test-Path $manifestPath) {
+    try {
+      Add-AppxPackage -Register -Path $manifestPath -DisableDevelopmentMode -ForceApplicationShutdown -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace_41040327\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace_36354489\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}' -Recurse -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -Name 'SimplifyQuickSettings' -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Stickers' -Name 'EnableStickers' -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    foreach ($scope in @('Registry::HKEY_CURRENT_USER','Registry::HKEY_USERS\.DEFAULT')) {
+  Remove-ItemProperty -Path """$scope\Software\Microsoft\Windows\CurrentVersion\Explorer\StartPage""" -Name 'ProgramsCache' -Force -ErrorAction SilentlyContinue
+  Remove-ItemProperty -Path """$scope\Software\Microsoft\Windows\CurrentVersion\Explorer\StartPage2""" -Name 'ProgramsCache' -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path """$scope\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}""" -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-ItemProperty -Path """$scope\SOFTWARE\Microsoft\Siuf\Rules""" -Name 'PeriodInNanoSeconds' -Force -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    $src = Join-Path $PWD 'profile.png'
+if (Test-Path $src) {
+  New-Item -ItemType Directory -Path """$env:windir\FSOS""" -Force -ErrorAction SilentlyContinue | Out-Null
+  Copy-Item -Path $src -Destination """$env:windir\FSOS\profile.png""" -Force
+}
+$global:LASTEXITCODE = 0
+
+    $src = Join-Path $env:windir 'FSOS\profile.png'
+if (-not (Test-Path $src)) { return }
+$sysDir = Join-Path $env:ProgramData 'Microsoft\User Account Pictures'
+New-Item -ItemType Directory -Path $sysDir -Force -ErrorAction SilentlyContinue | Out-Null
+try {
+  $acl = Get-Acl $sysDir
+  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule('BUILTIN\Administrators','FullControl','ContainerInherit,ObjectInherit','None','Allow')
+  $acl.SetAccessRule($rule)
+  Set-Acl -Path $sysDir -AclObject $acl -ErrorAction SilentlyContinue
+} catch {}
+$sysFiles = @('user.png','user-32.png','user-40.png','user-48.png','user-192.png','guest.png','user.bmp')
+foreach ($f in $sysFiles) {
+  $dest = Join-Path $sysDir $f
+  try {
+    if (Test-Path $dest) { Set-ItemProperty -Path $dest -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue }
+    Copy-Item -Path $src -Destination $dest -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+$sizes = @(32,40,48,64,96,192,208,240,424,448,1080)
+$profileList = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
+Get-ChildItem $profileList -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^S-1-5-21-' } | ForEach-Object {
+  $sid = $_.PSChildName
+  $profilePath = (Get-ItemProperty -Path $_.PSPath -Name 'ProfileImagePath' -ErrorAction SilentlyContinue).ProfileImagePath
+  if (-not $profilePath -or -not (Test-Path $profilePath)) { return }
+  $acctPic = Join-Path $profilePath 'AppData\Roaming\Microsoft\Windows\AccountPictures'
+  New-Item -ItemType Directory -Path $acctPic -Force -ErrorAction SilentlyContinue | Out-Null
+  foreach ($s in $sizes) {
+    Copy-Item -Path $src -Destination (Join-Path $acctPic ('Image' + $s + '.png')) -Force -ErrorAction SilentlyContinue
+  }
+  $publicPic = Join-Path $env:SystemDrive ('Users\Public\AccountPictures\' + $sid)
+  New-Item -ItemType Directory -Path $publicPic -Force -ErrorAction SilentlyContinue | Out-Null
+  foreach ($s in $sizes) {
+    Copy-Item -Path $src -Destination (Join-Path $publicPic ('Image' + $s + '.png')) -Force -ErrorAction SilentlyContinue
+  }
+  $regPath = """HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users\$sid"""
+  New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null
+  foreach ($s in $sizes) {
+    Set-ItemProperty -Path $regPath -Name ('Image' + $s) -Value (Join-Path $acctPic ('Image' + $s + '.png')) -Type String -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $label = 'FSOS-X V1.6'
+bcdedit /set description """$label"""
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation' -Name 'Model' -Value $label
+Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'RegisteredOrganization' -Value $label
+$global:LASTEXITCODE = 0
+
+    try { Set-Service -Name 'WSearch' -StartupType Automatic -ErrorAction SilentlyContinue } catch {}
+Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\WSearch' -Name 'Start' -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\WSearch' -Name 'DelayedAutostart' -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    fsutil behavior set disableLastAccess 1
+    fsutil behavior set disable8dot3 1
+    net accounts /maxpwage:unlimited
+    Disable-WindowsErrorReporting
+    New-Item -ItemType Directory -Path """$env:windir\FSOS""" -Force -ErrorAction SilentlyContinue | Out-Null
+if (Test-Path (Join-Path $PWD 'framesync.ico')) {
+  Copy-Item -Path (Join-Path $PWD 'framesync.ico') -Destination """$env:windir\FSOS\framesync.ico""" -Force
+}
+if (Test-Path (Join-Path $PWD 'discord.ico')) {
+  Copy-Item -Path (Join-Path $PWD 'discord.ico') -Destination """$env:windir\FSOS\discord.ico""" -Force
+}
+$global:LASTEXITCODE = 0
+
+    $publicDesktop = 'C:\Users\Public\Desktop'
+New-Item -ItemType Directory -Path $publicDesktop -Force -ErrorAction SilentlyContinue | Out-Null
+$fsIcon = Join-Path $env:windir 'FSOS\framesync.ico'
+$dcIcon = Join-Path $env:windir 'FSOS\discord.ico'
+$fsLines = @('[InternetShortcut]', 'URL=https://framesynclabs.com', ('IconFile=' + $fsIcon), 'IconIndex=0')
+$dcLines = @('[InternetShortcut]', 'URL=https://discord.gg/FSL', ('IconFile=' + $dcIcon), 'IconIndex=0')
+Set-Content -Path (Join-Path $publicDesktop 'FrameSync Labs.url') -Value $fsLines -Encoding ASCII -Force
+Set-Content -Path (Join-Path $publicDesktop 'FSOS Discord.url') -Value $dcLines -Encoding ASCII -Force
+$global:LASTEXITCODE = 0
+
+    Start-Process -FilePath 'gpupdate.exe' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -EP Bypass -File .\\setup-timerresolution.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=528; Cat="Confidentialite"; LabelFR="Extended Hardening"; LabelEN="Extended Hardening"; Risk="moderate"; Action={
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\DevHomeUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\OutlookUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler\OutlookUpdate' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCR\DesktopBackground\Shell\Idle' -Recurse -Force -ErrorAction SilentlyContinue
+    Stop-Service -Name 'wercplsupport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'wercplsupport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'Wecsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Wecsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'diagsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'diagsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'UCPD' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'UCPD' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'WPCMonSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'WPCMonSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'troubleshootingsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'troubleshootingsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    $tasks = @(
+  '\Microsoft\Windows\Maintenance\WinSAT',
+  '\Microsoft\Windows\Application Experience\MareBackup',
+  '\Microsoft\Windows\InstallService\ScanForUpdates',
+  '\Microsoft\Windows\UpdateOrchestrator\Schedule Scan Static Task',
+  '\Microsoft\Windows\WDI\ResolutionHost',
+  '\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticResolver',
+  '\Microsoft\Windows\InstallService\ScanForUpdatesAsUser',
+  '\Microsoft\Windows\InstallService\SmartRetry',
+  '\Microsoft\Windows\Autochk\Proxy',
+  '\Microsoft\Windows\Registry\RegIdleBackup',
+  '\Microsoft\Windows\AppxDeploymentClient\UCPD velocity',
+  '\Microsoft\Windows\Application Experience\PcaPatchDbTask',
+  '\Microsoft\Windows\SettingSync\BackgroundUploadTask',
+  '\Microsoft\Windows\CloudRestore\Backup',
+  '\Microsoft\Windows\CloudRestore\Restore',
+  '\Microsoft\Windows\UpdateOrchestrator\Schedule Work',
+  '\Microsoft\Windows\UpdateOrchestrator\UUS Failover Task',
+  '\Microsoft\Windows\Shell\FamilySafetyMonitor',
+  '\Microsoft\Windows\WaaSMedic\PerformRemediation',
+  '\Microsoft\Windows\CloudExperienceHost\CreateObjectTask',
+  '\Microsoft\Windows\RemoteAssistance\RemoteAssistanceTask',
+  '\Microsoft\Windows\UPnP\UPnPHostConfig',
+  '\Microsoft\Windows\Device Setup\Metadata Refresh',
+  '\Microsoft\Windows\Shell\FamilySafetyRefreshTask',
+  '\Microsoft\Windows\RetailDemo\CleanupOfflineContent',
+  '\Microsoft\Windows\SettingSync\NetworkStateChangeTask',
+  '\Microsoft\Windows\Sustainability\SustainabilityTelemetry',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScan_LicenseAccepted',
+  '\Microsoft\Windows\UpdateOrchestrator\USO_UxBroker',
+  '\Microsoft\Windows\ApplicationData\appuriverifierdaily',
+  '\Microsoft\Windows\ApplicationData\DsSvcCleanup',
+  '\Microsoft\Windows\Input\PenSyncDataAvailable',
+  '\Microsoft\Windows\Wininet\CacheTask',
+  '\Microsoft\Windows\UpdateOrchestrator\Report Policies',
+  '\Microsoft\Windows\ApplicationData\CleanupTemporaryState',
+  '\Microsoft\Windows\WindowsUpdate\Refresh Group Policy Cache',
+  '\Microsoft\Windows\ApplicationData\appuriverifierinstall',
+  '\Microsoft\Windows\UpdateOrchestrator\Report policies',
+  '\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser Exp',
+  'UCPD velocity',
+  '\Microsoft\Windows\WindowsUpdate',
+  '\Microsoft\Windows\WaaSMedic',
+  '\Microsoft\Windows\WindowsUpdate\AUSessionConnect',
+  '\Microsoft\Windows\UpdateOrchestrator\AC Power Download',
+  '\Microsoft\Windows\UpdateOrchestrator\UpdateAssistantAllUsersRun',
+  '\Microsoft\Windows\UpdateOrchestrator\Maintenance Install',
+  '\Microsoft\Windows\WindowsUpdate\Scheduled Start With Network',
+  '\Microsoft\Windows\UpdateOrchestrator\Reboot_AC',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScan_OobeAppReady',
+  '\Microsoft\Windows\UpdateOrchestrator\Universal Orchestrator Idle Start',
+  '\Microsoft\Windows\UpdateOrchestrator\Universal Orchestrator Start',
+  '\Microsoft\Windows\WindowsUpdate\RUXIM\PLUGScheduler',
+  '\Microsoft\Windows\UpdateOrchestrator\USO_Broker_Display',
+  '\Microsoft\Windows\UpdateOrchestrator\Battery Saver Deferred Install',
+  '\Microsoft\Windows\WindowsUpdate\sih',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScan',
+  '\Microsoft\Windows\UpdateOrchestrator\MusUx_LogonUpdateResults',
+  '\Microsoft\Windows\MemoryDiagnostic\AutomaticOfflineMemoryDiagnostic',
+  '\Microsoft\Windows\UpdateOrchestrator\USO_UxBroker_ReadyToReboot',
+  '\Microsoft\Windows\UpdateOrchestrator\Schedule Retry Scan',
+  '\Microsoft\Windows\UpdateOrchestrator\Refresh Settings',
+  '\Microsoft\Windows\UpdateOrchestrator\Resume On Boot',
+  '\Microsoft\Windows\UpdateOrchestrator\UpdateAssistant',
+  '\Microsoft\Windows\WindowsUpdate\Automatic App Update',
+  '\Microsoft\Windows\UpdateOrchestrator\AC Power Install',
+  '\Microsoft\Windows\UpdateOrchestrator\UpdateAssistantCalendarRun',
+  '\Microsoft\Windows\InstallService\WakeUpAndScanForUpdates',
+  '\Microsoft\Windows\UpdateOrchestrator\Schedule Maintenance Work',
+  '\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask',
+  '\Microsoft\Windows\UpdateOrchestrator\UpdateAssistantWakeupRun',
+  '\Microsoft\Windows\InstallService\WakeUpAndContinueUpdates',
+  '\Microsoft\Windows\UpdateOrchestrator\Reboot_Battery',
+  '\Microsoft\Windows\UpdateOrchestrator\MusUx_UpdateInterval',
+  '\Microsoft\Windows\WindowsUpdate\sihpostreboot',
+  '\Microsoft\Windows\UpdateOrchestrator\Policy Install',
+  '\Microsoft\Windows\WindowsUpdate\AUScheduledInstall',
+  '\Microsoft\Windows\UpdateOrchestrator\UIEOrchestrator',
+  '\Microsoft\Windows\InstallService\RestoreDevice',
+  '\Microsoft\Windows\UpdateOrchestrator\Reboot',
+  '\Microsoft\Windows\Application Experience\ProgramDataUpdater',
+  '\Microsoft\Windows\UpdateOrchestrator\UpdateModelTask',
+  '\Microsoft\Windows\WindowsUpdate\sihboot',
+  '\Microsoft\Windows\UpdateOrchestrator\USO_UxBroker_Display',
+  '\Microsoft\Windows\UpdateOrchestrator\Backup Scan',
+  '\Microsoft\Windows\UpdateOrchestrator\Driver Install',
+  '\Microsoft\Windows\Customer Experience Improvement Program\Server\ServerCeipAssistant',
+  '\Microsoft\Windows\Input\TouchPadSyncDataAvailable',
+  '\Microsoft\Windows\Input\syncpensettings',
+  '\Microsoft\Windows\Shell\sSyncedImageDownload',
+  '\Microsoft\Windows\Speech\SpeechModelDownloadTask',
+  '\Microsoft\Windows\Shell\ThemesSyncedImageDownload',
+  '\Microsoft\Windows\USB\Usb-Notifications',
+  '\Microsoft\Windows\International\Synchronize Language Settings',
+  '\Microsoft\Windows\Time Synchronization\SynchronizeTime',
+  '\Microsoft\Windows\Time Synchronization\ForceSynchronizeTime',
+  '\Microsoft\Windows\Input\TouchpadSyncDataAvailable',
+  '\Microsoft\Windows\AppListBackup\Backup',
+  '\Microsoft\Windows\BrokerInfrastructure\BgTaskRegistrationMaintenanceTask',
+  '\Microsoft\Windows\Chkdsk\ProactiveScan',
+  '\Microsoft\Windows\Data Integrity Scan\Data Integrity Scan',
+  '\Microsoft\Windows\Data Integrity Scan\Data Integrity Scan for Crash Recovery',
+  '\Microsoft\Windows\DeviceDirectoryClient\HandleCommandVerb',
+  '\Microsoft\Windows\HelloFace\FODCleanupTask',
+  '\Microsoft\Windows\LanguageComponentsInstaller\Installation',
+  '\Microsoft\Windows\LanguageComponentsInstaller\Uninstallation',
+  '\Microsoft\Windows\NetTrace\GatherNetworkInfo',
+  '\Microsoft\Windows\Offline Files\Background Synchronization',
+  '\Microsoft\Windows\PushToInstall\LoginCheck',
+  '\Microsoft\Windows\PushToInstall\Registration',
+  '\Microsoft\Windows\RecoveryEnvironment\VerifyWinRE',
+  '\Microsoft\Windows\Servicing\StartComponentCleanup',
+  '\Microsoft\Windows\StateRepository\MaintenanceTasks',
+  '\Microsoft\Windows\Subscription\EnableLicenseAcquisition',
+  '\Microsoft\Windows\Subscription\LicenseAcquisition',
+  '\Microsoft\Windows\TPM\Tpm-HASCertRetr',
+  '\Microsoft\Windows\TPM\Tpm-Maintenance',
+  '\Microsoft\Windows\Workplace Join\Automatic-Device-Join',
+  '\Microsoft\Windows\Workplace Join\Device-Sync',
+  '\Microsoft\Windows\Workplace Join\Recovery-Check'
+)
+foreach ($t in $tasks) { Disable-ScheduledTask -TaskName $t -ErrorAction SilentlyContinue }
+$oobeTasks = @(
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScan',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScan_LicenseAccepted',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScan_OobeAppReady',
+  '\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScanAfterUpdate',
+  '\Microsoft\Windows\PushToInstall\LoginCheck',
+  '\Microsoft\Windows\PushToInstall\Registration'
+)
+foreach ($t in $oobeTasks) {
+  try { Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'Microsoft_Bluetooth_AvrcpTransport' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'Microsoft_Bluetooth_AvrcpTransport' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthA4dp' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthA4dp' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthHFEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthHFEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthLEEnum' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthLEEnum' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHMODEM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHMODEM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'RFCOMM' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'RFCOMM' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTAGService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTAGService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHUSB' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHUSB' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BTHPORT' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BTHPORT' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'BthMini' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'BthMini' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'HidBth' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'HidBth' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'DevicesFlowUserSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DevicesFlowUserSvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    try { Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Spynet' -Name 'SubmitSamplesConsent' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue } catch {}
+try { Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows Defender\Spynet' -Name 'SpyNetReporting' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue } catch {}
+$global:LASTEXITCODE = 0
+
+    foreach ($k in @('DefenderApiLogger','DefenderAuditLogger')) {
+  try {
+    $p = """HKLM:\SYSTEM\CurrentControlSet\Control\WMI\Autologger\$k"""
+    if (Test-Path $p) {
+      Set-ItemProperty -Path $p -Name 'Start' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+    }
+  } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Stop-Service -Name 'printworkflowusersvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'printworkflowusersvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PrintDeviceConfigurationService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PrintDeviceConfigurationService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'PrintScanBrokerService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PrintScanBrokerService' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'usbprint' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'usbprint' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'fhsvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'fhsvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service -Name 'stisvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'stisvc' -StartupType Disabled -ErrorAction SilentlyContinue
+    Disable-ScheduledTask -TaskName '\Microsoft\XblGameSave\XblGameSaveTask' -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    $hklmKeys = @(
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Personalization',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System\EnableActivityFeed',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search\AllowCloudSearch',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Search\AllowSearchHighlights',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\System',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppCompat',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\SettingSync',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Speech',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsAI',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsCopilot',
+  'HKLM:\SOFTWARE\Policies\Microsoft\FindMyDevice',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsBackup',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Maps',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\HandwritingErrorReports',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\TabletPC',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Group Policy',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Messaging',
+  'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting',
+  'HKLM:\SOFTWARE\Microsoft\InputPersonalization',
+  'HKLM:\SOFTWARE\Microsoft\PolicyManager\default\System\AllowTelemetry',
+  'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\System\AllowTelemetry',
+  'HKLM:\Software\Microsoft\WindowsSelfHost',
+  'HKLM:\SOFTWARE\Microsoft\PolicyManager\providers\B5292708-1619-419B-9923-E5D9F3925E71\default\Device\AppPrivacy',
+  'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\AppPrivacy'
+)
+foreach ($k in $hklmKeys) { Remove-Item -Path $k -Recurse -Force -ErrorAction SilentlyContinue }
+$global:LASTEXITCODE = 0
+
+    $keys = @(
+  'SOFTWARE\Policies\Microsoft\Windows\Personalization',
+  'SOFTWARE\Policies\Microsoft\Windows\CloudContent',
+  'SOFTWARE\Policies\Microsoft\Windows\AdvertisingInfo',
+  'SOFTWARE\Policies\Microsoft\Windows\AppPrivacy',
+  'SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\AccountNotifications',
+  'SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\PushNotifications',
+  'SOFTWARE\Policies\Microsoft\Windows\AppCompat',
+  'SOFTWARE\Policies\Microsoft\Windows\LocationAndSensors',
+  'SOFTWARE\Policies\Microsoft\Windows\Windows Error Reporting'
+)
+foreach ($scope in @('Registry::HKEY_CURRENT_USER','Registry::HKEY_USERS\.DEFAULT')) {
+  foreach ($k in $keys) {
+    Remove-Item -Path """$scope\$k""" -Recurse -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $denyCaps = @(
+  'userAccountInformation','contacts','appointments','phoneCall','phoneCallHistory','email',
+  'userDataTasks','chat','documentsLibrary','downloadsFolder',
+  'musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess',
+  'graphicsCaptureProgrammatic','graphicsCaptureWithoutBorder','generativeAi',
+  'credentialAccess','activity','appDiagnostics','userNotificationListener',
+  'location','humanPresence','eyeTracker','gazeInput',
+  'sensors.custom','phoneCallHistoryPublic','sms'
+)
+$allowCaps = @('webcam','microphone')
+$base = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore'
+function Set-Cap($p, $v) {
+  New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $p -Name 'Value' -Value $v -Type String -Force -ErrorAction SilentlyContinue
+  $np = """$p\NonPackaged"""
+  New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $np -Name 'Value' -Value $v -Type String -Force -ErrorAction SilentlyContinue
+}
+foreach ($c in $denyCaps) { Set-Cap """$base\$c""" 'Deny' }
+foreach ($c in $allowCaps) { Set-Cap """$base\$c""" 'Allow' }
+$global:LASTEXITCODE = 0
+
+    $denyCaps = @(
+  'userAccountInformation','contacts','appointments','phoneCall','phoneCallHistory','email',
+  'userDataTasks','chat','documentsLibrary','downloadsFolder',
+  'musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess',
+  'graphicsCaptureProgrammatic','graphicsCaptureWithoutBorder','generativeAi',
+  'credentialAccess','activity','appDiagnostics','userNotificationListener',
+  'location','humanPresence','eyeTracker','gazeInput',
+  'sensors.custom','phoneCallHistoryPublic','sms'
+)
+$allowCaps = @('webcam','microphone')
+function Set-Cap($p, $v) {
+  New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $p -Name 'Value' -Value $v -Type String -Force -ErrorAction SilentlyContinue
+  $np = Join-Path $p 'NonPackaged'
+  New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $np -Name 'Value' -Value $v -Type String -Force -ErrorAction SilentlyContinue
+}
+function Apply-ToHive($hiveBase, $label) {
+  $csBase = Join-Path $hiveBase 'SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore'
+  $wrote = 0
+  foreach ($c in $denyCaps) {
+    Set-Cap (Join-Path $csBase $c) 'Deny'
+    $wrote++
+  }
+  foreach ($c in $allowCaps) {
+    Set-Cap (Join-Path $csBase $c) 'Allow'
+    $wrote++
+  }
+}
+Apply-ToHive 'Registry::HKEY_USERS\.DEFAULT' '.DEFAULT'
+if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
+  Apply-ToHive 'Registry::HKEY_USERS\AME_UserHive_Default' 'AME_UserHive_Default'
+}
+$liveSids = @(Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
+  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
+} | Select-Object -ExpandProperty PSChildName)
+foreach ($sid in $liveSids) {
+  Apply-ToHive ('Registry::HKEY_USERS\' + $sid) $sid
+}
+$userProfiles = Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Public','All Users','Default','Default User','WDAGUtilityAccount')
+}
+foreach ($prof in $userProfiles) {
+  $ntu = Join-Path $prof.FullName 'NTUSER.DAT'
+  if (-not (Test-Path $ntu)) { continue }
+  $key = 'FSOS_P_' + ($prof.Name -replace '[^A-Za-z0-9]','')
+  $loadResult = & reg.exe load ('HKU\' + $key) $ntu 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    try {
+      Apply-ToHive ('Registry::HKEY_USERS\' + $key) $prof.Name
+    } catch { Log ('Error applying to ' + $prof.Name + ': ' + $_.Exception.Message) }
+    [gc]::Collect(); Start-Sleep -Milliseconds 300
+    & reg.exe unload ('HKU\' + $key) 2>&1 | Out-Null
+  } else {
+  }
+}
+$ntuDefault = 'C:\Users\Default\NTUSER.DAT'
+if (Test-Path $ntuDefault) {
+  $loadResult = & reg.exe load 'HKU\FSOS_P_Default' $ntuDefault 2>&1
+  if ($LASTEXITCODE -eq 0) {
+    try { Apply-ToHive 'Registry::HKEY_USERS\FSOS_P_Default' 'Default' } catch {}
+    [gc]::Collect(); Start-Sleep -Milliseconds 300
+    & reg.exe unload 'HKU\FSOS_P_Default' 2>&1 | Out-Null
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $profilePath = 'C:\Windows\ServiceProfiles\NetworkService\NTUSER.DAT'
+$loaded = $false
+if (Test-Path $profilePath) {
+  reg load 'HKU\FSOS_NS' $profilePath 2>$null | Out-Null
+  if ($LASTEXITCODE -eq 0) { $loaded = $true }
+}
+$base = if ($loaded) { 'Registry::HKEY_USERS\FSOS_NS\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings' } else { 'Registry::HKEY_USERS\S-1-5-20\Software\Microsoft\Windows\CurrentVersion\DeliveryOptimization\Settings' }
+try {
+  New-Item -Path $base -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $base -Name 'DownloadRateBackgroundPct' -Value '10' -Type String -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $base -Name 'DownloadRateForegroundPct' -Value '70' -Type String -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $base -Name 'UpRatePctBandwidth' -Value '50' -Type String -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $base -Name 'UploadLimitGBMonth' -Value '500' -Type String -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $base -Name 'DownloadMode' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+} catch {}
+if ($loaded) {
+  [gc]::Collect(); Start-Sleep -Milliseconds 300
+  reg unload 'HKU\FSOS_NS' 2>$null | Out-Null
+}
+$global:LASTEXITCODE = 0
+
+    Restart-Service -Name DoSvc -Force -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    $srcDat = Join-Path $PWD 'notepad-settings.dat'
+if (Test-Path $srcDat) {
+  Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+    $_.Name -notin @('Public','Default User','All Users','WDAGUtilityAccount')
+  } | ForEach-Object {
+    $pkgDir = Join-Path $_.FullName 'AppData\Local\Packages\Microsoft.WindowsNotepad_8wekyb3d8bbwe\Settings'
+    if (Test-Path (Split-Path $pkgDir)) {
+      New-Item -ItemType Directory -Path $pkgDir -Force -ErrorAction SilentlyContinue | Out-Null
+      Copy-Item -Path $srcDat -Destination (Join-Path $pkgDir 'settings.dat') -Force -ErrorAction SilentlyContinue
+    }
+  }
+  $defaultPkg = 'C:\Users\Default\AppData\Local\Packages\Microsoft.WindowsNotepad_8wekyb3d8bbwe\Settings'
+  New-Item -ItemType Directory -Path $defaultPkg -Force -ErrorAction SilentlyContinue | Out-Null
+  Copy-Item -Path $srcDat -Destination (Join-Path $defaultPkg 'settings.dat') -Force -ErrorAction SilentlyContinue
+}
+$global:LASTEXITCODE = 0
+
+    $aliasRoots = @(
+  'HKCU:\Software\Microsoft\Windows\CurrentVersion\AppModelUnlock',
+  'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
+)
+foreach ($r in $aliasRoots) {
+  try { New-Item -Path $r -Force -ErrorAction SilentlyContinue | Out-Null } catch {}
+  try { Set-ItemProperty -Path $r -Name 'AllowDevelopmentWithoutDevLicense' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue } catch {}
+}
+$broken = @('wordpad.exe','mspaint.exe','python.exe','python3.exe','winget.exe')
+$globalBases = @()
+$globalBases += (Join-Path $env:SystemDrive 'Users\Default\AppData\Local\Microsoft\WindowsApps')
+foreach ($exe in $broken) {
+  foreach ($base in $globalBases) {
+    $stub = Join-Path $base $exe
+    if (Test-Path $stub) {
+      try {
+        $item = Get-Item -Path $stub -Force -ErrorAction SilentlyContinue
+        if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+          Remove-Item -Path $stub -Force -ErrorAction SilentlyContinue
+        }
+      } catch {}
+    }
+  }
+}
+Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Public','All Users','Default','Default User','WDAGUtilityAccount')
+} | ForEach-Object {
+  $base = Join-Path $_.FullName 'AppData\Local\Microsoft\WindowsApps'
+  if (Test-Path $base) {
+    foreach ($exe in $broken) {
+      $stub = Join-Path $base $exe
+      if (Test-Path $stub) {
+        try {
+          $item = Get-Item -Path $stub -Force -ErrorAction SilentlyContinue
+          if ($item -and ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            Remove-Item -Path $stub -Force -ErrorAction SilentlyContinue
+          }
+        } catch {}
+      }
+    }
+  }
+}
+$global:LASTEXITCODE = 0
+
+    .\appx-remover.ps1 -Packages @(
+  'Microsoft.Copilot',
+  'Microsoft.Windows.Copilot',
+  'MicrosoftWindows.Client.AIX',
+  'MicrosoftWindows.Client.Photon'
+)
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Copilot_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Windows.Copilot_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftWindows.Client.AIX_cw5n1h2txyewy' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.WindowsCalculator_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Clipchamp.Clipchamp_yxz26nhyzhsrt' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingNews_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingWeather_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.BingSearch_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Paint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MSPaint_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.GetHelp_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.Getstarted_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftOfficeHub_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\MicrosoftCorporationII.MicrosoftFamily_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    $opts = @()
+$optsFile = Join-Path $env:windir 'FSOS\fsos-options.txt'
+if (Test-Path $optsFile) { $opts = Get-Content $optsFile -ErrorAction SilentlyContinue }
+$removedAppNames = @(
+  'Get Help','Get Started','Tips','Microsoft 365','Microsoft 365 (Office)','Office','Office Hub',
+  'Microsoft News','Mail','Outlook','Outlook (new)','Outlook for Windows',
+  'Microsoft To Do','To Do','Sticky Notes','Cortana','LinkedIn',
+  'Skype','Family','Microsoft Family',
+  '3D Viewer','Mixed Reality Portal','Movies & TV','Films & TV',
+  'Groove Music','Music','Voice Recorder','Sound Recorder','Maps','Microsoft Bing','Bing',
+  'Feedback Hub','Microsoft Photos','Photos','Phone Link','Your Phone','Power Automate',
+  'Dev Home','Quick Assist','MSN Weather','Whiteboard','People','Alarms & Clock',
+  'Camera','Calendar','Maps','Messaging','Connect','Mixed Reality Viewer','Paint 3D',
+  'Spotify','Disney+','Disney','TikTok','Instagram','Prime Video','Netflix','Hulu',
+  'Facebook','Twitter','WhatsApp','Messenger','Pandora','iHeartRadio','Spotify Music'
+)
+if ($opts -contains 'remove-bloat') {
+  $removedAppNames += @('Calculator','Clipchamp','Microsoft Clipchamp','News','Weather','Paint','Solitaire','Microsoft Solitaire Collection')
+}
+if ($opts -contains 'remove-xbox') {
+  $removedAppNames += @('Xbox','Xbox Live','Xbox Console Companion','Xbox Game Bar','Game Bar','Game Speech Window')
+}
+if ($opts -contains 'remove-store') {
+  $removedAppNames += @('Microsoft Store','Store')
+}
+if ($opts -contains 'remove-edge') {
+  $removedAppNames += @('Microsoft Edge','Edge')
+}
+if ($opts -contains 'remove-ai') {
+  $removedAppNames += @('Microsoft Copilot','Copilot')
+}
+$programsRoots = @($env:ProgramData + '\Microsoft\Windows\Start Menu\Programs', 'C:\Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs')
+Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Public','Default','Default User','All Users','WDAGUtilityAccount')
+} | ForEach-Object {
+  $programsRoots += (Join-Path $_.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs')
+}
+foreach ($root in $programsRoots) {
+  if (-not (Test-Path $root)) { continue }
+  Get-ChildItem -Path $root -Recurse -Force -Include '*.lnk' -ErrorAction SilentlyContinue | ForEach-Object {
+    $lnkName = [System.IO.Path]::GetFileNameWithoutExtension($_.Name)
+    foreach ($app in $removedAppNames) {
+      if ($lnkName -eq $app -or $lnkName -like ($app + ' (*')) {
+        Remove-Item -Path $_.FullName -Force -ErrorAction SilentlyContinue
+        break
+      }
+    }
+  }
+}
+$global:LASTEXITCODE = 0
+
+    try {
+  $bi = 'HKLM:\SYSTEM\CurrentControlSet\Services\BrokerInfrastructure\Parameters'
+  if (Test-Path $bi) {
+    Remove-ItemProperty -Path $bi -Name 'ActivityCheckTimerLowPowerPeriodMs' -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path $bi -Name 'ActivityCheckTimerPeriodMs' -Force -ErrorAction SilentlyContinue
+  }
+  $ifeo = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\smartscreen.exe'
+  if (Test-Path $ifeo) {
+    $dbg = Get-ItemProperty -Path $ifeo -Name 'Debugger' -ErrorAction SilentlyContinue
+    if ($dbg) { Remove-Item -Path $ifeo -Recurse -Force -ErrorAction SilentlyContinue }
+  }
+} catch {}
+$global:LASTEXITCODE = 0
+
+    $allowList = @('webcam','microphone')
+$base = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore'
+if (Test-Path $base) {
+  Get-ChildItem -Path $base -ErrorAction SilentlyContinue | ForEach-Object {
+    $cap = $_.PSChildName
+    $target = if ($allowList -contains $cap) { 'Allow' } else { 'Deny' }
+    try {
+      Set-ItemProperty -Path $_.PSPath -Name 'Value' -Value $target -Type String -Force -ErrorAction SilentlyContinue
+      $np = Join-Path $_.PSPath 'NonPackaged'
+      if (-not (Test-Path $np)) { New-Item -Path $np -Force -ErrorAction SilentlyContinue | Out-Null }
+      Set-ItemProperty -Path $np -Name 'Value' -Value $target -Type String -Force -ErrorAction SilentlyContinue
+    } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $caps = @('userAccountInformation','contacts','appointments','phoneCall','phoneCallHistory','email','userDataTasks','chat','appDiagnostics','documentsLibrary','downloadsFolder','musicLibrary','picturesLibrary','videosLibrary','broadFileSystemAccess','voipCall','userNotificationListener','voiceActivation')
+foreach ($scope in @('Registry::HKEY_CURRENT_USER','Registry::HKEY_USERS\.DEFAULT')) {
+  foreach ($c in $caps) {
+    $p = Join-Path $scope ('SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\' + $c)
+    New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $p -Name 'Value' -Value 'Deny' -Type String -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $ntu = 'C:\Users\Default\NTUSER.DAT'
+if (Test-Path $ntu) {
+  reg load 'HKLM\FSOS_FE' $ntu 2>$null | Out-Null
+  $k = 'HKLM:\FSOS_FE\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+  New-Item -Path $k -Force -ErrorAction SilentlyContinue | Out-Null
+  Set-ItemProperty -Path $k -Name 'LaunchTo' -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $k -Name 'ShowFrequent' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  Set-ItemProperty -Path $k -Name 'ShowRecent' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+  [gc]::Collect(); Start-Sleep -Milliseconds 300
+  reg unload 'HKLM\FSOS_FE' 2>$null | Out-Null
+}
+$global:LASTEXITCODE = 0
+
+    $ProgressPreference = 'SilentlyContinue'
+$WarningPreference = 'SilentlyContinue'
+$VerbosePreference = 'SilentlyContinue'
+$dd = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender' -Name 'DisableAntiSpyware' -ErrorAction SilentlyContinue
+if ($dd -and $dd.DisableAntiSpyware -eq 1) { return }
+Set-Service -Name 'SecurityHealthService' -StartupType Manual -ErrorAction SilentlyContinue
+Set-Service -Name 'wscsvc' -StartupType Automatic -ErrorAction SilentlyContinue
+Set-Service -Name 'WinDefend' -StartupType Automatic -ErrorAction SilentlyContinue
+$tray = Join-Path $env:windir 'System32\SecurityHealthSystray.exe'
+if (Test-Path $tray) {
+  Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -Value ('"' + $tray + '"') -Type ExpandString -Force -ErrorAction SilentlyContinue
+}
+Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+try {
+  Get-AppxPackage Microsoft.SecHealthUI -AllUsers -ErrorAction SilentlyContinue | Reset-AppxPackage -ErrorAction SilentlyContinue
+} catch {}
+$manifest = Get-ChildItem 'C:\Windows\SystemApps\Microsoft.Windows.SecHealthUI_*\AppxManifest.xml' -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($manifest) {
+  Add-AppxPackage -DisableDevelopmentMode -Register $manifest.FullName -ForceApplicationShutdown -ErrorAction SilentlyContinue
+}
+$defPolicy = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows Defender'
+if (Test-Path $defPolicy) {
+  Remove-Item -Path $defPolicy -Recurse -Force -ErrorAction SilentlyContinue
+}
+try {
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = 'dism.exe'
+  $psi.Arguments = '/Online /Cleanup-Image /RestoreHealth /NoRestart'
+  $psi.UseShellExecute = $false
+  $psi.CreateNoWindow = $true
+  $psi.WindowStyle = 'Hidden'
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  $proc.EnableRaisingEvents = $false
+} catch {}
+Start-Service -Name 'SecurityHealthService' -ErrorAction SilentlyContinue
+Start-Service -Name 'wscsvc' -ErrorAction SilentlyContinue
+$global:LASTEXITCODE = 0
+
+    $userProfiles = Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
+  $_.Name -notin @('Public','All Users','WDAGUtilityAccount')
+}
+$defaultProfile = Get-Item 'C:\Users\Default' -Force -ErrorAction SilentlyContinue
+if ($defaultProfile -and ($userProfiles.FullName -notcontains $defaultProfile.FullName)) {
+  $userProfiles = @($userProfiles) + $defaultProfile
+}
+foreach ($profile in $userProfiles) {
+  $oneDrivePath = Join-Path $profile.FullName 'AppData\Local\Microsoft\OneDrive'
+  if (Test-Path $oneDrivePath) {
+    try { Remove-Item -Path $oneDrivePath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+  $oneDriveRoot = Join-Path $profile.FullName 'OneDrive'
+  if (Test-Path $oneDriveRoot) {
+    try { Remove-Item -Path $oneDriveRoot -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+  $startMenuLnk = Join-Path $profile.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\OneDrive.lnk'
+  if (Test-Path $startMenuLnk) {
+    Remove-Item -Path $startMenuLnk -Force -ErrorAction SilentlyContinue
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $consoleGuid = '{B23D10C0-E52E-411E-9D5B-C09FDF709C7D}'
+foreach ($scope in @('Registry::HKEY_USERS\.DEFAULT','Registry::HKEY_USERS\AME_UserHive_Default')) {
+  $p = Join-Path $scope 'Console\%%Startup'
+  try {
+    New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $p -Name 'DelegationConsole'  -Value $consoleGuid -Type String -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $p -Name 'DelegationTerminal' -Value $consoleGuid -Type String -Force -ErrorAction SilentlyContinue
+  } catch {}
+}
+$ntu = 'C:\Users\Default\NTUSER.DAT'
+if (Test-Path $ntu) {
+  reg load 'HKLM\FSOS_TERM' $ntu 2>$null | Out-Null
+  try {
+    $p = 'HKLM:\FSOS_TERM\Console\%%Startup'
+    New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path $p -Name 'DelegationConsole'  -Value $consoleGuid -Type String -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $p -Name 'DelegationTerminal' -Value $consoleGuid -Type String -Force -ErrorAction SilentlyContinue
+  } catch {}
+  [gc]::Collect(); Start-Sleep -Milliseconds 300
+  reg unload 'HKLM\FSOS_TERM' 2>$null | Out-Null
+}
+$global:LASTEXITCODE = 0
+
+    $sysDrive = $env:SystemDrive
+foreach ($folder in @('inetpub','PerfLogs','Windows.old')) {
+  $p = Join-Path $sysDrive $folder
+  if (Test-Path $p) {
+    try {
+      & takeown.exe /F $p /R /D Y 2>$null | Out-Null
+      & icacls.exe $p /grant 'Administrators:F' /T /C /Q 2>$null | Out-Null
+    } catch {}
+    try { Remove-Item -Path $p -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+$global:LASTEXITCODE = 0
+
+    $autoSvcs = @('Schedule','EventLog','RpcSs','RpcEptMapper','DcomLaunch','Winmgmt','LanmanWorkstation','NlaSvc','netprofm','Dnscache','Dhcp')
+$manualSvcs = @('WdiServiceHost','WdiSystemHost','wmiApSrv')
+foreach ($svc in ($autoSvcs + $manualSvcs)) {
+  try {
+    $k = 'HKLM:\SYSTEM\CurrentControlSet\Services\' + $svc
+    if (Test-Path $k) {
+      $cur = (Get-ItemProperty -Path $k -Name 'Start' -ErrorAction SilentlyContinue).Start
+      if ($svc -in $autoSvcs) {
+        if ($cur -ne 2) { Set-ItemProperty -Path $k -Name 'Start' -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue }
+      } else {
+        if ($cur -ne 3) { Set-ItemProperty -Path $k -Name 'Start' -Value 3 -Type DWord -Force -ErrorAction SilentlyContinue }
+      }
+    }
+  } catch {}
+}
+$global:LASTEXITCODE = 0
+
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Xbox*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.GamingApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGameOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxGamingOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxIdentityProvider*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.XboxSpeechToTextOverlay*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Edge.GameAssist*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsStore*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.StorePurchaseApp*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookForWindows*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.OutlookPWA*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingNews*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingWeather*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.BingSearch*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Getstarted*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.People*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WindowsFeedbackHub*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftWindows.Client.WebExperience*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.WidgetsPlatformRuntime*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*MicrosoftWindows.Client.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Microsoft.Windows.SecHealthUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=529; Cat="Confidentialite"; LabelFR="FinalTasks.yml"; LabelEN="FinalTasks.yml"; Risk="moderate"; Action={
+    Get-AppxPackage -AllUsers -Name '*Client.CBS*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*StartMenuExperienceHost*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*Windows.Search*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name '*TCUI*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    .\WALLPAPER.ps1 -Mode Desktop -ImagePath $env:systemroot\Web\Sapphire\img0.jpg
+    Start-Process -FilePath 'powerplan.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /set-reservedstoragestate /state:disabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=530; Cat="Confidentialite"; LabelFR="commands.yml"; LabelEN="commands.yml"; Risk="moderate"; Action={
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} description "SapphireOS"' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set bootmenupolicy Legacy' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set disabledynamictick yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} recoveryenabled no' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} disableelamdrivers yes' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} integrityservices disable' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} hypervisorlaunchtype off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} vm off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'bcdedit' -ArgumentList '/set {current} vsmlaunchtype off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '-h off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'label' -ArgumentList '%systemdrive% SapphireOS' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'fsutil' -ArgumentList 'behavior set disablelastaccess 1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'fsutil' -ArgumentList 'behavior set disable8dot3 1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'fsutil' -ArgumentList 'behavior set disabledeletenotify 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'fsutil' -ArgumentList 'behavior set encryptpagingfile 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    setx DOTNET_CLI_TELEMETRY_OPTOUT 1
+    setx DOTNET_TRY_CLI_TELEMETRY_OPTOUT 1
+    setx CLOUDSDK_CORE_DISABLE_PROMPTS 1
+    setx DOCKER_CLI_TELEMETRY_OPTOUT 1
+    setx npm_config_loglevel silent
+    setx VS_TELEMETRY_OPT_OUT 1 
+    Disable-MMAgent -MemoryCompression
+    Start-Process -FilePath 'disable-process-mitigations.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'disable-powersavings.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'disable-write-cache-buffering.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'disable-netbios.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    xcopy "Windows" "%windir%" /E /I /Y
+    .\svchost.ps1
+    .\Bitlocker.ps1
+    .\DisableDefender.ps1
+    Start-Process -FilePath 'DEVMANVIEW.CMD' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    xcopy /y "SapphireTool.exe.lnk" "%USERPROFILE%\Desktop"
+    xcopy /y "PostInstall.lnk" "%USERPROFILE%\Desktop"
+    xcopy  "SapphireTool" "C:\SapphireTool" /E /I /H /Y
+    powershell -Command "(New-Object Net.WebClient).DownloadFile('https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.20/windowsdesktop-runtime-8.0.20-win-x64.exe', 'C:\PostInstall\runtime.exe')"
+    C:\PostInstall\runtime.exe /install /quiet /norestart
+    del C:\PostInstall\runtime.exe /F /Q
+    powershell -Command "(New-Object Net.WebClient).DownloadFile('https://github.com/abbodi1406/vcredist/releases/download/v0.101.0/VisualCppRedist_AIO_x86_x64.exe', 'C:\PostInstall\vcpp.exe')"
+    C:\PostInstall\vcpp.exe /ai
+    del C:\PostInstall\vcpp.exe /F /Q
+}}
+
+$Options += [PSCustomObject]@{Id=531; Cat="Confidentialite"; LabelFR="registry.yml"; LabelEN="registry.yml"; Risk="moderate"; Action={
+    Start-Process -FilePath 'rundll32.exe' -ArgumentList 'fthsvc.dll,FthSysprepSpecialize' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=532; Cat="Confidentialite"; LabelFR="Oneclick V8.4 (Community)"; LabelEN="Oneclick V8.4 (Community)"; Risk="moderate"; Action={
+    sc config "ucpd" start=disabled >nul 2>&1
+    sc config TrustedInstaller start=auto >nul 2>&1
+    sc config VSS start=demand >nul 2>&1
+    sc config swprv start=demand >nul 2>&1
+    netsh interface teredo set state disabled >nul 2>&1
+    sc config AarSvc start=disabled
+    sc config ADPSvc start=disabled >nul 2>&1
+    sc config AJRouter start=disabled >nul 2>&1
+    sc config ALG start=disabled
+    sc config AppMgmt start=disabled >nul 2>&1
+    sc config AppInfo start=demand
+    sc config AppReadiness start=disabled
+    sc config AssignedAccessManagerSvc start=disabled >nul 2>&1
+    sc config autotimesvc start=disabled
+    sc config AxInstSV start=disabled
+    sc config BcastDVRUserService start=disabled
+    sc config BDESVC start=disabled >nul 2>&1
+    sc config BITS start=disabled
+    sc config BluetoothUserService start=disabled
+    sc config BTAGService start=disabled
+    sc config BthAvctpSvc start=disabled
+    sc config bthserv start=disabled
+    sc config CaptureService start=disabled
+    sc config cbdhsvc start=disabled
+    sc config CDPUserSvc start=disabled
+    sc config CDPSvc start=disabled
+    sc config CertPropSvc start=disabled
+    sc config CloudBackupRestoreSvc start=disabled >nul 2>&1
+    sc config cloudidsvc start=disabled >nul 2>&1
+    sc config COMSysApp start=disabled
+    sc config ConsentUxUserSvc start=disabled
+    sc config CscService start=disabled >nul 2>&1
+    sc config dcsvc start=disabled
+    sc config defragsvc start=demand
+    sc config DeviceAssociationService start=disabled
+    sc config DeviceInstall start=disabled
+    sc config DevicePickerUserSvc start=disabled
+    sc config DevicesFlowUserSvc start=disabled
+    sc config DevQueryBroker start=disabled
+    sc config diagnosticshub.standardcollector.service start=disabled >nul 2>&1
+    sc config DiagTrack start=disabled
+    sc config diagsvc start=disabled
+    sc config DispBrokerDesktopSvc start=auto
+    sc config DisplayEnhancementService start=disabled
+    sc config DmEnrollmentSvc start=disabled
+    sc config dmwappushservice start=disabled
+    sc config dot3svc start=disabled
+    sc config DPS start=disabled
+    sc config DsmSvc start=disabled
+    sc config DsSvc start=disabled
+    sc config DusmSvc start=disabled
+    sc config Eaphost start=disabled
+    sc config edgeupdate start=disabled
+    sc config edgeupdatem start=disabled
+    sc config EFS start=disabled
+    sc config EventLog start=disabled
+    sc config EventSystem start=demand
+    sc config fdPHost start=disabled
+    sc config FDResPub start=disabled
+    sc config fhsvc start=disabled
+    sc config FontCache start=disabled
+    sc config FrameServer start=disabled
+    sc config FrameServerMonitor start=disabled
+    sc config GameInputSvc start=disabled >nul 2>&1
+    sc config GraphicsPerfSvc start=disabled
+    sc config hpatchmon start=disabled >nul 2>&1
+    sc config hidserv start=disabled
+    sc config HvHost start=disabled
+    sc config icssvc start=disabled
+    sc config IKEEXT start=disabled
+    sc config InstallService start=disabled
+    sc config InventorySvc start=disabled
+    sc config IpxlatCfgSvc start=disabled
+    sc config KtmRm start=disabled
+    sc config LanmanServer start=disabled
+    sc config LanmanWorkstation start=disabled
+    sc config lfsvc start=disabled
+    sc config LocalKdc start=disabled >nul 2>&1
+    sc config LicenseManager start=disabled
+    sc config lltdsvc start=disabled
+    sc config lmhosts start=disabled
+    sc config LxpSvc start=disabled
+    sc config MapsBroker start=disabled
+    sc config McpManagementService start=disabled >nul 2>&1
+    sc config McmSvc start=disabled >nul 2>&1
+    sc config MessagingService start=disabled
+    sc config midisrv start=disabled >nul 2>&1
+    sc config MSDTC start=disabled
+    sc config MSiSCSI start=disabled
+    sc config NaturalAuthentication start=disabled
+    sc config NcaSvc start=disabled
+    sc config NcbService start=disabled
+    sc config NcdAutoSetup start=disabled
+    sc config Netlogon start=disabled
+    sc config Netman start=disabled
+    sc config NetSetupSvc start=disabled
+    sc config NetTcpPortSharing start=disabled
+    sc config NlaSvc start=disabled
+    sc config NPSMSvc start=disabled >nul 2>&1
+    sc config OneSyncSvc start=disabled
+    sc config p2pimsvc start=disabled >nul 2>&1
+    sc config p2psvc start=disabled >nul 2>&1
+    sc config P9RdrService start=disabled
+    sc config PcaSvc start=disabled
+    sc config PeerDistSvc start=disabled >nul 2>&1
+    sc config PenService start=disabled
+    sc config perceptionsimulation start=disabled
+    sc config PerfHost start=disabled
+    sc config PhoneSvc start=disabled
+    sc config PimIndexMaintenanceSvc start=disabled
+    sc config pla start=disabled
+    sc config PNRPAutoReg start=disabled >nul 2>&1
+    sc config PNRPsvc start=disabled >nul 2>&1
+    sc config PolicyAgent start=disabled
+    sc config PrintDeviceConfigurationService start=disabled >nul 2>&1
+    sc config PrintNotify start=disabled
+    sc config PrintScanBrokerService start=disabled >nul 2>&1
+    sc config PushToInstall start=disabled
+    sc config QWAVE start=disabled
+    sc config RasAuto start=disabled
+    sc config RasMan start=disabled
+    sc config refsdedupsvc start=disabled >nul 2>&1
+    sc config RemoteAccess start=disabled
+    sc config RemoteRegistry start=disabled
+    sc config RetailDemo start=disabled
+    sc config RmSvc start=disabled
+    sc config RpcLocator start=disabled
+    sc config SamSs start=disabled
+    sc config SCardSvr start=disabled
+    sc config ScDeviceEnum start=disabled
+    sc config SCPolicySvc start=disabled
+    sc config SDRSVC start=disabled
+    sc config seclogon start=disabled
+    sc config SENS start=disabled
+    sc config Sense start=disabled >nul 2>&1
+    sc config SensorDataService start=disabled
+    sc config SensorService start=disabled
+    sc config SensrSvc start=disabled
+    sc config SEMgrSvc start=disabled
+    sc config SessionEnv start=disabled
+    sc config SharedAccess start=disabled
+    sc config SharedRealitySvc start=disabled >nul 2>&1
+    sc config ShellHWDetection start=disabled
+    sc config shpamsvc start=disabled
+    sc config SmsRouter start=disabled
+    sc config smphost start=disabled
+    sc config SNMPTrap start=disabled
+    sc config spectrum start=disabled >nul 2>&1
+    sc config Spooler start=disabled
+    sc config SSDPSRV start=disabled
+    sc config ssh-agent start=disabled
+    sc config SstpSvc start=disabled
+    sc config stisvc start=disabled
+    sc config StorSvc start=disabled
+    sc config svsvc start=disabled
+    sc config SysMain start=disabled
+    sc config TapiSrv start=disabled
+    sc config TermService start=disabled
+    sc config Themes start=disabled
+    sc config TieringEngineService start=disabled
+    sc config TokenBroker start=disabled
+    sc config TrkWks start=disabled
+    sc config TroubleshootingSvc start=disabled
+    sc config tzautoupdate start=disabled
+    sc config UevAgentService start=disabled >nul 2>&1
+    sc config uhssvc start=disabled >nul 2>&1
+    sc config UmRdpService start=disabled
+    sc config UnistoreSvc start=disabled
+    sc config upnphost start=disabled
+    sc config UserDataSvc start=disabled
+    sc config VacSvc start=disabled >nul 2>&1
+    sc config VaultSvc start=disabled
+    sc config vds start=disabled
+    sc config vmicguestinterface start=disabled
+    sc config vmicheartbeat start=disabled
+    sc config vmickvpexchange start=disabled
+    sc config vmicrdv start=disabled
+    sc config vmicshutdown start=disabled
+    sc config vmictimesync start=disabled
+    sc config vmicvmsession start=disabled
+    sc config vmicvss start=disabled
+    sc config W32Time start=disabled
+    sc config WalletService start=disabled
+    sc config WarpJITSvc start=disabled
+    sc config wbengine start=disabled
+    sc config WbioSrvc start=disabled
+    sc config Wcmsvc start=disabled
+    sc config wcncsvc start=disabled
+    sc config WdiServiceHost start=disabled
+    sc config WdiSystemHost start=disabled
+    sc config WebClient start=disabled
+    sc config webthreatdefusersvc start=disabled
+    sc config webthreatdefsvc start=disabled
+    sc config Wecsvc start=disabled
+    sc config WEPHOSTSVC start=disabled
+    sc config wercplsupport start=disabled
+    sc config WerSvc start=disabled
+    sc config WFDSConMgrSvc start=disabled
+    sc config whesvc start=disabled >nul 2>&1
+    sc config WiaRpc start=disabled
+    sc config WinRM start=disabled
+    sc config wisvc start=disabled
+    sc config WlanSvc start=disabled
+    sc config wlidsvc start=disabled
+    sc config wlpasvc start=disabled
+    sc config WManSvc start=disabled
+    sc config wmiApSrv start=disabled
+    sc config WMPNetworkSvc start=disabled >nul 2>&1
+    sc config workfolderssvc start=disabled
+    sc config WpcMonSvc start=disabled
+    sc config WPDBusEnum start=disabled
+    sc config WpnUserService start=disabled
+    sc config WpnService start=disabled
+    sc config wuqisvc start=disabled >nul 2>&1
+    sc config WSAIFabricSvc start=disabled >nul 2>&1
+    sc config WSearch start=disabled
+    sc config WwanSvc start=disabled
+    sc config XblAuthManager start=disabled
+    sc config XblGameSave start=disabled
+    sc config XboxGipSvc start=disabled
+    sc config XboxNetApiSvc start=disabled
+    sc config jhi_service start=disabled >nul 2>&1
+    sc config WMIRegistrationService start=disabled >nul 2>&1
+    sc config ipfsvc start=disabled >nul 2>&1
+    sc config igccservice start=disabled >nul 2>&1
+    sc config cplspcon start=disabled >nul 2>&1
+    sc config esifsvc start=disabled >nul 2>&1
+    sc config LMS start=disabled >nul 2>&1
+    sc config ibtsiva start=disabled >nul 2>&1
+    sc config cphs start=disabled >nul 2>&1
+    sc config DSAService start=disabled >nul 2>&1
+    sc config DSAUpdateService start=disabled >nul 2>&1
+    sc config RstMwService start=disabled >nul 2>&1
+    sc config SystemUsageReportSvc_QUEENCREEK start=disabled >nul 2>&1
+    sc config iaStorAfsService start=disabled >nul 2>&1
+    sc config "!Svc!" start=disabled >nul 2>&1
+    sc config "!Svc!" start=disabled >nul 2>&1
+    sc config NVDisplay.ContainerLocalSystem start=disabled >nul 2>&1
+    sc config NvContainerLocalSystem start=disabled >nul 2>&1
+    sc config FvSVC start=disabled >nul 2>&1
+    sc config "!Svc!" start=disabled >nul 2>&1
+    sc config RzActionSvc start=disabled >nul 2>&1
+    sc config CortexLauncherService start=disabled >nul 2>&1
+    sc config HapticService start=disabled >nul 2>&1
+    sc config "!Svc!" start=disabled >nul 2>&1
+    sc config logi_lamparray_service start=disabled >nul 2>&1
+    sc config LGHUBUpdaterService start=disabled >nul 2>&1
+    sc config "!Svc!" start=disabled >nul 2>&1
+    bcdedit /deletevalue useplatformclock >nul 2>&1
+    bcdedit /set useplatformtick no >nul 2>&1
+    bcdedit /set disabledynamictick yes >nul 2>&1
+    powercfg /hibernate off >nul 2>&1
+    powercfg -import "C:\Oneclick Tools\Power Plans\Quaked Ultimate Performance.pow" >nul 2>&1
+    powercfg -import "C:\Oneclick Tools\Power Plans\Quaked Ultimate Performance Idle Off.pow" >nul 2>&1
+    powercfg /setactive %Plan_Guid% >nul 2>&1
+    powercfg /setactive %Idle_Off_Plan_Guid% >nul 2>&1
+    powercfg.cpl
+    sc config LanmanWorkstation start=demand
+    sc config WdiServiceHost start=demand
+    sc config NcbService start=demand
+    sc config ndu start=demand
+    sc config Netman start=demand
+    sc config netprofm start=demand
+    sc config WwanSvc start=demand
+    sc config Dhcp start=auto
+    sc config DPS start=auto
+    sc config lmhosts start=auto
+    sc config NlaSvc start=auto
+    sc config nsi start=auto
+    sc config RmSvc start=auto
+    sc config Wcmsvc start=auto
+    sc config Winmgmt start=auto
+    sc config WlanSvc start=auto
+    sc config "EpicGamesUpdater" start=auto >nul 2>&1
+    sc config "EpicOnlineServices" start=auto >nul 2>&1
+    sc config "Rockstar Service" start=auto >nul 2>&1
+    sc config TrustedInstaller start=disabled >nul 2>&1
+}}
+
+$Options += [PSCustomObject]@{Id=533; Cat="Confidentialite"; LabelFR="Configuration"; LabelEN="Configuration"; Risk="moderate"; Action={
+    Stop-Service -Name 'w32time' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'w32time' -StartupType Manual -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'w32tm' -ArgumentList '/config /manualpeerlist:pool.ntp.org /syncfromflags:manual /update' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'w32tm' -ArgumentList '/resync' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SYSTEMDRIVE%\Users\Public\Desktop\Microsoft Edge.lnk' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%ALLUSERSPROFILE%\Microsoft\Windows\Start Menu\Programs\Accessories\Windows Media Player.lnk' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%WINDIR%\HelpPane.exe' -Force -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'COPYEXTRAS.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'XILLYPROMO.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=534; Cat="Confidentialite"; LabelFR="Files"; LabelEN="Files"; Risk="moderate"; Action={
+    taskkill /IM explorer /F 2>$null
+    taskkill /IM msedge /F 2>$null
+    Disable-ScheduledTask -TaskName 'Consolidator' -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'KernelCeipTask' -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'UsbCeip' -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'Microsoft Compatibility Appraiser' -TaskPath '\Microsoft\Windows\Application Experience\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'ProgramDataUpdater' -TaskPath '\Microsoft\Windows\Application Experience\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'StartupAppTask' -TaskPath '\Microsoft\Windows\Application Experience\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'UsbCeip' -TaskPath '\Microsoft\Windows\Customer Experience Improvement Program\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'FODCleanupTask' -TaskPath '\Microsoft\Windows\HelloFace\' -ErrorAction SilentlyContinue | Out-Null
+    Disable-ScheduledTask -TaskName 'MapsToastTask' -TaskPath '\Microsoft\Windows\Maps\' -ErrorAction SilentlyContinue | Out-Null
+    taskkill /IM SkypeBackgroundHost /F 2>$null
+    taskkill /IM SkypeBackgroundHost /F 2>$null
+    taskkill /IM OneDrive /F 2>$null
+    Remove-Item -Path '%ProgramFiles(x86)%\Windows Mail' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%ProgramW6432%\Windows Mail' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\Microsoft\Diagnosis\ETLLogs\Autologger\AutoLogger-Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\Microsoft\Diagnosis\ETLLogs\Autologger\AutoLogger-Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\Microsoft\Diagnosis\ETLLogs\Autologger\AutoLogger-Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\utc.allow.diffbase' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\analyticsevents.dat' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\utc.privacy.diffbase' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\Settings\utc.app.json' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\Settings\utc.tracing.json' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\RunExeActionAllowedList.dat' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\GetFileActionAllowedList.dat' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\GetFileInfoActionAllowedList.dat' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\Scenarios\windows.uif_ondemand.xml' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\Settings\windows.uif_ondemand.json' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\RemoteAggregatorTriggerCriteria.dat' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\Scenarios\windows.diag_ondemand.xml' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\System32\LogFiles\WMI\Diagtrack-Listener.etl.004' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\DiagTrack\Settings\telemetry.ASM-WindowsDefault.json' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\Microsoft\Diagnosis\ETLLogs\ShutdownLogger\Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\Microsoft\Diagnosis\ETLLogs\ShutdownLogger\Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\Microsoft\Diagnosis\ETLLogs\Autologger\AutoLogger-Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\Microsoft\Diagnosis\ETLLogs\Autologger\AutoLogger-Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\Microsoft\Diagnosis\ETLLogs\ShutdownLogger\Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\Microsoft\Diagnosis\ETLLogs\Autologger\AutoLogger-Diagtrack-Listener.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\System32\Tasks\Microsoft\Windows\Feedback\Siuf\DmClient' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\System32\Tasks\Microsoft\Windows\Feedback\Siuf\DmClientOnScenarioDownload' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\Prefetch\SIHCLIENT.EXE-A872A8BF.pf' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.2bdb351a-82b4-4f2c-bc55-ec328ca677be.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.4a695923-0852-4c25-9999-60bc09954fbe.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.5e2840a3-5955-481c-83b8-ddd64cdaa7ae.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.761c6d23-f36c-46be-bf3f-26ba35c4dcca.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.80c59111-3f67-46a5-9fd1-379f4b7c2f7d.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.86ba5ad4-3ec9-43cf-997e-568832e6e2b8.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.ab8bb825-292c-450d-ac06-03e39e89d684.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.2bdb351a-82b4-4f2c-bc55-ec328ca677be.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.4a695923-0852-4c25-9999-60bc09954fbe.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.5e2840a3-5955-481c-83b8-ddd64cdaa7ae.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.761c6d23-f36c-46be-bf3f-26ba35c4dcca.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.80c59111-3f67-46a5-9fd1-379f4b7c2f7d.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.86ba5ad4-3ec9-43cf-997e-568832e6e2b8.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.ab8bb825-292c-450d-ac06-03e39e89d684.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.2bdb351a-82b4-4f2c-bc55-ec328ca677be.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.4a695923-0852-4c25-9999-60bc09954fbe.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.5e2840a3-5955-481c-83b8-ddd64cdaa7ae.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.761c6d23-f36c-46be-bf3f-26ba35c4dcca.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.80c59111-3f67-46a5-9fd1-379f4b7c2f7d.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.86ba5ad4-3ec9-43cf-997e-568832e6e2b8.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.ab8bb825-292c-450d-ac06-03e39e89d684.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\Prefetch\MOUSOCOREWORKER.EXE-681A8FEE.pf' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.2bdb351a-82b4-4f2c-bc55-ec328ca677be.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.4a695923-0852-4c25-9999-60bc09954fbe.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.5e2840a3-5955-481c-83b8-ddd64cdaa7ae.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.761c6d23-f36c-46be-bf3f-26ba35c4dcca.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.80c59111-3f67-46a5-9fd1-379f4b7c2f7d.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.86ba5ad4-3ec9-43cf-997e-568832e6e2b8.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\USOShared\Logs\System\MoUsoCoreWorker.ab8bb825-292c-450d-ac06-03e39e89d684.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.2bdb351a-82b4-4f2c-bc55-ec328ca677be.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.4a695923-0852-4c25-9999-60bc09954fbe.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.5e2840a3-5955-481c-83b8-ddd64cdaa7ae.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.761c6d23-f36c-46be-bf3f-26ba35c4dcca.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.80c59111-3f67-46a5-9fd1-379f4b7c2f7d.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.86ba5ad4-3ec9-43cf-997e-568832e6e2b8.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\All Users\USOShared\Logs\System\MoUsoCoreWorker.ab8bb825-292c-450d-ac06-03e39e89d684.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.2bdb351a-82b4-4f2c-bc55-ec328ca677be.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.4a695923-0852-4c25-9999-60bc09954fbe.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.5e2840a3-5955-481c-83b8-ddd64cdaa7ae.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.761c6d23-f36c-46be-bf3f-26ba35c4dcca.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.80c59111-3f67-46a5-9fd1-379f4b7c2f7d.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.86ba5ad4-3ec9-43cf-997e-568832e6e2b8.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Documents and Settings\All Users\USOShared\Logs\System\MoUsoCoreWorker.ab8bb825-292c-450d-ac06-03e39e89d684.1.etl' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%windir%\Prefetch\MOUSOCOREWORKER.EXE-681A8FEE.pf' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\Users\Public\Desktop\Microsoft Edge.lnk' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%APPDATA%\Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar\Microsoft Edge.lnk' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path '%SystemDrive%\ProgramData\Microsoft\Windows\Start Menu\Programs\PC Health Check.lnk' -Force -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=535; Cat="Confidentialite"; LabelFR="Registry Edits"; LabelEN="Registry Edits"; Risk="moderate"; Action={
+    Start-Process -FilePath 'REGI.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Device Metadata' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{088e3905-0323-4b02-9826-5d99428e115f}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{1CF1260C-4DD0-4ebb-811F-33C572699FDE}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{24ad3ad4-a569-4530-98e1-ab02f9417aa8}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{374DE290-123F-4565-9164-39C4925E467B}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{3ADD1653-EB32-4cb0-BBD7-DFA0ABB5ACCA}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{3dfdf296-dbec-4fb4-81d1-6a3438bcf4de}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{A0953C92-50DC-43bf-BE83-3742FED03C9C}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{A8CDFF1C-4878-43be-B5FD-F8091C1C60D0}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{B4BFCC3A-DB2C-424C-B029-7FE99A87C641}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{d3162b92-9365-467a-956b-92703aca08af}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\MyComputer\NameSpace\{f86fa3ab-70d2-4fc7-9c99-fcbf05467f3a}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKEY_CLASSES_ROOT\CABFolder\CLSID' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKEY_CLASSES_ROOT\SystemFileAssociations\.cab\CLSID' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKEY_CLASSES_ROOT\CompressedFolder\CLSID' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKEY_CLASSES_ROOT\SystemFileAssociations\.zip\CLSID' -Force -ErrorAction SilentlyContinue | Out-Null
+    if ([System.Environment]::OSVersion.Version.Build -le 19045) {
+    # Active User
+    New-Item -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path 'HKCU:\Software\Policies\Microsoft\Windows\Explorer' -Name 'HidePeopleBar' -Value 1 -Type DWord
+    New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds' -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Feeds' -Name 'ShellFeedsTaskbarViewMode' -Value 2 -Type DWord
+    New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Force -ErrorAction SilentlyContinue | Out-Null
+    Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'ShowTaskViewButton' -Value 0 -Type DWord
+}
+
+    if ([System.Environment]::OSVersion.Version.Build -le 19045) {
+    # Default User (for new accounts)
+    reg load "HKU\DefaultUser" "C:\Users\Default\NTUSER.DAT" 2>&1 | Out-Null
+    reg add "HKU\DefaultUser\Software\Policies\Microsoft\Windows\Explorer" /v "HidePeopleBar" /t REG_DWORD /d 1 /f 2>&1 | Out-Null
+    reg add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\Feeds" /v "ShellFeedsTaskbarViewMode" /t REG_DWORD /d 2 /f 2>&1 | Out-Null
+    reg add "HKU\DefaultUser\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" /v "ShowTaskViewButton" /t REG_DWORD /d 0 /f 2>&1 | Out-Null
+    reg unload "HKU\DefaultUser" 2>&1 | Out-Null
+}
+
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.bmp\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.jpeg\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.jpe\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.jpg\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.jpg\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.png\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.gif\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.tif\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Classes\SystemFileAssociations\.tiff\Shell\3D Edit' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKEY_CLASSES_ROOT\CLSID\{018D5C66-4533-4307-9B53-224DE2ED1FE6}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKEY_CLASSES_ROOT\Wow6432Node\CLSID\{018D5C66-4533-4307-9B53-224DE2ED1FE6}' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\certificate_wab_auto_file' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\wab_auto_file' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\contact_wab_auto_file' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\group_wab_auto_file' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\vcard_wab_auto_file' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\WAB.AssocProtocol.LDAP' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\TIFImage.Document' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\PhotoViewer.FileAssoc.Tiff' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\StorageSense' -Force -ErrorAction SilentlyContinue | Out-Null
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace_41040327\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}' -Recurse -Force -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'CONVERT.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=536; Cat="Confidentialite"; LabelFR="Activating Ultimate Performance power plan"; LabelEN="Activating Ultimate Performance power plan"; Risk="moderate"; Action={
+    .\set_power_plan.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=537; Cat="Confidentialite"; LabelFR="Registry optimizations"; LabelEN="Registry optimizations"; Risk="moderate"; Action={
+    .\set_userprefs.ps1
+    Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "*" -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=538; Cat="Confidentialite"; LabelFR="Completely block Windows Update"; LabelEN="Completely block Windows Update"; Risk="moderate"; Action={
+    Stop-Service wuauserv -Force -ErrorAction SilentlyContinue; Set-Service wuauserv -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service UsoSvc -Force -ErrorAction SilentlyContinue; Set-Service UsoSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    Stop-Service WaaSMedicSvc -Force -ErrorAction SilentlyContinue; Set-Service WaaSMedicSvc -StartupType Disabled -ErrorAction SilentlyContinue
+    .\add_update_hosts.ps1
+    Remove-Item -Recurse -Force "C:\Windows\SoftwareDistribution" -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=539; Cat="Confidentialite"; LabelFR="Disable all system notifications"; LabelEN="Disable all system notifications"; Risk="moderate"; Action={
+    Stop-Service dmwappushservice -Force -ErrorAction SilentlyContinue; Set-Service dmwappushservice -StartupType Disabled -ErrorAction SilentlyContinue
+    gpupdate /force
+    taskkill /IM explorer /F 2>$null
+    start explorer.exe
+}}
+
+$Options += [PSCustomObject]@{Id=540; Cat="Confidentialite"; LabelFR="Rename computer to 'Z LAG OS'"; LabelEN="Rename computer to 'Z LAG OS'"; Risk="moderate"; Action={
+    rename_pc.bat
+}}
+
+$Options += [PSCustomObject]@{Id=541; Cat="Confidentialite"; LabelFR="Block Microsoft account sign-in"; LabelEN="Block Microsoft account sign-in"; Risk="moderate"; Action={
+    Stop-Service wlidsvc -Force -ErrorAction SilentlyContinue; Set-Service wlidsvc -StartupType Disabled -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=542; Cat="Confidentialite"; LabelFR="Configure Z-LAG OS Personalization & Themes"; LabelEN="Configure Z-LAG OS Personalization & Themes"; Risk="moderate"; Action={
+    .\set_dark_mousecursor.ps1
+    taskkill /IM explorer /F 2>$null
+    start explorer.exe
+}}
+
+$Options += [PSCustomObject]@{Id=543; Cat="Confidentialite"; LabelFR="Remove Microsoft Edge (Complete)"; LabelEN="Remove Microsoft Edge (Complete)"; Risk="moderate"; Action={
+    edge_remover.bat
+}}
+
+$Options += [PSCustomObject]@{Id=544; Cat="Confidentialite"; LabelFR="Advanced Performance Tweaks (Beyond Atlas)"; LabelEN="Advanced Performance Tweaks (Beyond Atlas)"; Risk="moderate"; Action={
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+    if (Get-Command Disable-MMAgent -ErrorAction SilentlyContinue) { Disable-MMAgent -MemoryCompression -ErrorAction SilentlyContinue }
+    fsutil behavior set disablelastaccess 1
+    fsutil behavior set disable8dot3 1
+    Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces" | ForEach-Object { Set-ItemProperty -Path $_.PSPath -Name "TCPNoDelay" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue }
+    netsh int tcp set global autotuninglevel=disabled
+    .\set_smooth_mouse.ps1
+    Optimize-Volume -DriveLetter C -ReTrim -ErrorAction SilentlyContinue
+    ipconfig /flushdns
+    ipconfig /registerdns
+}}
+
+$Options += [PSCustomObject]@{Id=545; Cat="Confidentialite"; LabelFR="Removing Bloat Features"; LabelEN="Removing Bloat Features"; Risk="moderate"; Action={
+    .\remove_bloat_features.ps1
+}}
+
+$Options += [PSCustomObject]@{Id=546; Cat="Confidentialite"; LabelFR="Small Auto-Hide Taskbar"; LabelEN="Small Auto-Hide Taskbar"; Risk="moderate"; Action={
+    taskkill /IM explorer /F 2>$null
+    start explorer.exe
+}}
+
+$Options += [PSCustomObject]@{Id=547; Cat="Confidentialite"; LabelFR="Configure Windows Settings"; LabelEN="Configure Windows Settings"; Risk="moderate"; Action={
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Id' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo' -Name 'Id' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Siuf\Rules' -Name 'PeriodInNanoSeconds' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKU\.DEFAULT\Software\Microsoft\Siuf\Rules' -Name 'PeriodInNanoSeconds' -ErrorAction SilentlyContinue
+}}
+
+$Options += [PSCustomObject]@{Id=548; Cat="Reseau"; LabelFR="Edge"; LabelEN="Edge"; Risk="moderate"; Action={
+    taskkill /IM msedge /F 2>$null
+    taskkill /IM msedgewebview2 /F 2>$null
+    taskkill /IM MicrosoftEdge* /F 2>$null
+    taskkill /IM MicrosoftEdgeUpdate /F 2>$null
+    taskkill /IM MicrosoftEdgeElevationService /F 2>$null
+    taskkill /IM edge_core /F 2>$null
+    taskkill /IM msedgeupdater /F 2>$null
+    taskkill /IM MicrosoftEdgeUpdateCom /F 2>$null
+    Stop-Service -Name 'edgeupdate' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdate' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'edgeupdatem' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'edgeupdatem' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MicrosoftEdgeElevationService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MicrosoftEdgeElevationService' -StartupType Manual -ErrorAction SilentlyContinue
+    Stop-Service -Name 'MicrosoftEdgeUpdateService' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'MicrosoftEdgeUpdateService' -StartupType Manual -ErrorAction SilentlyContinue
+    $edgeUpdate = "${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate\MicrosoftEdgeUpdate.exe"; if (Test-Path $edgeUpdate) {
+  Start-Process $edgeUpdate -ArgumentList '/uninstall','/system-level','/force-uninstall' -WindowStyle Hidden -Wait
+} Start-Sleep -Seconds 3; Get-Process -Name 'msedge','MicrosoftEdgeUpdate' -ErrorAction SilentlyContinue | Stop-Process -Force
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdge.Stable*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdgeDevToolsClient*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.Edge*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'MicrosoftEdge*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdge.Beta*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdge.Canary*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    Get-AppxPackage -AllUsers -Name 'Microsoft.MicrosoftEdgeDev*' | Remove-AppxPackage -ErrorAction SilentlyContinue
+    $paths = @(
+  "$env:SystemDrive\Users\Public\Desktop\Microsoft Edge.lnk",
+  "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk",
+  "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Microsoft Edge.lnk",
+  "$env:SystemRoot\system32\MicrosoftEdgeBCHost.exe",
+  "$env:SystemRoot\system32\MicrosoftEdgeCP.exe",
+  "$env:SystemRoot\system32\MicrosoftEdgeDevTools.exe",
+  "$env:SystemRoot\system32\MicrosoftEdgeSH.exe",
+  "$env:SystemRoot\system32\ie_storagetrusted.exe",
+  "$env:SystemRoot\system32\MicrosoftEdgeCPBroker.exe",
+  "${env:ProgramFiles(x86)}\Microsoft\Edge",
+  "${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate",
+  "${env:ProgramFiles(x86)}\Microsoft\EdgeCore",
+  "${env:ProgramFiles}\Microsoft\Edge",
+  "${env:ProgramFiles}\Microsoft\EdgeUpdate",
+  "${env:ProgramFiles}\Microsoft\EdgeCore",
+  "$env:LOCALAPPDATA\Microsoft\Edge",
+  "$env:LOCALAPPDATA\Microsoft\EdgeUpdate",
+  "$env:LOCALAPPDATA\Microsoft\EdgeCrashReports",
+  "$env:APPDATA\Microsoft\Edge",
+  "$env:SystemRoot\SystemApps\Microsoft.MicrosoftEdge_*",
+  "$env:SystemRoot\SystemApps\MicrosoftEdge_*",
+  "$env:ProgramData\Microsoft\Edge",
+  "$env:ProgramData\Microsoft\EdgeUpdate",
+  "$env:SystemRoot\Temp\MicrosoftEdge",
+  "$env:TEMP\MicrosoftEdge"
+); foreach ($p in $paths) {
+  if (Test-Path $p) {
+    try { Remove-Item $p -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge Update' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Edge' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Edge' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCR\MSEdgePDF' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCR\MSEdgeMHT' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Clients\StartMenuInternet\Microsoft Edge' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\RegisteredApplications' -Name 'Microsoft Edge' -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\msedge.exe' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Image File Execution Options\msedgewebview2.exe' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge' -Name 'NoRemove' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge' -Name 'NoModify' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Microsoft Edge' -Name 'NoRepair' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\AppExecutionAlias\msedge' -Name 'AppExecutionAlias' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\AppExecutionAlias\msedgebeta' -Name 'AppExecutionAlias' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\AppExecutionAlias\msedgecanary' -Name 'AppExecutionAlias' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced\AppExecutionAlias\msedgewebview' -Name 'AppExecutionAlias' -ErrorAction SilentlyContinue
+    schtasks /Delete /TN "\Microsoft\EdgeUpdate\*" /F 2>nul
+    Get-ScheduledTask | Where-Object { $_.TaskName -like '*MicrosoftEdge*' -or $_.TaskName -like '*EdgeUpdate*' -or $_.TaskPath -like '*MicrosoftEdge*' } | ForEach-Object { Unregister-ScheduledTask -TaskName $_.TaskName -Confirm:$false -ErrorAction SilentlyContinue }
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Classes\microsoft-edge' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKLM\SOFTWARE\Classes\MSEdgeHTM' -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path 'Registry::HKCR\microsoft-edge' -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge.Stable_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge.Beta_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge.Canary_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdge.Dev_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Appx\AppxAllUserStore\Deprovisioned\Microsoft.MicrosoftEdgeDevToolsClient_8wekyb3d8bbwe' -Force -ErrorAction SilentlyContinue | Out-Null
+    $fakePath = "$env:SystemRoot\SystemApps\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\MicrosoftEdge.exe"; $null = New-Item -Path (Split-Path $fakePath -Parent) -ItemType Directory -Force -ErrorAction SilentlyContinue; Set-Content -Path $fakePath -Value "" -Encoding ASCII -ErrorAction SilentlyContinue; attrib +R +S +H $fakePath;
+    $taskFiles = @(
+  "$env:SystemRoot\System32\Tasks\MicrosoftEdgeUpdateTaskMachineCore",
+  "$env:SystemRoot\System32\Tasks\MicrosoftEdgeUpdateTaskMachineUA",
+  "$env:SystemRoot\System32\Tasks\MicrosoftEdgeUpdateBrowserReplacementTask",
+  "$env:SystemRoot\System32\Tasks\MicrosoftEdgeUpdateTaskMachineCoreSystem",
+  "$env:SystemRoot\System32\Tasks\Microsoft\EdgeUpdate"
+); foreach ($tf in $taskFiles) {
+  if (Test-Path $tf) {
+    try { takeown.exe /F $tf /A 2>&1 | Out-Null } catch {}
+    try { icacls.exe $tf /grant Administrators:F 2>&1 | Out-Null } catch {}
+    try { Remove-Item $tf -Recurse -Force -ErrorAction SilentlyContinue } catch {}
+  }
+}
+    $edgeDirs = @(
+  "${env:ProgramFiles(x86)}\Microsoft\Edge",
+  "${env:ProgramFiles(x86)}\Microsoft\EdgeUpdate",
+  "${env:ProgramFiles(x86)}\Microsoft\EdgeCore",
+  "$env:ProgramFiles\Microsoft\Edge",
+  "$env:ProgramFiles\Microsoft\EdgeUpdate",
+  "$env:ProgramFiles\Microsoft\EdgeCore"
+); foreach ($d in $edgeDirs) {
+  if (-not (Test-Path $d)) { $null = New-Item -Path $d -ItemType Directory -Force -ErrorAction SilentlyContinue }
+  if (Test-Path $d) {
+    try { icacls.exe $d /deny "SYSTEM:(OI)(CI)(F)" /T /C 2>&1 | Out-Null } catch {}
+  }
+}
+    $hostsPath = "$env:SystemRoot\System32\drivers\etc\hosts"; $entries = @(
+  "0.0.0.0 edge.microsoft.com",
+  "0.0.0.0 msedge.api.cdp.microsoft.com",
+  "0.0.0.0 msedge.api.microsoft.com",
+  "0.0.0.0 edge.copilot.microsoft.com",
+  "0.0.0.0 dl.delivery.mp.microsoft.com",
+  "0.0.0.0 dl.delivery.mp.microsoft.com.footprintdns.com",
+  "0.0.0.0 msedge.f.dl.delivery.mp.microsoft.com",
+  "0.0.0.0 config.edge.skype.com",
+  "0.0.0.0 edge.microsoft.com.edgesuite.net",
+  "0.0.0.0 browser.events.data.microsoft.com",
+  "0.0.0.0 settings-win.data.microsoft.com"
+); $content = Get-Content $hostsPath -Raw -ErrorAction SilentlyContinue; $changed = $false; foreach ($e in $entries) {
+  if ($content -notmatch [regex]::Escape($e)) {
+    Add-Content $hostsPath "`n$e" -ErrorAction SilentlyContinue;
+    $changed = $true;
+  }
+}
+}}
+
+$Options += [PSCustomObject]@{Id=549; Cat="Reseau"; LabelFR="Networking & System"; LabelEN="Networking & System"; Risk="moderate"; Action={
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global chimney=disabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global dca=enabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global netdma=enabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global timestamps=disabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global rss=enabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global nonsackrttresiliency=disabled' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set global maxsynretransmissions=2' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set supplemental template=Internet congestionprovider=ctcp' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'netsh' -ArgumentList 'int tcp set supplemental template=InternetCustom congestionprovider=ctcp' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/h off' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/change standby-timeout-ac 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/change monitor-timeout-ac 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'powercfg' -ArgumentList '/setactive SCHEME_CURRENT' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    New-Item -Path 'Registry::HKCU\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}\InprocServer32' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=550; Cat="Confidentialite"; LabelFR="Configure Explorer -> Context Menu"; LabelEN="Configure Explorer -> Context Menu"; Risk="moderate"; Action={
+    New-Item -Path 'Registry::HKCR\*\shell\runas' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\Directory\shell\runas' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\dllfile\shell\runas' -Force -ErrorAction SilentlyContinue | Out-Null
+    New-Item -Path 'Registry::HKCR\exefile\shell\runas' -Force -ErrorAction SilentlyContinue | Out-Null
+}}
+
+$Options += [PSCustomObject]@{Id=551; Cat="Confidentialite"; LabelFR="Remove unwanted context menu items (Enhanced - Aggressive)"; LabelEN="Remove unwanted context menu items (Enhanced - Aggressive)"; Risk="moderate"; Action={
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\setdesktopwallpaper' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\setdesktopwallpaper' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\setdesktopwallpaper' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\giffile\shell\setdesktopwallpaper' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\setdesktopwallpaper' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\setasbackground' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\setaswallpaper' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\rotateleft' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\rotateright' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\rotateleft' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\rotateright' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\rotateleft' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\rotateright' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\rotate' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{7AD84985-87B4-4a16-BE58-8B72A5B390F7}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{7AD84985-87B4-4a16-BE58-8B72A5B390F7}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{7AD84985-87B4-4a16-BE58-8B72A5B390F7}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{F7F24ED4-5F68-4B78-82DA-3C92C3C26775}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{E3A0C2D7-1BFA-45F9-9B9E-2F4F5C6D8E9A}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\*\shellex\ContextMenuHandlers\{7AD84985-87B4-4a16-BE58-8B72A5B390F7}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Media\shellex\ContextMenuHandlers\{7AD84985-87B4-4a16-BE58-8B72A5B390F7}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{E1127A54-17A4-4F9D-919E-3C451EF05B0B}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{8C8426FC-77B7-4F15-9CDA-0129E1B79D80}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{43668BF4-1FEE-45E1-B585-DF5F5B64F75B}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{E1127A54-17A4-4F9D-919E-3C451EF05B0B}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{E1127A54-17A4-4F9D-919E-3C451EF05B0B}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\PlayTo' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\CastToDevice' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\Sharing' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\Sharing' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\Sharing' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\Sharing (Legacy)' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\Sharing (Legacy)' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\ModernSharing' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\Send To' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers\SendTo' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{7BA4C740-9E81-11CF-99D3-00AA004AE837}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\shellex\ContextMenuHandlers\Library Location' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\Library Location' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\Library Location' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\edit' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\edit' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\edit' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\ShellEx\ContextMenuHandlers\{ef1b7f6b-9022-43de-bc6e-fdbe04c1d589}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\ShellEx\ContextMenuHandlers\{ef1b7f6b-9022-43de-bc6e-fdbe04c1d589}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shell\Customize' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\shell\Customize' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{a2a9545d-a0c2-42b4-9708-a0b2badd77c8}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{a2a9545d-a0c2-42b4-9708-a0b2badd77c8}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{a2a9545d-a0c2-42b4-9708-a0b2badd77c8}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{a2a9545d-a0c2-42b4-9708-a0b2badd77c9}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{a2a9545d-a0c2-42b4-9708-a0b2badd77ca}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\PintoStartScreen' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{90aa3a4e-1cba-4233-b8bb-535773d48449}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{90aa3a4e-1cba-4233-b8bb-535773d48449}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\PinToTaskbar' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{50ad69a4-87c3-4a72-b7c4-80c4c3b8f1f9}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{82044F4A-9E7F-4B4F-BDB1-C43559D3BA64}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{679f85cb-0220-4080-b29b-5540cc05aab6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\shellex\ContextMenuHandlers\{679f85cb-0220-4080-b29b-5540cc05aab6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\AllFilesystemObjects\shellex\ContextMenuHandlers\{679f85cb-0220-4080-b29b-5540cc05aab6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\PinToQuickAccess' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{a0eafe71-d696-428a-ade0-6dab634d3fb0}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\shellex\ContextMenuHandlers\{a0eafe71-d696-428a-ade0-6dab634d3fb0}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{596AB062-B4D2-4215-9F74-E9109B0A8153}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{596AB062-B4D2-4215-9F74-E9109B0A8153}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{596AB062-B4D2-4215-9F74-E9109B0A8153}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{f81e9010-6ea4-11ce-a7ff-00aa003ca9f6}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\SharingWizard' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\exefile\shellex\ContextMenuHandlers\{1d27f844-3a1f-4410-85ac-146d78461dae}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Application\shellex\ContextMenuHandlers\{1d27f844-3a1f-4410-85ac-146d78461dae}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\Troubleshoot' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{09A47860-541B-475F-9FA5-D43A2B0D4F5D}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{09A47860-541B-475F-9FA5-D43A2B0D4F5D}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{09A47860-541B-475F-9FA5-D43A2B0D4F5D}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{8369AB20-56C9-11D0-94E8-00AA0059CE02}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\3D Edit' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\3D Edit' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\3D Edit' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\SystemFileAssociations\image\shell\3D Print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\pngfile\shell\3D Print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\jpegfile\shell\3D Print' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\ISOFile\shell\burn' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Windows.IsoFile\shell\burn' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\burn' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shell\burn' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\AudioCD\shell\play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\MediaFile\shell\Play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\WMP11.AssocFile.MP3\shell\Play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\WMP11.AssocFile.AVI\shell\Play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\WMP11.AssocFile.WMV\shell\Play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\WMP11.AssocFile.MP4\shell\Play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\play' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\openas' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\OpenWith' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\OpenWith' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shell\encrypt-bde' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shell\manage-bde' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\encrypt' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Network\Shell\AddToFavorites' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\NetworkLocation\Shell\AddToFavorites' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Network\Shell\AlwaysAvailableOffline' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\NetworkLocation\Shell\AlwaysAvailableOffline' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Network\Shell\MapNetworkDrive' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Network\Shell\DisconnectNetworkDrive' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\shellex\ContextMenuHandlers\{5e3c39a1-9e5f-4518-ac47-9a0bb91c6a1b}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{5e3c39a1-9e5f-4518-ac47-9a0bb91c6a1b}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{7C2CF117-2E48-45E8-AAE0-2721F1F130F8}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shellex\ContextMenuHandlers\{7C2CF117-2E48-45E8-AAE0-2721F1F130F8}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shellex\ContextMenuHandlers\{7C2CF117-2E48-45E8-AAE0-2721F1F130F8}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{5c2c81a0-ee37-4795-9166-39ec11e182ab}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shellex\ContextMenuHandlers\{9cef69de-1a08-4f39-96d1-ac6b9374e012}' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\takeownership' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shell\takeownership' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Drive\shell\takeownership' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Folder\shell\takeownership' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\runas' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\Directory\shell\runas' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\dllfile\shell\runas' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\exefile\shell\runas' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCR\*\shell\restart' -Name 'None' -ErrorAction SilentlyContinue
+    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\CurrentVersion\ActionCenter\Quick Actions\All\QuickAction{8E37F5F2-2715-4AB4-90B9-590EBB72ED97}' -Name 'None' -ErrorAction SilentlyContinue
 }}
 
 $Options += [PSCustomObject]@{Id=422; Cat="Extreme"; LabelFR="DÃ©sactiver Game Bar"; LabelEN="Disable Game Bar"; Risk="safe"; Action={
@@ -4387,6 +10162,130 @@ function Global:Render-Category([string]$Cat) {
             [void]$SpStack.Children.Add($SpBtnRow)
             $SpBox.Child = $SpStack
             [void]$Panel.Children.Add($SpBox)
+
+            # --- Bloc Nettoyeur RAM (intervalle reglable) ---
+            $RcBox = New-Object System.Windows.Controls.Border
+            $RcBox.Background = Get-Brush "#14162A"
+            $RcBox.BorderBrush = Get-Brush "#7C9CFF"
+            $RcBox.BorderThickness = "1"
+            $RcBox.CornerRadius = "5"
+            $RcBox.Padding = "12"
+            $RcBox.Margin = "0,0,0,15"
+            $RcStack = New-Object System.Windows.Controls.StackPanel
+
+            $RcTitle = New-Object System.Windows.Controls.TextBlock
+            $isRcInstalled = Test-RamCleanerDaemonInstalled
+            if ($isRcInstalled) {
+                $RcTitle.Text = if ($Global:CurrentLang -eq "FR") { "âœ… Nettoyeur RAM : ACTIF" } else { "âœ… RAM Cleaner: ACTIVE" }
+            } else {
+                $RcTitle.Text = if ($Global:CurrentLang -eq "FR") { "Nettoyeur RAM : non installÃ©" } else { "RAM Cleaner: not installed" }
+            }
+            $RcTitle.Foreground = Get-Brush "#7C9CFF"
+            $RcTitle.FontSize = 12
+            $RcTitle.FontWeight = "Bold"
+            $RcTitle.Margin = "0,0,0,6"
+            [void]$RcStack.Children.Add($RcTitle)
+
+            $RcDesc = New-Object System.Windows.Controls.TextBlock
+            $RcDesc.Text = if ($Global:CurrentLang -eq "FR") { "Vide le working set de tous les process (libere la RAM occupee inutilement) et purge la Standby List noyau, a l'intervalle que tu choisis ci-dessous. Meme technique que RAMMap/Mem Reduct. Change l'intervalle a tout moment, effectif immediatement, sans reinstaller." } else { "Empties the working set of every process (frees RAM held unnecessarily) and purges the kernel Standby List, at the interval you pick below. Same technique as RAMMap/Mem Reduct. Change the interval anytime, effective immediately, no reinstall needed." }
+            $RcDesc.Foreground = Get-Brush "#A0A0A0"
+            $RcDesc.FontSize = 11
+            $RcDesc.TextWrapping = "Wrap"
+            $RcDesc.Margin = "0,0,0,10"
+            [void]$RcStack.Children.Add($RcDesc)
+
+            $RcIntervalRow = New-Object System.Windows.Controls.StackPanel
+            $RcIntervalRow.Orientation = "Horizontal"
+            $RcIntervalRow.Margin = "0,0,0,10"
+
+            $RcIntervalLabel = New-Object System.Windows.Controls.TextBlock
+            $RcIntervalLabel.Text = if ($Global:CurrentLang -eq "FR") { "Intervalle : " } else { "Interval: " }
+            $RcIntervalLabel.Foreground = Get-Brush "#F5F5FA"
+            $RcIntervalLabel.VerticalAlignment = "Center"
+            $RcIntervalLabel.Margin = "0,0,8,0"
+            [void]$RcIntervalRow.Children.Add($RcIntervalLabel)
+
+            $ComboRamInterval = New-Object System.Windows.Controls.ComboBox
+            $ComboRamInterval.Width = 160
+            $ComboRamInterval.Height = 26
+            $ramIntervalOptions = @(
+                @{Label = if ($Global:CurrentLang -eq "FR") { "DÃ©sactivÃ©" } else { "Off" }; Value = 0},
+                @{Label = if ($Global:CurrentLang -eq "FR") { "Toutes les 30 sec" } else { "Every 30 sec" }; Value = 30},
+                @{Label = if ($Global:CurrentLang -eq "FR") { "Toutes les 1 min" } else { "Every 1 min" }; Value = 60},
+                @{Label = if ($Global:CurrentLang -eq "FR") { "Toutes les 5 min" } else { "Every 5 min" }; Value = 300},
+                @{Label = if ($Global:CurrentLang -eq "FR") { "Toutes les 15 min" } else { "Every 15 min" }; Value = 900},
+                @{Label = if ($Global:CurrentLang -eq "FR") { "Toutes les 30 min" } else { "Every 30 min" }; Value = 1800}
+            )
+            $currentInterval = 300
+            $existingVal = Get-ItemProperty -Path $Global:RamCleanerRegPath -Name $Global:RamCleanerRegName -ErrorAction SilentlyContinue
+            if ($existingVal) { $currentInterval = $existingVal.$($Global:RamCleanerRegName) }
+            foreach ($opt in $ramIntervalOptions) {
+                $cbi = New-Object System.Windows.Controls.ComboBoxItem
+                $cbi.Content = $opt.Label
+                $cbi.Tag = $opt.Value
+                [void]$ComboRamInterval.Items.Add($cbi)
+                if ([int]$opt.Value -eq [int]$currentInterval) { $ComboRamInterval.SelectedItem = $cbi }
+            }
+            if ($null -eq $ComboRamInterval.SelectedItem -and $ComboRamInterval.Items.Count -gt 0) { $ComboRamInterval.SelectedIndex = 3 }
+            $ComboRamInterval.Add_SelectionChanged({
+                try {
+                    $sel = $ComboRamInterval.SelectedItem
+                    if ($sel) {
+                        Set-RamCleanerInterval -Seconds ([int]$sel.Tag)
+                        $LogBox.AppendText(">> [OK] Intervalle nettoyeur RAM -> $($sel.Content)`n")
+                        $LogBox.ScrollToEnd()
+                    }
+                } catch { }
+            })
+            [void]$RcIntervalRow.Children.Add($ComboRamInterval)
+            [void]$RcStack.Children.Add($RcIntervalRow)
+
+            $RcBtnRow = New-Object System.Windows.Controls.StackPanel
+            $RcBtnRow.Orientation = "Horizontal"
+
+            $BtnInstallRc = New-Object System.Windows.Controls.Button
+            $BtnInstallRc.Content = if ($Global:CurrentLang -eq "FR") { "Installer le dÃ©mon" } else { "Install daemon" }
+            $BtnInstallRc.Height = 28
+            $BtnInstallRc.Width = 160
+            $BtnInstallRc.Margin = "0,0,10,0"
+            $BtnInstallRc.Background = Get-Brush "#7C9CFF"
+            $BtnInstallRc.Foreground = Get-Brush "#0A0A0E"
+            $BtnInstallRc.FontWeight = "Bold"
+            $BtnInstallRc.BorderThickness = "0"
+            $BtnInstallRc.Add_Click({
+                try {
+                    Install-RamCleanerDaemon
+                    $LogBox.AppendText(">> [OK] Nettoyeur RAM installÃ© et lancÃ©`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] Installation Nettoyeur RAM -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Innovations"
+            })
+            [void]$RcBtnRow.Children.Add($BtnInstallRc)
+
+            $BtnUninstallRc = New-Object System.Windows.Controls.Button
+            $BtnUninstallRc.Content = if ($Global:CurrentLang -eq "FR") { "DÃ©sinstaller" } else { "Uninstall" }
+            $BtnUninstallRc.Height = 28
+            $BtnUninstallRc.Width = 120
+            $BtnUninstallRc.Background = Get-Brush "#221616"
+            $BtnUninstallRc.Foreground = Get-Brush "#E74C3C"
+            $BtnUninstallRc.BorderThickness = "0"
+            $BtnUninstallRc.Add_Click({
+                try {
+                    Uninstall-RamCleanerDaemon
+                    $LogBox.AppendText(">> [OK] Nettoyeur RAM dÃ©sinstallÃ©`n")
+                } catch {
+                    $LogBox.AppendText(">> [ECHEC] DÃ©sinstallation Nettoyeur RAM -> $($_.Exception.Message)`n")
+                }
+                $LogBox.ScrollToEnd()
+                Render-Category "Innovations"
+            })
+            [void]$RcBtnRow.Children.Add($BtnUninstallRc)
+
+            [void]$RcStack.Children.Add($RcBtnRow)
+            $RcBox.Child = $RcStack
+            [void]$Panel.Children.Add($RcBox)
         }
 
         $filter = $TxtSearch.Text.Trim()
