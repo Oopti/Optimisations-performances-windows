@@ -2832,8 +2832,8 @@ $Options += [PSCustomObject]@{Id=472; Cat="Nettoyage"; LabelFR="Deep system clea
     taskkill /IM GameBar /F 2>$null
     taskkill /IM XboxApp /F 2>$null
     taskkill /IM YourPhone /F 2>$null
-    if exist "%SystemRoot%\SysWOW64\OneDriveSetup.exe" start /wait %SystemRoot%\SysWOW64\OneDriveSetup.exe /uninstall
-    if exist "%SystemRoot%\System32\OneDriveSetup.exe" start /wait %SystemRoot%\System32\OneDriveSetup.exe /uninstall
+    if (Test-Path "$env:SystemRoot\SysWOW64\OneDriveSetup.exe") { Start-Process -FilePath "$env:SystemRoot\SysWOW64\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue }
+    if (Test-Path "$env:SystemRoot\System32\OneDriveSetup.exe") { Start-Process -FilePath "$env:SystemRoot\System32\OneDriveSetup.exe" -ArgumentList "/uninstall" -Wait -ErrorAction SilentlyContinue }
     Remove-Item -Recurse -Force "$env:USERPROFILE\OneDrive" -ErrorAction SilentlyContinue
     Clear-RecycleBin -Force -ErrorAction SilentlyContinue
     dism /online /cleanup-image /startcomponentcleanup /quiet
@@ -2842,9 +2842,9 @@ foreach ($log in $logs) {
   wevtutil cl "$log" 2>$null
 }
 
-    del /f /s /q "%TEMP%\*" 2>nul
-    del /f /s /q "C:\Windows\Temp\*" 2>nul
-    del /f /s /q "C:\Windows\Prefetch\*" 2>nul
+    Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "C:\Windows\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
 }}
 
 $Options += [PSCustomObject]@{Id=473; Cat="Nettoyage"; LabelFR="Clean Start Menu (Only App List - No Pinned Apps or Groups)"; LabelEN="Clean Start Menu (Only App List - No Pinned Apps or Groups)"; Risk="moderate"; Action={
@@ -4072,11 +4072,6 @@ $Options += [PSCustomObject]@{Id=495; Cat="Apps"; LabelFR="Packages"; LabelEN="P
     Start-Process -FilePath 'revitool.exe' -ArgumentList 'winpackage --install onedrive-removal' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
 }}
 
-$Options += [PSCustomObject]@{Id=496; Cat="Apps"; LabelFR="Software"; LabelEN="Software"; Risk="moderate"; Action={
-    Start-Process -FilePath 'BraveBrowserStandaloneSetup.exe' -ArgumentList '/silent /install' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    Start-Process -FilePath 'BraveBrowserStandaloneSetupArm64.exe' -ArgumentList '/silent /install' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    robocopy "BraveSoftware" "%ProgramFiles%\BraveSoftware" /E /IM /IT /NP & robocopy "BraveSoftware" "%localappdata%\BraveSoftware" /E /IM /IT /NP
-}}
 
 $Options += [PSCustomObject]@{Id=497; Cat="Apps"; LabelFR="Software"; LabelEN="Software"; Risk="moderate"; Action={
     Start-Process -FilePath 'FIREFOX.bat' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
@@ -4330,21 +4325,45 @@ $Options += [PSCustomObject]@{Id=508; Cat="Confidentialite"; LabelFR="Updates"; 
 }}
 
 $Options += [PSCustomObject]@{Id=509; Cat="Confidentialite"; LabelFR="Final"; LabelEN="Final"; Risk="moderate"; Action={
-    Start-Process -FilePath 'NSudoLC.exe' -ArgumentList '-U:T -P:E -M:S -Priority:RealTime -UseCurrentConsole -Wait PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File CLEANUP.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    Start-Process -FilePath 'NSudoLC.exe' -ArgumentList '-U:T -P:E -M:S -Priority:RealTime -UseCurrentConsole -Wait PowerShell.exe -NoProfile -ExecutionPolicy Bypass -File CLEANUP.ps1 -FullWinSxS -Extreme' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    del /q /f /s "%TEMP%\*" 2>nul & del /q /f /s "%WINDIR%\Temp\*" 2>nul & del /q /f /s "%WINDIR%\Prefetch\*" 2>nul & del /q /f /s "%WINDIR%\Logs\*.log" 2>nul & del /q /f /s "%LOCALAPPDATA%\Microsoft\Windows\INetCache\*" 2>nul & del /q /f /s "%LOCALAPPDATA%\Microsoft\Windows\Temporary Internet Files\*" 2>nul & del /q /f /s "%WINDIR%\Minidump\*" 2>nul & del /q /f /s "%WINDIR%\MEMORY.DMP" 2>nul & del /q /f /s "%LOCALAPPDATA%\CrashDumps\*" 2>nul
-    schtasks /Change /TN "\Microsoft\Windows\Power Efficiency Diagnostics\AnalyzeSystem" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\MemoryDiagnostic\ProcessMemoryDiagnosticEvents" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\MemoryDiagnostic\RunFullMemoryDiagnostic" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Windows Error Reporting\QueueReporting" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Application Experience\AitAgent" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Customer Experience Improvement Program\Consolidator" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask" /Disable 2>nul
-    schtasks /Change /TN "\Microsoft\Windows\WindowsUpdate\Scheduled Start" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScanAfterUpdate" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\UpdateOrchestrator\Start Oobe Expedite Work" /Disable 2>nul & schtasks /Change /TN "\Microsoft\Windows\UpdateOrchestrator\Schedule Scan" /Disable 2>nul
+    Remove-Item -Path "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:WINDIR\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:WINDIR\Prefetch\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:WINDIR\Logs\*.log" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\INetCache\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:LOCALAPPDATA\Microsoft\Windows\Temporary Internet Files\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:WINDIR\Minidump\*" -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:WINDIR\MEMORY.DMP" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:LOCALAPPDATA\CrashDumps\*" -Recurse -Force -ErrorAction SilentlyContinue
+    $tasksToDisable = @(
+        "\Microsoft\Windows\Power Efficiency Diagnostics\AnalyzeSystem",
+        "\Microsoft\Windows\MemoryDiagnostic\ProcessMemoryDiagnosticEvents",
+        "\Microsoft\Windows\MemoryDiagnostic\RunFullMemoryDiagnostic",
+        "\Microsoft\Windows\Windows Error Reporting\QueueReporting",
+        "\Microsoft\Windows\Application Experience\AitAgent",
+        "\Microsoft\Windows\DiskDiagnostic\Microsoft-Windows-DiskDiagnosticDataCollector",
+        "\Microsoft\Windows\Application Experience\Microsoft Compatibility Appraiser",
+        "\Microsoft\Windows\Customer Experience Improvement Program\Consolidator",
+        "\Microsoft\Windows\Customer Experience Improvement Program\UsbCeip",
+        "\Microsoft\Windows\Customer Experience Improvement Program\KernelCeipTask",
+        "\Microsoft\Windows\WindowsUpdate\Scheduled Start",
+        "\Microsoft\Windows\UpdateOrchestrator\StartOobeAppsScanAfterUpdate",
+        "\Microsoft\Windows\UpdateOrchestrator\Start Oobe Expedite Work",
+        "\Microsoft\Windows\UpdateOrchestrator\Schedule Scan"
+    )
+    foreach ($t in $tasksToDisable) {
+        $tn = Split-Path $t -Leaf
+        $tp = Split-Path $t
+        Disable-ScheduledTask -TaskName $tn -TaskPath "$tp\" -ErrorAction SilentlyContinue | Out-Null
+    }
     Get-ScheduledTask | Where-Object { $_.TaskPath -match '\\Microsoft\\Windows\\Application Experience\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Autochk\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\CloudExperienceHost\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Customer Experience Improvement Program\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\DiskDiagnostic\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Feedback\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Maps\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Office\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\PI\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Power Efficiency Diagnostics\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\Windows Error Reporting\\' } | Disable-ScheduledTask -ErrorAction SilentlyContinue
     Get-ScheduledTask | Where-Object { $_.TaskPath -match '\\Microsoft\\XblGameSave\\' } | Disable-ScheduledTask -ErrorAction SilentlyContinue
     Get-ScheduledTask | Where-Object { $_.TaskPath -match '\\Microsoft\\Windows\\WindowsUpdate\\' -or $_.TaskPath -match '\\Microsoft\\Windows\\UpdateOrchestrator\\' } | Disable-ScheduledTask -ErrorAction SilentlyContinue
     setx DOTNET_CLI_TELEMETRY_OPTOUT 1
     setx POWERSHELL_TELEMETRY_OPTOUT 1
-    Start-Process -FilePath 'gpupdate.exe' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    Start-Process -FilePath 'schtasks' -ArgumentList '/Delete /TN "\Microsoft\Windows\AppxAllUserStore\UScheduler" /F 2>nul' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Start-Process -FilePath 'gpupdate.exe' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName "UScheduler" -TaskPath "\Microsoft\Windows\AppxAllUserStore\" -Confirm:$false -ErrorAction SilentlyContinue
     compact.exe /CompactOS:always
     compact.exe /C /S:"C:\Windows" /I /Q /EXE:LZX
-    Start-Process -FilePath 'label' -ArgumentList 'C: "Project Atom"' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
     Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 Start-Process explorer
@@ -4553,427 +4572,7 @@ $Options += [PSCustomObject]@{Id=523; Cat="Confidentialite"; LabelFR="Initializa
     Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -ExecutionPolicy Bypass -File ngen.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
 }}
 
-$Options += [PSCustomObject]@{Id=524; Cat="Confidentialite"; LabelFR="Prepare"; LabelEN="Prepare"; Risk="moderate"; Action={
-    Add-Type -AssemblyName System.Windows.Forms -ErrorAction SilentlyContinue
-$title = 'FSOS-X Cannot Install'
-$url = 'www.microsoft.com/software-download/windows11'
-$stockMsg = 'FSOS can only be installed over stock Windows. Supported versions are Windows 11 23H2, 24H2 and 25H2. The latest version can be downloaded from ' + $url
-if (Test-Path -LiteralPath ($env:windir + '\FSOS')) {
-  $global:LASTEXITCODE = 0
-  return
-}
-$detected = $null
-$productName = ''
-try {
-  $pn = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'ProductName' -ErrorAction SilentlyContinue).ProductName
-  if ($pn) { $productName = [string]$pn }
-} catch {}
-$editionId = ''
-try {
-  $ed = (Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'EditionID' -ErrorAction SilentlyContinue).EditionID
-  if ($ed) { $editionId = [string]$ed }
-} catch {}
-$haystack = ($productName + ' ' + $editionId).ToLower()
-if ($haystack -match '\bfsos\b' -and $haystack -notmatch 'fsos-x') {
-  $oldFsosLabel = $productName.Trim()
-  if (-not $oldFsosLabel) { $oldFsosLabel = 'a previous FSOS version' }
-  $msg = 'FSOS-X cannot be installed over ' + $oldFsosLabel + '. Please reinstall stock Windows first. The latest version can be downloaded from ' + $url
-  [System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly) | Out-Null
-  Stop-Process -Name 'AME Beta','AME Wizard Beta','AME','TrustedUninstaller.CLI' -Force -ErrorAction SilentlyContinue
-  $global:LASTEXITCODE = 1
-  exit 1
-}
-$osList = @(
-  @{ Name = 'AtlasOS';        Patterns = @('atlasos','atlas os');                  Paths = @('C:\Atlas');          Keys = @('HKLM:\SOFTWARE\AtlasOS') },
-  @{ Name = 'ReviOS';         Patterns = @('revios','revi os');                    Paths = @('C:\ReviOS');         Keys = @('HKLM:\SOFTWARE\Revision','HKLM:\SOFTWARE\ReviOS') },
-  @{ Name = 'Tiny11';         Patterns = @('tiny11','tiny 11');                    Paths = @('C:\Tiny11');         Keys = @() },
-  @{ Name = 'Ghost Spectre';  Patterns = @('ghost spectre','ghostspectre','spectre'); Paths = @('C:\Ghost Spectre'); Keys = @() },
-  @{ Name = 'Windows X-Lite'; Patterns = @('x-lite','xlite','windows x lite');     Paths = @('C:\X-Lite');         Keys = @() },
-  @{ Name = 'CactusOS';       Patterns = @('cactusos','cactus os');                Paths = @('C:\CactusOS');       Keys = @() },
-  @{ Name = 'KernelOS';       Patterns = @('kernelos','kernel os');                Paths = @('C:\KernelOS');       Keys = @() },
-  @{ Name = 'YukiOS';         Patterns = @('yukios','yuki os');                    Paths = @('C:\YukiOS');         Keys = @() },
-  @{ Name = 'NovaOS';         Patterns = @('novaos','nova os');                    Paths = @('C:\NovaOS');         Keys = @() },
-  @{ Name = 'FoxOS';          Patterns = @('foxos','fox os');                      Paths = @('C:\FoxOS');          Keys = @() },
-  @{ Name = 'ggOS';           Patterns = @('ggos','gg os');                        Paths = @('C:\ggOS');           Keys = @() },
-  @{ Name = 'SapphireOS';     Patterns = @('sapphireos','sapphire os');            Paths = @('C:\SapphireOS');     Keys = @() },
-  @{ Name = 'VainOS';         Patterns = @('vainos','vain os');                    Paths = @('C:\VainOS');         Keys = @() },
-  @{ Name = 'BlitzOS';        Patterns = @('blitzos','blitz os');                  Paths = @('C:\BlitzOS');        Keys = @() },
-  @{ Name = 'AtomOS';         Patterns = @('atomos','atom os');                    Paths = @('C:\AtomOS');         Keys = @() },
-  @{ Name = 'IrisOS';         Patterns = @('irisos','iris os');                    Paths = @('C:\IrisOS');         Keys = @() },
-  @{ Name = 'PeakOS';         Patterns = @('peakos','peak os');                    Paths = @('C:\PeakOS');         Keys = @() },
-  @{ Name = 'xOS';            Patterns = @(' xos ',' x os ');                      Paths = @('C:\xOS');            Keys = @() },
-  @{ Name = 'SOS';            Patterns = @(' sos ');                               Paths = @('C:\SOS');            Keys = @() },
-  @{ Name = 'WinterOS';       Patterns = @('winteros','winter os');                Paths = @('C:\WinterOS');       Keys = @() }
-)
-foreach ($os in $osList) {
-  if ($detected) { break }
-  foreach ($pat in $os.Patterns) {
-    if ($haystack.Contains($pat)) { $detected = $os.Name; break }
-  }
-  if ($detected) { break }
-  foreach ($pth in $os.Paths) {
-    if (Test-Path -LiteralPath $pth) { $detected = $os.Name; break }
-  }
-  if ($detected) { break }
-  foreach ($k in $os.Keys) {
-    if (Test-Path -LiteralPath $k) { $detected = $os.Name; break }
-  }
-}
-if ($detected) {
-  $msg = 'FSOS cannot be installed over ' + $detected + '. Supported versions are stock Windows 11 23H2, 24H2 and 25H2. The latest version can be downloaded from ' + $url
-  [System.Windows.Forms.MessageBox]::Show($msg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly) | Out-Null
-  Stop-Process -Name 'AME Beta','AME Wizard Beta','AME','TrustedUninstaller.CLI' -Force -ErrorAction SilentlyContinue
-  $global:LASTEXITCODE = 1
-  exit 1
-}
-$oemHit = $false
-try {
-  $oem = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation' -ErrorAction SilentlyContinue
-  if ($oem) {
-    foreach ($n in @('Manufacturer','Model','SupportURL')) {
-      $v = $oem.$n
-      if ($v -and ([string]$v).Trim().Length -gt 0) { $oemHit = $true; break }
-    }
-  }
-} catch {}
-if ($oemHit) {
-  [System.Windows.Forms.MessageBox]::Show($stockMsg, $title, [System.Windows.Forms.MessageBoxButtons]::OK, [System.Windows.Forms.MessageBoxIcon]::Error, [System.Windows.Forms.MessageBoxDefaultButton]::Button1, [System.Windows.Forms.MessageBoxOptions]::DefaultDesktopOnly) | Out-Null
-  Stop-Process -Name 'AME Beta','AME Wizard Beta','AME','TrustedUninstaller.CLI' -Force -ErrorAction SilentlyContinue
-  $global:LASTEXITCODE = 1
-  exit 1
-}
-$global:LASTEXITCODE = 0
 
-    mkdir "%WINDIR%\FSOS" 2>nul
-    mkdir "%WINDIR%\FSOS\Tools" 2>nul
-    powershell -NoP -C "try{Add-MpPreference -ExclusionPath $env:windir\FSOS -Force -EA SilentlyContinue}catch{}" >nul 2>nul || exit /b 0
-    copy /y "FSToolkit.exe" "%WINDIR%\FSOS\Tools\FSToolkit.exe" >nul 2>nul || exit /b 0
-    copy /y "nuke-defender.bat" "%WINDIR%\FSOS\Tools\nuke-defender.bat" >nul 2>nul || exit /b 0
-    copy /y "nuke-defender-files.ps1" "%WINDIR%\FSOS\Tools\nuke-defender-files.ps1" >nul 2>nul || exit /b 0
-    copy /y "nuke-defender-launcher.vbs" "%WINDIR%\FSOS\Tools\nuke-defender-launcher.vbs" >nul 2>nul || exit /b 0
-    cmd /c echo remove-bloat>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo remove-xbox>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo remove-store>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo remove-edge>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo remove-ai>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo disable-defender>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo disable-bluetooth>>"%WINDIR%\FSOS\fsos-options.txt"
-    cmd /c echo disable-wifi>>"%WINDIR%\FSOS\fsos-options.txt"
-    powercfg -setactive 381b4222-f694-41f0-9685-ff5bb260df2e
-Start-Sleep -Milliseconds 300
-
-$amdGuid = 'e4c7a13f-5b9d-42a0-9e61-3a3f620460bc'
-$intelGuid = 'a1c7b13e-6f90-4720-8178-836cd5339e8c'
-$ultimateSourceGuid = 'e9a42b02-d5df-448d-aa00-03f14749eb61'
-
-powercfg -delete $amdGuid 2>$null | Out-Null
-powercfg -delete $intelGuid 2>$null | Out-Null
-
-function Import-PowPlan {
-  param($file, $targetGuid, $name, $desc)
-  $out = powercfg -import (Resolve-Path $file).Path 2>&1
-  $line = $out | Where-Object { $_ -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' } | Select-Object -First 1
-  if ($line -and $line -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
-    $newGuid = $matches[1]
-    powercfg -duplicatescheme $newGuid $targetGuid 2>$null | Out-Null
-    powercfg -delete $newGuid 2>$null | Out-Null
-    powercfg -changename $targetGuid $name $desc 2>$null | Out-Null
-    return $true
-  }
-  return $false
-}
-
-Import-PowPlan 'power-amd.pow' $amdGuid 'FSOS AMD Gaming' 'FrameSync Labs AMD gaming power profile'
-
-$dupOut = powercfg -duplicatescheme $ultimateSourceGuid 2>&1
-$dupLine = $dupOut | Where-Object { $_ -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' } | Select-Object -First 1
-if ($dupLine -and $dupLine -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
-  $newUltGuid = $matches[1]
-  powercfg -duplicatescheme $newUltGuid $intelGuid 2>$null | Out-Null
-  powercfg -delete $newUltGuid 2>$null | Out-Null
-  powercfg -changename $intelGuid 'Intel Gaming Power Plan' 'FrameSync Labs Intel gaming power profile' 2>$null | Out-Null
-} else {
-  $highPerfGuid = '8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c'
-  $fbOut = powercfg -duplicatescheme $highPerfGuid 2>&1
-  $fbLine = $fbOut | Where-Object { $_ -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})' } | Select-Object -First 1
-  if ($fbLine -and $fbLine -match '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})') {
-    $newFbGuid = $matches[1]
-    powercfg -duplicatescheme $newFbGuid $intelGuid 2>$null | Out-Null
-    powercfg -delete $newFbGuid 2>$null | Out-Null
-    powercfg -changename $intelGuid 'Intel Gaming Power Plan' 'FrameSync Labs Intel gaming power profile' 2>$null | Out-Null
-  }
-}
-
-    powercfg -s e4c7a13f-5b9d-42a0-9e61-3a3f620460bc
-    powercfg -s a1c7b13e-6f90-4720-8178-836cd5339e8c
-    powercfg -s 381b4222-f694-41f0-9685-ff5bb260df2e
-    Start-Process -FilePath 'vcredist.exe' -ArgumentList '/install /quiet /norestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    $dxDir = Join-Path $PWD 'dxredist'
-$dx = Join-Path $dxDir 'DXSETUP.exe'
-if (Test-Path $dx) {
-  $psi = New-Object System.Diagnostics.ProcessStartInfo
-  $psi.FileName = $dx
-  $psi.Arguments = '/silent'
-  $psi.UseShellExecute = $false
-  $psi.CreateNoWindow = $true
-  $psi.WindowStyle = 'Hidden'
-  $psi.RedirectStandardOutput = $true
-  $psi.RedirectStandardError = $true
-  $proc = [System.Diagnostics.Process]::Start($psi)
-  $proc.WaitForExit(300000) | Out-Null
-}
-$global:LASTEXITCODE = 0
-
-    Start-Process -FilePath 'FirefoxSetup.exe' -ArgumentList '/S' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    $target = """$env:ProgramFiles\Mozilla Firefox\firefox.exe"""
-if (Test-Path $target) {
-  $shell = New-Object -ComObject WScript.Shell
-  $sc = $shell.CreateShortcut("""$env:PUBLIC\Desktop\Firefox.lnk""")
-  $sc.TargetPath = $target
-  $sc.IconLocation = """$target,0"""
-  $sc.Save()
-}
-
-    Start-Process -FilePath 'BraveSetup.exe' -ArgumentList '/silent /install' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    $candidates = @(
-  """$env:ProgramFiles\BraveSoftware\Brave-Browser\Application\brave.exe""",
-  """${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application\brave.exe"""
-)
-$target = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($target) {
-  $shell = New-Object -ComObject WScript.Shell
-  $sc = $shell.CreateShortcut("""$env:PUBLIC\Desktop\Brave.lnk""")
-  $sc.TargetPath = $target
-  $sc.IconLocation = """$target,0"""
-  $sc.Save()
-}
-
-    
-$masterPrefs = '{"distribution":{"skip_first_run_ui":true,"do_not_create_any_shortcuts":false,"do_not_create_desktop_shortcut":false,"do_not_create_quick_launch_shortcut":true,"do_not_create_taskbar_shortcut":true,"do_not_launch_chrome":true,"do_not_register_for_update_launch":true,"make_chrome_default":false,"make_chrome_default_for_user":false,"suppress_first_run_bubble":true,"suppress_first_run_default_browser_prompt":true,"import_bookmarks":false,"import_history":false,"import_home_page":false,"import_search_engine":false,"ping_delay":-1,"verbose_logging":false},"first_run_tabs":[]}'
-$braveDirs = @(
-  """$env:ProgramFiles\BraveSoftware\Brave-Browser\Application""",
-  """${env:ProgramFiles(x86)}\BraveSoftware\Brave-Browser\Application"""
-)
-foreach ($d in $braveDirs) {
-  if (Test-Path $d) {
-    Set-Content -Path (Join-Path $d 'master_preferences') -Value $masterPrefs -Encoding UTF8 -Force -ErrorAction SilentlyContinue
-    Set-Content -Path (Join-Path $d 'initial_preferences') -Value $masterPrefs -Encoding UTF8 -Force -ErrorAction SilentlyContinue
-  }
-}
-
-Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object {
-  $_.TaskName -like 'BraveSoftwareUpdate*' -or $_.TaskName -like 'BraveUpdate*'
-} | ForEach-Object {
-  try { Disable-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -ErrorAction SilentlyContinue | Out-Null } catch {}
-  try { Unregister-ScheduledTask -TaskName $_.TaskName -TaskPath $_.TaskPath -Confirm:$false -ErrorAction SilentlyContinue } catch {}
-}
-
-foreach ($activeSetupRoot in @(
-  'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components',
-  'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Active Setup\Installed Components'
-)) {
-  if (Test-Path $activeSetupRoot) {
-    Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
-      try {
-        $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-        $stub = (Get-ItemProperty -Path $_.PSPath -Name 'StubPath' -ErrorAction SilentlyContinue).StubPath
-        if (($name -and $name -match 'Brave') -or ($stub -and $stub -match 'Brave')) {
-          Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-        }
-      } catch {}
-    }
-  }
-}
-foreach ($activeSetupRoot in @(
-  'HKCU:\SOFTWARE\Microsoft\Active Setup\Installed Components'
-)) {
-  if (Test-Path $activeSetupRoot) {
-    Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
-      try {
-        $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-        if ($name -and $name -match 'Brave') {
-          Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue
-        }
-      } catch {}
-    }
-  }
-}
-
-foreach ($activeSetupRoot in @(
-  'HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components',
-  'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Active Setup\Installed Components'
-)) {
-  if (Test-Path $activeSetupRoot) {
-    Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
-      try {
-        $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-        $stub = (Get-ItemProperty -Path $_.PSPath -Name 'StubPath' -ErrorAction SilentlyContinue).StubPath
-        $isVendor = $false
-        if ($name -and $name -match 'Brave|MicrosoftEdge|Microsoft Edge|Edge Update|OneDrive|GoogleChrome|Google Chrome|Chrome Update|Mozilla|Firefox') { $isVendor = $true }
-        if ($stub -and $stub -match 'Brave|MicrosoftEdge|msedge|OneDrive|GoogleChrome|chrome\.exe|firefox|Mozilla') { $isVendor = $true }
-        if ($isVendor -and $stub) {
-          Set-ItemProperty -Path $_.PSPath -Name 'StubPath' -Value '' -Type ExpandString -Force -ErrorAction SilentlyContinue
-        }
-      } catch {}
-    }
-  }
-}
-
-foreach ($runKey in @(
-  'HKLM:\Software\Microsoft\Windows\CurrentVersion\Run',
-  'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Run',
-  'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
-)) {
-  if (Test-Path $runKey) {
-    foreach ($valName in @('OneDriveSetup','OneDrive','BraveUpdate','BraveUpdateOnDemand')) {
-      try { Remove-ItemProperty -Path $runKey -Name $valName -Force -ErrorAction SilentlyContinue } catch {}
-    }
-    try {
-      $props = Get-Item -Path $runKey -ErrorAction SilentlyContinue
-      if ($props) {
-        foreach ($vn in $props.GetValueNames()) {
-          if ($vn -like 'MicrosoftEdgeAutoLaunch*') {
-            try { Remove-ItemProperty -Path $runKey -Name $vn -Force -ErrorAction SilentlyContinue } catch {}
-          }
-        }
-      }
-    } catch {}
-  }
-}
-
-$edgeHiveTargets = @('Registry::HKEY_USERS\.DEFAULT\Software\Microsoft\Windows\CurrentVersion\Run')
-if (Test-Path 'Registry::HKEY_USERS\AME_UserHive_Default') {
-  $edgeHiveTargets += 'Registry::HKEY_USERS\AME_UserHive_Default\Software\Microsoft\Windows\CurrentVersion\Run'
-}
-Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | Where-Object {
-  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
-} | ForEach-Object {
-  $edgeHiveTargets += ('Registry::HKEY_USERS\' + $_.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Run')
-}
-foreach ($runKey in $edgeHiveTargets) {
-  if (Test-Path $runKey) {
-    try {
-      $props = Get-Item -Path $runKey -ErrorAction SilentlyContinue
-      if ($props) {
-        foreach ($vn in $props.GetValueNames()) {
-          if ($vn -like 'MicrosoftEdgeAutoLaunch*') {
-            try { Remove-ItemProperty -Path $runKey -Name $vn -Force -ErrorAction SilentlyContinue } catch {}
-          }
-        }
-      }
-    } catch {}
-  }
-}
-
-$userProfiles = Get-ChildItem 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue | Where-Object {
-  $_.Name -notin @('Public','All Users','Default','Default User','WDAGUtilityAccount')
-}
-foreach ($prof in $userProfiles) {
-  $ntu = Join-Path $prof.FullName 'NTUSER.DAT'
-  if (-not (Test-Path $ntu)) { continue }
-  $key = 'FSOS_EDGE_' + ($prof.Name -replace '[^A-Za-z0-9]','')
-  & reg.exe load ('HKU\' + $key) $ntu 2>&1 | Out-Null
-  if ($LASTEXITCODE -eq 0) {
-    try {
-      $runKey = 'Registry::HKEY_USERS\' + $key + '\Software\Microsoft\Windows\CurrentVersion\Run'
-      if (Test-Path $runKey) {
-        $props = Get-Item -Path $runKey -ErrorAction SilentlyContinue
-        if ($props) {
-          foreach ($vn in $props.GetValueNames()) {
-            if ($vn -like 'MicrosoftEdgeAutoLaunch*') {
-              try { Remove-ItemProperty -Path $runKey -Name $vn -Force -ErrorAction SilentlyContinue } catch {}
-            }
-          }
-        }
-      }
-    } catch {}
-    [gc]::Collect(); Start-Sleep -Milliseconds 300
-    & reg.exe unload ('HKU\' + $key) 2>&1 | Out-Null
-  }
-}
-
-foreach ($p in @('BraveUpdate','BraveUpdateOnDemand','BraveCrashHandler','BraveCrashHandler64','BraveUpdateBroker','BraveUpdateCore')) {
-  Get-Process -Name $p -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-}
-
-foreach ($svc in @('BraveVPNService','BraveVPNWireguardService')) {
-  try { Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue } catch {}
-  try { Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue } catch {}
-}
-
-$updateDirs = @(
-  (Join-Path ${env:ProgramFiles(x86)} 'BraveSoftware\Update'),
-  (Join-Path $env:ProgramFiles 'BraveSoftware\Update')
-)
-$sids = Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
-  $_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$'
-}
-foreach ($s in $sids) {
-  $profileList = 'Registry::HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\' + $s.PSChildName
-  $profPath = (Get-ItemProperty -Path $profileList -Name 'ProfileImagePath' -ErrorAction SilentlyContinue).ProfileImagePath
-  if ($profPath -and (Test-Path $profPath)) {
-    $updateDirs += (Join-Path $profPath 'AppData\Local\BraveSoftware\Update')
-  }
-}
-foreach ($d in $updateDirs) {
-  if (Test-Path $d) {
-    & takeown.exe /F $d /R /D Y 2>&1 | Out-Null
-    & icacls.exe $d /grant administrators:F /T /C 2>&1 | Out-Null
-    Remove-Item -Path $d -Recurse -Force -ErrorAction SilentlyContinue
-  }
-}
-
-foreach ($k in @('HKLM:\SOFTWARE\BraveSoftware\Update','HKLM:\SOFTWARE\WOW6432Node\BraveSoftware\Update')) {
-  Remove-Item -Path $k -Recurse -Force -ErrorAction SilentlyContinue
-}
-foreach ($runKey in @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Run','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Run')) {
-  if (Test-Path $runKey) {
-    $props = (Get-Item $runKey).Property
-    foreach ($p in $props) {
-      if ($p -like 'BraveUpdate*' -or $p -like '*BraveSoftware*') {
-        Remove-ItemProperty -Path $runKey -Name $p -Force -ErrorAction SilentlyContinue
-      }
-    }
-  }
-}
-
-    Start-Process -FilePath 'msiexec.exe' -ArgumentList '/i ChromeSetup.msi /qn /norestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    $candidates = @(
-  """$env:ProgramFiles\Google\Chrome\Application\chrome.exe""",
-  """${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"""
-)
-$target = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-if ($target) {
-  $shell = New-Object -ComObject WScript.Shell
-  $sc = $shell.CreateShortcut("""$env:PUBLIC\Desktop\Google Chrome.lnk""")
-  $sc.TargetPath = $target
-  $sc.IconLocation = """$target,0"""
-  $sc.Save()
-}
-
-    foreach ($activeSetupRoot in @('HKLM:\SOFTWARE\Microsoft\Active Setup\Installed Components','HKLM:\SOFTWARE\Wow6432Node\Microsoft\Active Setup\Installed Components')) {
-  if (-not (Test-Path $activeSetupRoot)) { continue }
-  Get-ChildItem -Path $activeSetupRoot -ErrorAction SilentlyContinue | ForEach-Object {
-    try {
-      $name = (Get-ItemProperty -Path $_.PSPath -Name '(default)' -ErrorAction SilentlyContinue).'(default)'
-      $stub = (Get-ItemProperty -Path $_.PSPath -Name 'StubPath' -ErrorAction SilentlyContinue).StubPath
-      $isVendor = $false
-      if ($name -and $name -match 'Brave|MicrosoftEdge|Microsoft Edge|Edge Update|OneDrive|GoogleChrome|Google Chrome|Chrome Update|Mozilla|Firefox') { $isVendor = $true }
-      if ($stub -and $stub -match 'Brave|MicrosoftEdge|msedge|OneDrive|GoogleChrome|chrome\.exe|firefox|Mozilla') { $isVendor = $true }
-      if ($isVendor) {
-        if ($stub -and $stub.Length -gt 0) {
-          try { Set-ItemProperty -Path $_.PSPath -Name 'StubPath' -Value '' -Type ExpandString -Force -ErrorAction SilentlyContinue } catch {}
-          try { Remove-ItemProperty -Path $_.PSPath -Name 'StubPath' -Force -ErrorAction SilentlyContinue } catch {}
-        }
-        if ($name -and $name -match 'Brave|Firefox|Mozilla|Google Chrome|Microsoft Edge') {
-          try { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue } catch {}
-        }
-      }
-    } catch {}
-  }
-}
-
-}}
 
 $Options += [PSCustomObject]@{Id=525; Cat="Confidentialite"; LabelFR="Strip"; LabelEN="Strip"; Risk="moderate"; Action={
     $snapPath = Join-Path $env:TEMP 'fsos-appx-snapshot.txt'
@@ -5594,21 +5193,19 @@ $global:LASTEXITCODE = 0
 
     Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'SecurityHealth' -ErrorAction SilentlyContinue
     Remove-ItemProperty -Path 'Registry::HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Run' -Name 'WindowsDefender' -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthSystray.exe' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthService.exe' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthAgent.dll' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthHost.exe' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthCore.dll' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthProxyStub.dll' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\SecurityHealthUdk.dll' -Force -ErrorAction SilentlyContinue
-    Remove-Item -Path '%systemroot%\System32\drivers\WdNisDrv.sys' -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthSystray.exe" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthService.exe" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthAgent.dll" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthHost.exe" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthCore.dll" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthProxyStub.dll" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\SecurityHealthUdk.dll" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "$env:systemroot\System32\drivers\WdNisDrv.sys" -Force -ErrorAction SilentlyContinue
     Disable-ScheduledTask -TaskName 'Windows Defender Cache Maintenance' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
     Disable-ScheduledTask -TaskName 'Windows Defender Cleanup' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
     Disable-ScheduledTask -TaskName 'Windows Defender Scheduled Scan' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
     Disable-ScheduledTask -TaskName 'Windows Defender Verification' -TaskPath '\Microsoft\Windows\Windows Defender\' -ErrorAction SilentlyContinue | Out-Null
     Start-Process -FilePath 'DISM.exe' -ArgumentList '/Online /Disable-Feature /FeatureName:"Windows-Defender-Default-Definitions" /NoRestart' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    "%WINDIR%\FSOS\Tools\nuke-defender.bat"
-    schtasks /Create /TN FSOSDefenderCleanup /TR "wscript.exe //B //Nologo \"%WINDIR%\FSOS\Tools\nuke-defender-launcher.vbs\"" /SC ONLOGON /RL HIGHEST /RU SYSTEM /F >nul 2>nul || exit /b 0
     Stop-Service -Name 'DiagTrack' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'DiagTrack' -StartupType Disabled -ErrorAction SilentlyContinue
     Stop-Service -Name 'PcaSvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'PcaSvc' -StartupType Disabled -ErrorAction SilentlyContinue
     Stop-Service -Name 'InventorySvc' -Force -ErrorAction SilentlyContinue; Set-Service -Name 'InventorySvc' -StartupType Disabled -ErrorAction SilentlyContinue
@@ -6553,234 +6150,7 @@ $global:LASTEXITCODE = 0
 
 }}
 
-$Options += [PSCustomObject]@{Id=527; Cat="Confidentialite"; LabelFR="Apply"; LabelEN="Apply"; Risk="moderate"; Action={
-    New-Item -ItemType Directory -Path """$env:windir\FSOS""" -Force -ErrorAction SilentlyContinue | Out-Null
-if (Test-Path (Join-Path $PWD 'framesync.ico')) {
-  Copy-Item -Path (Join-Path $PWD 'framesync.ico') -Destination """$env:windir\FSOS\framesync.ico""" -Force
-}
-if (Test-Path (Join-Path $PWD 'discord.ico')) {
-  Copy-Item -Path (Join-Path $PWD 'discord.ico') -Destination """$env:windir\FSOS\discord.ico""" -Force
-}
-$publicDesktop = 'C:\Users\Public\Desktop'
-New-Item -ItemType Directory -Path $publicDesktop -Force -ErrorAction SilentlyContinue | Out-Null
-$fsIcon = Join-Path $env:windir 'FSOS\framesync.ico'
-$dcIcon = Join-Path $env:windir 'FSOS\discord.ico'
-$fsLines = @('[InternetShortcut]', 'URL=https://framesynclabs.com', ('IconFile=' + $fsIcon), 'IconIndex=0')
-$dcLines = @('[InternetShortcut]', 'URL=https://discord.gg/FSL', ('IconFile=' + $dcIcon), 'IconIndex=0')
-Set-Content -Path (Join-Path $publicDesktop 'FrameSync Labs.url') -Value $fsLines -Encoding ASCII -Force
-Set-Content -Path (Join-Path $publicDesktop 'FSOS Discord.url') -Value $dcLines -Encoding ASCII -Force
-$global:LASTEXITCODE = 0
 
-    mkdir "%systemroot%\Web\Wallpaper\FSOS" 2>nul & copy /y "wallpaper.png" "%systemroot%\Web\Wallpaper\FSOS\wallpaper.png" & copy /y "lockscreen.png" "%systemroot%\Web\Wallpaper\FSOS\lockscreen.png"
-    .\apply-darkmode.ps1
-    .\\set-wallpaper.ps1 -Mode Desktop -ImagePath $env:systemroot\Web\Wallpaper\FSOS\wallpaper.png
-    .\\set-wallpaper.ps1 -Mode LockScreen -ImagePath $env:systemroot\Web\Wallpaper\FSOS\lockscreen.png
-    $globalStart = Join-Path $env:SystemDrive 'ProgramData\Microsoft\Windows\Start Menu\Programs'
-if (Test-Path $globalStart) {
-  Get-ChildItem -Path $globalStart -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
-    -not $_.PSIsContainer -and
-    $_.FullName -notmatch '\\(Windows Tools|Administrative Tools|Windows PowerShell|Accessories|System Tools)\\'
-  } | Remove-Item -Force -ErrorAction SilentlyContinue
-}
-$defaultStart = Join-Path $env:SystemDrive 'Users\Default\AppData\Roaming\Microsoft\Windows\Start Menu\Programs'
-if (Test-Path $defaultStart) {
-  Get-ChildItem -Path $defaultStart -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
-    -not $_.PSIsContainer -and
-    $_.FullName -notmatch '\\(Windows Tools|Administrative Tools|Windows PowerShell|Accessories|System Tools)\\'
-  } | Remove-Item -Force -ErrorAction SilentlyContinue
-}
-Get-ChildItem """$env:SystemDrive\Users""" -Directory -ErrorAction SilentlyContinue |
-  Where-Object { $_.Name -notin @('Public','Default','Default User','All Users','WDAGUtilityAccount') } |
-  ForEach-Object {
-    $userStart = Join-Path $_.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs'
-    if (Test-Path $userStart) {
-      Get-ChildItem -Path $userStart -Recurse -Force -ErrorAction SilentlyContinue | Where-Object {
-        -not $_.PSIsContainer -and
-        $_.FullName -notmatch '\\(Windows Tools|Administrative Tools|Windows PowerShell|Accessories|System Tools)\\'
-      } | Remove-Item -Force -ErrorAction SilentlyContinue
-    }
-  }
-
-$userHives = @()
-Get-ChildItem 'Registry::HKEY_USERS' -ErrorAction SilentlyContinue | ForEach-Object {
-  $name = $_.PSChildName
-  if ($name -match '^S-1-5-21-' -and $name -notlike '*_Classes' -or $name -like 'AME_UserHive_*' -or $name -eq '.DEFAULT') {
-    $userHives += $name
-  }
-}
-foreach ($hive in $userHives) {
-  $cacheRoot = """Registry::HKEY_USERS\$hive\SOFTWARE\Microsoft\Windows\CurrentVersion\CloudStore\Store\Cache\DefaultAccount"""
-  if (Test-Path $cacheRoot) {
-    Get-ChildItem -Path $cacheRoot -Recurse -ErrorAction SilentlyContinue |
-      Where-Object { $_.Name -match 'start\.tilegrid' } |
-      ForEach-Object { Remove-Item -Path $_.PSPath -Recurse -Force -ErrorAction SilentlyContinue }
-  }
-  $startKey = """Registry::HKEY_USERS\$hive\Software\Microsoft\Windows\CurrentVersion\Start"""
-  if (Test-Path $startKey) {
-    Remove-ItemProperty -Path $startKey -Name 'Config' -Force -ErrorAction SilentlyContinue
-  }
-}
-$global:LASTEXITCODE = 0
-
-    $sids = Get-ChildItem -Path 'Registry::HKU' -ErrorAction SilentlyContinue | Where-Object {
-  ($_.PSChildName -match '^S-1-5-21-' -and $_.PSChildName -notmatch '_Classes$') -or $_.PSChildName -match '^AME_UserHive_' -or $_.PSChildName -eq '.DEFAULT'
-}
-foreach ($s in $sids) {
-  $k = 'Registry::HKU\' + $s.PSChildName + '\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
-  New-Item -Path $k -Force -ErrorAction SilentlyContinue | Out-Null
-  Set-ItemProperty -Path $k -Name 'TaskbarDa' -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
-}
-$global:LASTEXITCODE = 0
-
-    .\taskbar-pins.ps1
-    .\start-menu.ps1
-    Get-Process -Name 'StartMenuExperienceHost' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-$layoutPaths = @(
-  (Join-Path $env:SystemDrive 'Users\Default\AppData\Local\Microsoft\Windows\Shell\LayoutModification.json'),
-  (Join-Path $env:windir 'Shell\LayoutModification.json')
-)
-foreach ($lp in $layoutPaths) {
-  if (Test-Path $lp) { Remove-Item -Path $lp -Force -ErrorAction SilentlyContinue }
-}
-$taskDir = Join-Path $env:windir 'System32\Tasks\Microsoft\Windows\UpdateOrchestrator'
-foreach ($tf in @('StartOobeAppsScan','StartOobeAppsScan_LicenseAccepted','StartOobeAppsScan_OobeAppReady','StartOobeAppsScanAfterUpdate')) {
-  $taskFile = Join-Path $taskDir $tf
-  if (Test-Path $taskFile) {
-    try { takeown /f $taskFile /a 2>&1 | Out-Null } catch {}
-    try { icacls $taskFile /grant Administrators:F 2>&1 | Out-Null } catch {}
-    Remove-Item -Path $taskFile -Force -ErrorAction SilentlyContinue
-  }
-}
-Start-Sleep -Seconds 2
-try {
-  $sig = '[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);'
-  $type = Add-Type -MemberDefinition $sig -Name 'FSOSRefreshFinal' -Namespace 'FSOS' -PassThru -ErrorAction SilentlyContinue
-  if ($type) {
-    $r = [UIntPtr]::Zero
-    [void]$type::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'TraySettings', 0x0002, 1000, [ref]$r)
-    [void]$type::SendMessageTimeout([IntPtr]0xffff, 0x001A, [UIntPtr]::Zero, 'Policy', 0x0002, 1000, [ref]$r)
-  }
-} catch {}
-$global:LASTEXITCODE = 0
-
-    Remove-ItemProperty -Path 'Registry::HKCU\Software\Microsoft\Windows\Shell\Bags\1\Desktop' -Name 'ViewState2' -ErrorAction SilentlyContinue
-    $packages = @(
-  'MicrosoftWindows.Client.CBS_cw5n1h2txyewy',
-  'Microsoft.UI.Xaml.CBS_8wekyb3d8bbwe',
-  'MicrosoftWindows.Client.Core_cw5n1h2txyewy'
-)
-$sysApps = Join-Path $env:windir 'SystemApps'
-foreach ($pkg in $packages) {
-  $manifestPath = Join-Path $sysApps ($pkg + '\appxmanifest.xml')
-  if (Test-Path $manifestPath) {
-    try {
-      Add-AppxPackage -Register -Path $manifestPath -DisableDevelopmentMode -ForceApplicationShutdown -ErrorAction SilentlyContinue
-    } catch {}
-  }
-}
-$global:LASTEXITCODE = 0
-
-    Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}' -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace_41040327\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}' -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace_36354489\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}' -Recurse -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer' -Name 'SimplifyQuickSettings' -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Stickers' -Name 'EnableStickers' -Force -ErrorAction SilentlyContinue
-$global:LASTEXITCODE = 0
-
-    foreach ($scope in @('Registry::HKEY_CURRENT_USER','Registry::HKEY_USERS\.DEFAULT')) {
-  Remove-ItemProperty -Path """$scope\Software\Microsoft\Windows\CurrentVersion\Explorer\StartPage""" -Name 'ProgramsCache' -Force -ErrorAction SilentlyContinue
-  Remove-ItemProperty -Path """$scope\Software\Microsoft\Windows\CurrentVersion\Explorer\StartPage2""" -Name 'ProgramsCache' -Force -ErrorAction SilentlyContinue
-  Remove-Item -Path """$scope\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\NameSpace\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}""" -Recurse -Force -ErrorAction SilentlyContinue
-  Remove-ItemProperty -Path """$scope\SOFTWARE\Microsoft\Siuf\Rules""" -Name 'PeriodInNanoSeconds' -Force -ErrorAction SilentlyContinue
-}
-$global:LASTEXITCODE = 0
-
-    $src = Join-Path $PWD 'profile.png'
-if (Test-Path $src) {
-  New-Item -ItemType Directory -Path """$env:windir\FSOS""" -Force -ErrorAction SilentlyContinue | Out-Null
-  Copy-Item -Path $src -Destination """$env:windir\FSOS\profile.png""" -Force
-}
-$global:LASTEXITCODE = 0
-
-    $src = Join-Path $env:windir 'FSOS\profile.png'
-if (-not (Test-Path $src)) { return }
-$sysDir = Join-Path $env:ProgramData 'Microsoft\User Account Pictures'
-New-Item -ItemType Directory -Path $sysDir -Force -ErrorAction SilentlyContinue | Out-Null
-try {
-  $acl = Get-Acl $sysDir
-  $rule = New-Object System.Security.AccessControl.FileSystemAccessRule('BUILTIN\Administrators','FullControl','ContainerInherit,ObjectInherit','None','Allow')
-  $acl.SetAccessRule($rule)
-  Set-Acl -Path $sysDir -AclObject $acl -ErrorAction SilentlyContinue
-} catch {}
-$sysFiles = @('user.png','user-32.png','user-40.png','user-48.png','user-192.png','guest.png','user.bmp')
-foreach ($f in $sysFiles) {
-  $dest = Join-Path $sysDir $f
-  try {
-    if (Test-Path $dest) { Set-ItemProperty -Path $dest -Name IsReadOnly -Value $false -ErrorAction SilentlyContinue }
-    Copy-Item -Path $src -Destination $dest -Force -ErrorAction SilentlyContinue
-  } catch {}
-}
-$sizes = @(32,40,48,64,96,192,208,240,424,448,1080)
-$profileList = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList'
-Get-ChildItem $profileList -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -match '^S-1-5-21-' } | ForEach-Object {
-  $sid = $_.PSChildName
-  $profilePath = (Get-ItemProperty -Path $_.PSPath -Name 'ProfileImagePath' -ErrorAction SilentlyContinue).ProfileImagePath
-  if (-not $profilePath -or -not (Test-Path $profilePath)) { return }
-  $acctPic = Join-Path $profilePath 'AppData\Roaming\Microsoft\Windows\AccountPictures'
-  New-Item -ItemType Directory -Path $acctPic -Force -ErrorAction SilentlyContinue | Out-Null
-  foreach ($s in $sizes) {
-    Copy-Item -Path $src -Destination (Join-Path $acctPic ('Image' + $s + '.png')) -Force -ErrorAction SilentlyContinue
-  }
-  $publicPic = Join-Path $env:SystemDrive ('Users\Public\AccountPictures\' + $sid)
-  New-Item -ItemType Directory -Path $publicPic -Force -ErrorAction SilentlyContinue | Out-Null
-  foreach ($s in $sizes) {
-    Copy-Item -Path $src -Destination (Join-Path $publicPic ('Image' + $s + '.png')) -Force -ErrorAction SilentlyContinue
-  }
-  $regPath = """HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AccountPicture\Users\$sid"""
-  New-Item -Path $regPath -Force -ErrorAction SilentlyContinue | Out-Null
-  foreach ($s in $sizes) {
-    Set-ItemProperty -Path $regPath -Name ('Image' + $s) -Value (Join-Path $acctPic ('Image' + $s + '.png')) -Type String -Force -ErrorAction SilentlyContinue
-  }
-}
-$global:LASTEXITCODE = 0
-
-    $label = 'FSOS-X V1.6'
-bcdedit /set description """$label"""
-Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OEMInformation' -Name 'Model' -Value $label
-Set-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion' -Name 'RegisteredOrganization' -Value $label
-$global:LASTEXITCODE = 0
-
-    try { Set-Service -Name 'WSearch' -StartupType Automatic -ErrorAction SilentlyContinue } catch {}
-Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\WSearch' -Name 'Start' -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
-Remove-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Services\WSearch' -Name 'DelayedAutostart' -Force -ErrorAction SilentlyContinue
-$global:LASTEXITCODE = 0
-
-    fsutil behavior set disableLastAccess 1
-    fsutil behavior set disable8dot3 1
-    net accounts /maxpwage:unlimited
-    Disable-WindowsErrorReporting
-    New-Item -ItemType Directory -Path """$env:windir\FSOS""" -Force -ErrorAction SilentlyContinue | Out-Null
-if (Test-Path (Join-Path $PWD 'framesync.ico')) {
-  Copy-Item -Path (Join-Path $PWD 'framesync.ico') -Destination """$env:windir\FSOS\framesync.ico""" -Force
-}
-if (Test-Path (Join-Path $PWD 'discord.ico')) {
-  Copy-Item -Path (Join-Path $PWD 'discord.ico') -Destination """$env:windir\FSOS\discord.ico""" -Force
-}
-$global:LASTEXITCODE = 0
-
-    $publicDesktop = 'C:\Users\Public\Desktop'
-New-Item -ItemType Directory -Path $publicDesktop -Force -ErrorAction SilentlyContinue | Out-Null
-$fsIcon = Join-Path $env:windir 'FSOS\framesync.ico'
-$dcIcon = Join-Path $env:windir 'FSOS\discord.ico'
-$fsLines = @('[InternetShortcut]', 'URL=https://framesynclabs.com', ('IconFile=' + $fsIcon), 'IconIndex=0')
-$dcLines = @('[InternetShortcut]', 'URL=https://discord.gg/FSL', ('IconFile=' + $dcIcon), 'IconIndex=0')
-Set-Content -Path (Join-Path $publicDesktop 'FrameSync Labs.url') -Value $fsLines -Encoding ASCII -Force
-Set-Content -Path (Join-Path $publicDesktop 'FSOS Discord.url') -Value $dcLines -Encoding ASCII -Force
-$global:LASTEXITCODE = 0
-
-    Start-Process -FilePath 'gpupdate.exe' -ArgumentList '' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-    Start-Process -FilePath 'PowerShell' -ArgumentList '-NoP -EP Bypass -File .\\setup-timerresolution.ps1' -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue
-}}
 
 $Options += [PSCustomObject]@{Id=528; Cat="Confidentialite"; LabelFR="Extended Hardening"; LabelEN="Extended Hardening"; Risk="moderate"; Action={
     Remove-Item -Path 'Registry::HKLM\SOFTWARE\Microsoft\WindowsUpdate\Orchestrator\UScheduler_Oobe\DevHomeUpdate' -Recurse -Force -ErrorAction SilentlyContinue
