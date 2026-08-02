@@ -129,6 +129,7 @@ $Global:LangDict = @{
         "CatAudio" = "Audio & Micro"
         "CatNiveaux" = "Réducteur de Processus"
         "CatInnovations" = "Innovations"
+        "CatReparateur" = "Réparateur"
         "InnovationsWarning" = "Ici : un démon qui bascule automatiquement le plan d'alimentation quand tu lances un jeu en plein écran, un benchmark rapide pour mesurer l'impact de tes tweaks, et des correctifs de cache. Rien de risqué, juste des idées qu'on ne trouve pas ailleurs."
         "ExtremeWarning" = "Ces réglages utilisent des techniques kernel avancées (API non documentées, fichier hosts, démon en fond). Ils sont efficaces mais réservés à ceux qui veulent aller très loin — lis bien chaque description avant de cocher."
         "QuickSelect" = "SELECTION RAPIDE"
@@ -183,6 +184,7 @@ $Global:LangDict = @{
         "CatAudio" = "Audio & Mic"
         "CatNiveaux" = "Process Reducer"
         "CatInnovations" = "Innovations"
+        "CatReparateur" = "Repair"
         "InnovationsWarning" = "Here: a daemon that auto-switches your power plan when a game goes fullscreen, a quick benchmark to measure your tweaks' real impact, and cache fixes. Nothing risky, just ideas you won't find elsewhere."
         "ExtremeWarning" = "These tweaks use advanced kernel techniques (undocumented APIs, hosts file, background daemon). They're effective but meant for those who want to go all the way — read each description carefully before checking."
         "QuickSelect" = "QUICK SELECTION"
@@ -1361,23 +1363,23 @@ $Options += [PSCustomObject]@{Id=203; Cat="Gaming"; LabelFR="Déprioriser sppsvc
     Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Superfetch/PfApLog" "Enable" 0
     Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WINEVT\Channels\Microsoft-Windows-Superfetch/StoreLog" "Enable" 0
 }}
-$Options += [PSCustomObject]@{Id=204; Cat="Bloatwares"; LabelFR="[WinUtil] Désinstaller réellement les Widgets (paquet complet, pas juste masqué)"; LabelEN="[WinUtil] Actually uninstall Widgets (full package, not just hidden)"; Risk="moderate"; Action={
+$Options += [PSCustomObject]@{Id=204; Cat="Bloatwares"; LabelFR="Désinstaller réellement les Widgets (paquet complet, pas juste masqué)"; LabelEN="Actually uninstall Widgets (full package, not just hidden)"; Risk="moderate"; Action={
     Get-Process *Widget* -ErrorAction SilentlyContinue | Stop-Process -ErrorAction SilentlyContinue
     Get-AppxPackage Microsoft.WidgetsPlatformRuntime -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
     Get-AppxPackage MicrosoftWindows.Client.WebExperience -AllUsers -ErrorAction SilentlyContinue | Remove-AppxPackage -AllUsers -ErrorAction SilentlyContinue
 }}
-$Options += [PSCustomObject]@{Id=205; Cat="Bloatwares"; LabelFR="[WinUtil] Bloquer les suggestions d'apps dans la recherche du menu Démarrer (Store)"; LabelEN="[WinUtil] Block Store app recommendations in Start menu search"; Risk="moderate"; Action={
+$Options += [PSCustomObject]@{Id=205; Cat="Bloatwares"; LabelFR="Bloquer les suggestions d'apps dans la recherche du menu Démarrer (Store)"; LabelEN="Block Store app recommendations in Start menu search"; Risk="moderate"; Action={
     icacls "$Env:LocalAppData\Packages\Microsoft.WindowsStore_8wekyb3d8bbwe\LocalState\store.db" /deny Everyone:F 2>$null
 }}
-$Options += [PSCustomObject]@{Id=206; Cat="Confidentialite"; LabelFR="[WinUtil] Refuser la géolocalisation au niveau consentement matériel + capteurs + cartes"; LabelEN="[WinUtil] Deny location at the hardware consent level + sensors + maps"; Risk="moderate"; Action={
+$Options += [PSCustomObject]@{Id=206; Cat="Confidentialite"; LabelFR="Refuser la géolocalisation au niveau consentement matériel + capteurs + cartes"; LabelEN="Deny location at the hardware consent level + sensors + maps"; Risk="moderate"; Action={
     Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" "Value" "Deny" "String"
     Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}" "SensorPermissionState" 0
     Set-Reg "HKLM:\SYSTEM\Maps" "AutoUpdateEnabled" 0
 }}
-$Options += [PSCustomObject]@{Id=207; Cat="Confidentialite"; LabelFR="[WinUtil] Bloquer l'exécution du WPBT (table binaire OEM au démarrage -- vecteur d'attaque connu, désactivation = plus sûr)"; LabelEN="[WinUtil] Block WPBT execution (OEM boot-time binary table -- known attack vector, disabling is safer)"; Risk="safe"; Action={
+$Options += [PSCustomObject]@{Id=207; Cat="Confidentialite"; LabelFR="Bloquer l'exécution du WPBT (table binaire OEM au démarrage -- vecteur d'attaque connu, désactivation = plus sûr)"; LabelEN="Block WPBT execution (OEM boot-time binary table -- known attack vector, disabling is safer)"; Risk="safe"; Action={
     Set-Reg "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager" "DisableWpbtExecution" 1
 }}
-$Options += [PSCustomObject]@{Id=208; Cat="Confidentialite"; LabelFR="[WinUtil] Télémétrie complémentaire (pub par app, saisie/encre, échantillons Defender jamais envoyés, wermgr)"; LabelEN="[WinUtil] Complementary telemetry (per-app ads, ink/typing, Defender samples never sent, wermgr)"; Risk="safe"; Action={
+$Options += [PSCustomObject]@{Id=208; Cat="Confidentialite"; LabelFR="Télémétrie complémentaire (pub par app, saisie/encre, échantillons Defender jamais envoyés, wermgr)"; LabelEN="Complementary telemetry (per-app ads, ink/typing, Defender samples never sent, wermgr)"; Risk="safe"; Action={
     Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" "Enabled" 0
     Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Privacy" "TailoredExperiencesWithDiagnosticDataEnabled" 0
     Set-Reg "HKCU:\Software\Microsoft\Speech_OneCore\Settings\OnlineSpeechPrivacy" "HasAccepted" 0
@@ -1389,7 +1391,7 @@ $Options += [PSCustomObject]@{Id=208; Cat="Confidentialite"; LabelFR="[WinUtil] 
     try { Set-MpPreference -SubmitSamplesConsent 2 -ErrorAction SilentlyContinue } catch {}
     Disable-Svc "wermgr"
 }}
-$Options += [PSCustomObject]@{Id=209; Cat="Bloatwares"; LabelFR="[WinUtil] Débloatage Microsoft Edge (télémétrie, pubs, extension pub bloquée, suggestions)"; LabelEN="[WinUtil] Microsoft Edge debloat (telemetry, ads, blocked ad extension, suggestions)"; Risk="moderate"; Action={
+$Options += [PSCustomObject]@{Id=209; Cat="Bloatwares"; LabelFR="Débloatage Microsoft Edge (télémétrie, pubs, extension pub bloquée, suggestions)"; LabelEN="Microsoft Edge debloat (telemetry, ads, blocked ad extension, suggestions)"; Risk="moderate"; Action={
     $p = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
     Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\EdgeUpdate" "CreateDesktopShortcutDefault" 0
     Set-Reg $p "PersonalizationReportingEnabled" 0
@@ -1408,16 +1410,16 @@ $Options += [PSCustomObject]@{Id=209; Cat="Bloatwares"; LabelFR="[WinUtil] Débl
     Set-Reg $p "WalletDonationEnabled" 0
     Set-Reg $p "DefaultBrowserSettingsCampaignEnabled" 0
 }}
-$Options += [PSCustomObject]@{Id=210; Cat="Confidentialite"; LabelFR="[WinUtil] Désactiver les fonctionnalités consommateur Windows (installation auto de jeux/apps tierces)"; LabelEN="[WinUtil] Disable Windows consumer features (auto-install of games/third-party apps)"; Risk="safe"; Action={
+$Options += [PSCustomObject]@{Id=210; Cat="Confidentialite"; LabelFR="Désactiver les fonctionnalités consommateur Windows (installation auto de jeux/apps tierces)"; LabelEN="Disable Windows consumer features (auto-install of games/third-party apps)"; Risk="safe"; Action={
     Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent" "DisableWindowsConsumerFeatures" 1
 }}
-$Options += [PSCustomObject]@{Id=211; Cat="Gaming"; LabelFR="[WinUtil] Xbox/Gaming complémentaire (Game Bar capture + paquets Xbox restants)"; LabelEN="[WinUtil] Complementary Xbox/Gaming (Game Bar capture + remaining Xbox packages)"; Risk="moderate"; Action={
+$Options += [PSCustomObject]@{Id=211; Cat="Gaming"; LabelFR="Xbox/Gaming complémentaire (Game Bar capture + paquets Xbox restants)"; LabelEN="Complementary Xbox/Gaming (Game Bar capture + remaining Xbox packages)"; Risk="moderate"; Action={
     Set-Reg "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR" "AppCaptureEnabled" 0
     foreach ($pkg in @("Microsoft.XboxIdentityProvider","Microsoft.XboxSpeechToTextOverlay","Microsoft.GamingApp","Microsoft.Xbox.TCUI","Microsoft.XboxGamingOverlay")) {
         Uninstall-Appx $pkg
     }
 }}
-$Options += [PSCustomObject]@{Id=212; Cat="Bloatwares"; LabelFR="[WinUtil] Apps pré-installées complémentaires (Bing, Todos, Sound Recorder, Sticky Notes, DevHome, Outlook nouveau, Alarms, GetHelp, Zune, Teams)"; LabelEN="[WinUtil] Complementary pre-installed apps (Bing, Todos, Sound Recorder, Sticky Notes, DevHome, new Outlook, Alarms, GetHelp, Zune, Teams)"; Risk="safe"; Action={
+$Options += [PSCustomObject]@{Id=212; Cat="Bloatwares"; LabelFR="Apps pré-installées complémentaires (Bing, Todos, Sound Recorder, Sticky Notes, DevHome, Outlook nouveau, Alarms, GetHelp, Zune, Teams)"; LabelEN="Complementary pre-installed apps (Bing, Todos, Sound Recorder, Sticky Notes, DevHome, new Outlook, Alarms, GetHelp, Zune, Teams)"; Risk="safe"; Action={
     foreach ($pkg in @("Microsoft.WindowsFeedbackHub","Microsoft.BingNews","Microsoft.BingSearch","Microsoft.BingWeather","Clipchamp.Clipchamp","Microsoft.Todos","Microsoft.PowerAutomateDesktop","Microsoft.WindowsSoundRecorder","Microsoft.MicrosoftStickyNotes","Microsoft.Windows.DevHome","Microsoft.OutlookForWindows","Microsoft.WindowsAlarms","Microsoft.StartExperiencesApp","Microsoft.GetHelp","Microsoft.ZuneMusic","MicrosoftCorporationII.QuickAssist","MSTeams")) {
         Uninstall-Appx $pkg
     }
@@ -1427,7 +1429,7 @@ $Options += [PSCustomObject]@{Id=212; Cat="Bloatwares"; LabelFR="[WinUtil] Apps 
         Remove-Item $TeamsPath -Recurse -Force -ErrorAction SilentlyContinue
     }
 }}
-$Options += [PSCustomObject]@{Id=213; Cat="Confidentialite"; LabelFR="[WinUtil] IA Windows complémentaire (paquet CoreAI, service WSAIFabricSvc)"; LabelEN="[WinUtil] Complementary Windows AI (CoreAI package, WSAIFabricSvc service)"; Risk="advanced"; Action={
+$Options += [PSCustomObject]@{Id=213; Cat="Confidentialite"; LabelFR="IA Windows complémentaire (paquet CoreAI, service WSAIFabricSvc)"; LabelEN="Complementary Windows AI (CoreAI package, WSAIFabricSvc service)"; Risk="advanced"; Action={
     try {
         $Appx = (Get-AppxPackage MicrosoftWindows.Client.CoreAI -ErrorAction SilentlyContinue).PackageFullName
         if ($Appx) {
@@ -1438,7 +1440,7 @@ $Options += [PSCustomObject]@{Id=213; Cat="Confidentialite"; LabelFR="[WinUtil] 
     } catch {}
     Disable-Svc "WSAIFabricSvc"
 }}
-$Options += [PSCustomObject]@{Id=214; Cat="Nettoyage"; LabelFR="[WinUtil] Divers confort (fin de tâche clic droit taskbar, correctif dual-boot UTC, masquer Accueil/Galerie Explorer)"; LabelEN="[WinUtil] Misc QoL (end task on taskbar right-click, dual-boot UTC fix, hide Explorer Home/Gallery)"; Risk="moderate"; Action={
+$Options += [PSCustomObject]@{Id=214; Cat="Nettoyage"; LabelFR="Divers confort (fin de tâche clic droit taskbar, correctif dual-boot UTC, masquer Accueil/Galerie Explorer)"; LabelEN="Misc QoL (end task on taskbar right-click, dual-boot UTC fix, hide Explorer Home/Gallery)"; Risk="moderate"; Action={
     Set-Reg "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced\TaskbarDeveloperSettings" "TaskbarEndTask" 1
     Set-Reg "HKCU:\Software\Classes\CLSID\{f874310e-b6b7-47dc-bc84-b9e6b38f5903}" "System.IsPinnedToNameSpaceTree" 0
     Set-Reg "HKCU:\Software\Classes\CLSID\{e88865ea-0e1c-4e20-9aa6-edcd0212c87c}" "System.IsPinnedToNameSpaceTree" 0
@@ -8283,6 +8285,7 @@ $Options += [PSCustomObject]@{Id=147; Cat="Bloatwares"; LabelFR="Désactiver Rec
                     <Button Name="BtnApps" Tag="Apps" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnBloatwares" Tag="Bloatwares" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnExtreme" Tag="Extreme" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
+                    <Button Name="BtnReparateur" Tag="Reparateur" Height="32" Background="#101016" Foreground="#4ADE80" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnInnovations" Tag="Innovations" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnAudio" Tag="Audio" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
                     <Button Name="BtnNiveaux" Tag="Niveaux" Height="32" Background="#101016" Foreground="#A0A0B4" BorderThickness="0" HorizontalContentAlignment="Left" Padding="8,0,0,0" Margin="0,1"/>
@@ -8479,6 +8482,7 @@ $NavButtons = @{
     "Innovations"=$Form.FindName("BtnInnovations")
     "Audio"=$Form.FindName("BtnAudio")
     "Niveaux"=$Form.FindName("BtnNiveaux")
+    "Reparateur"=$Form.FindName("BtnReparateur")
 }
 
 $Global:LogHistory = [System.Collections.Generic.List[string]]::new()
@@ -8737,6 +8741,7 @@ function Get-CategoryDisplayName([string]$Key) {
         "Audio" { return $L["CatAudio"] }
         "Niveaux" { return $L["CatNiveaux"] }
         "Innovations" { return $L["CatInnovations"] }
+        "Reparateur" { return $L["CatReparateur"] }
     }
 }
 
@@ -8756,6 +8761,7 @@ function Get-CategoryEmoji([string]$Key) {
         "Innovations" { return "🚀" }
         "Audio" { return "🎙️" }
         "Niveaux" { return "🔻" }
+        "Reparateur" { return "🩹" }
     }
 }
 
@@ -8842,6 +8848,101 @@ function Global:Render-Category([string]$Cat) {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Visible
         } else {
             $RamTweakPanel.Visibility = [System.Windows.Visibility]::Collapsed
+        }
+
+        if ($Cat -eq "Reparateur") {
+            $RepIntro = New-Object System.Windows.Controls.TextBlock
+            $RepIntro.Text = if ($Global:CurrentLang -eq "FR") {
+                "Actions ponctuelles de diagnostic et réparation. Chaque bouton s'exécute immédiatement, il n'y a rien à cocher."
+            } else {
+                "One-shot diagnostic and repair actions. Each button runs immediately, nothing to check."
+            }
+            $RepIntro.Foreground = Get-Brush "#A0A0A0"
+            $RepIntro.FontSize = 12
+            $RepIntro.TextWrapping = "Wrap"
+            $RepIntro.Margin = "0,0,0,15"
+            [void]$Panel.Children.Add($RepIntro)
+
+            $repairActions = @(
+                @{Id="sfc"; FR="Vérifier les fichiers système"; EN="Check system files"; DescFR="Recherche et répare les fichiers système corrompus."; DescEN="Scans for and repairs corrupted system files."; Script={ Start-Process -FilePath "sfc.exe" -ArgumentList "/scannow" -WindowStyle Hidden -Wait }},
+                @{Id="dism"; FR="Réparer l'image Windows"; EN="Repair Windows image"; DescFR="Répare les composants Windows endommagés (10-20 min)."; DescEN="Repairs damaged Windows components (10-20 min)."; Script={ Start-Process -FilePath "DISM.exe" -ArgumentList "/Online /Cleanup-Image /RestoreHealth" -WindowStyle Hidden -Wait }},
+                @{Id="explorer"; FR="Redémarrer l'explorateur"; EN="Restart Explorer"; DescFR="Ferme et relance explorer.exe sans redémarrer le PC."; DescEN="Closes and relaunches explorer.exe without rebooting."; Script={ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process explorer }},
+                @{Id="icons"; FR="Reconstruire le cache d'icônes"; EN="Rebuild icon cache"; DescFR="Corrige les icônes manquantes ou incorrectes."; DescEN="Fixes missing or wrong icons."; Script={ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process explorer }},
+                @{Id="explorerreset"; FR="Réinitialiser les réglages de l'explorateur"; EN="Reset Explorer settings"; DescFR="Remet les préférences d'affichage à leur valeur par défaut."; DescEN="Restores Explorer's display preferences to default."; Script={ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Remove-Item "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced" -Recurse -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process explorer }},
+                @{Id="winsock"; FR="Réinitialiser Winsock"; EN="Reset Winsock"; DescFR="Corrige les problèmes réseau après un tweak raté."; DescEN="Fixes network issues after a failed tweak."; Script={ Start-Process -FilePath "netsh" -ArgumentList "winsock reset" -WindowStyle Hidden -Wait; Start-Process -FilePath "netsh" -ArgumentList "int ip reset" -WindowStyle Hidden -Wait }},
+                @{Id="wureset"; FR="Réinitialiser Windows Update"; EN="Reset Windows Update"; DescFR="Relance les services de MàJ et vide leur cache si bloqué."; DescEN="Restarts update services and clears cache if stuck."; Script={ Stop-Service -Name wuauserv,bits,cryptsvc -Force -ErrorAction SilentlyContinue; Rename-Item "$env:WINDIR\SoftwareDistribution" "SoftwareDistribution.bak" -Force -ErrorAction SilentlyContinue; Rename-Item "$env:WINDIR\System32\catroot2" "catroot2.bak" -Force -ErrorAction SilentlyContinue; Start-Service -Name wuauserv,bits,cryptsvc -ErrorAction SilentlyContinue }},
+                @{Id="restorepoint"; FR="Créer un point de restauration"; EN="Create a restore point"; DescFR="Sauvegarde l'état actuel du système."; DescEN="Saves the current system state."; Script={ Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction SilentlyContinue; Checkpoint-Computer -Description "Manuel OPTI-DYLAN" -RestorePointType MODIFY_SETTINGS }},
+                @{Id="openrestore"; FR="Ouvrir la restauration système"; EN="Open System Restore"; DescFR="Revenir à un point de restauration antérieur."; DescEN="Go back to an earlier restore point."; Script={ Start-Process "rstrui.exe" }},
+                @{Id="chkdsk"; FR="Vérifier le disque au prochain démarrage"; EN="Check disk on next boot"; DescFR="Planifie une analyse et réparation du disque."; DescEN="Schedules a disk scan and repair on restart."; Script={ cmd /c "echo Y| chkdsk $env:SystemDrive /f /r" }},
+                @{Id="netstack"; FR="Réinitialiser la pile réseau"; EN="Reset network stack"; DescFR="Réinitialise TCP/IP, pare-feu et adaptateur."; DescEN="Resets TCP/IP, firewall, and network adapter."; Script={ Start-Process -FilePath "netsh" -ArgumentList "winsock reset" -WindowStyle Hidden -Wait; Start-Process -FilePath "netsh" -ArgumentList "int ip reset" -WindowStyle Hidden -Wait; ipconfig /flushdns; ipconfig /release; ipconfig /renew }},
+                @{Id="searchindex"; FR="Reconstruire l'index de recherche"; EN="Rebuild search index"; DescFR="Reconstruit l'index si la recherche ne fonctionne plus."; DescEN="Rebuilds the index if Windows Search stops working."; Script={ Stop-Service -Name WSearch -Force -ErrorAction SilentlyContinue; Remove-Item "$env:ProgramData\Microsoft\Search\Data\Applications\Windows\*" -Recurse -Force -ErrorAction SilentlyContinue; Start-Service -Name WSearch -ErrorAction SilentlyContinue }},
+                @{Id="fileassoc"; FR="Réinitialiser les associations de fichiers"; EN="Reset file associations"; DescFR="Remet les applications par défaut à leur état d'origine."; DescEN="Restores default apps to their original state."; Script={ Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue; Remove-Item "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts" -Recurse -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Start-Process explorer }}
+            )
+
+            foreach ($ra in $repairActions) {
+                $RaBox = New-Object System.Windows.Controls.Border
+                $RaBox.Background = Get-Brush "#14162A"
+                $RaBox.BorderBrush = Get-Brush "#2A2A3A"
+                $RaBox.BorderThickness = "1"
+                $RaBox.CornerRadius = "5"
+                $RaBox.Padding = "12"
+                $RaBox.Margin = "0,0,0,8"
+                $RaGrid = New-Object System.Windows.Controls.Grid
+                $ColText = New-Object System.Windows.Controls.ColumnDefinition
+                $ColText.Width = "*"
+                $ColBtn = New-Object System.Windows.Controls.ColumnDefinition
+                $ColBtn.Width = "Auto"
+                [void]$RaGrid.ColumnDefinitions.Add($ColText)
+                [void]$RaGrid.ColumnDefinitions.Add($ColBtn)
+
+                $RaTextStack = New-Object System.Windows.Controls.StackPanel
+                $RaTitle = New-Object System.Windows.Controls.TextBlock
+                $RaTitle.Text = if ($Global:CurrentLang -eq "FR") { $ra.FR } else { $ra.EN }
+                $RaTitle.Foreground = Get-Brush "#F5F5FA"
+                $RaTitle.FontWeight = "Bold"
+                $RaTitle.FontSize = 13
+                [void]$RaTextStack.Children.Add($RaTitle)
+                $RaDesc = New-Object System.Windows.Controls.TextBlock
+                $RaDesc.Text = if ($Global:CurrentLang -eq "FR") { $ra.DescFR } else { $ra.DescEN }
+                $RaDesc.Foreground = Get-Brush "#8A8A9A"
+                $RaDesc.FontSize = 11
+                $RaDesc.TextWrapping = "Wrap"
+                $RaDesc.Margin = "0,2,0,0"
+                [void]$RaTextStack.Children.Add($RaDesc)
+                [System.Windows.Controls.Grid]::SetColumn($RaTextStack, 0)
+                [void]$RaGrid.Children.Add($RaTextStack)
+
+                $RaBtn = New-Object System.Windows.Controls.Button
+                $RaBtn.Content = if ($Global:CurrentLang -eq "FR") { "Lancer" } else { "Run" }
+                $RaBtn.Height = 30
+                $RaBtn.Width = 90
+                $RaBtn.Background = Get-Brush "#4ADE80"
+                $RaBtn.Foreground = Get-Brush "#0A0A0E"
+                $RaBtn.FontWeight = "Bold"
+                $RaBtn.BorderThickness = "0"
+                $RaBtn.VerticalAlignment = "Center"
+                $RaBtn.Tag = $ra
+                $RaBtn.Add_Click({
+                    $item = $this.Tag
+                    $this.IsEnabled = $false
+                    $originalContent = $this.Content
+                    $this.Content = "..."
+                    try {
+                        & $item.Script
+                        $LogBox.AppendText(">> [OK] $(if ($Global:CurrentLang -eq 'FR') { $item.FR } else { $item.EN })`n")
+                    } catch {
+                        $LogBox.AppendText(">> [ECHEC] $(if ($Global:CurrentLang -eq 'FR') { $item.FR } else { $item.EN }) -> $($_.Exception.Message)`n")
+                    }
+                    $LogBox.ScrollToEnd()
+                    $this.Content = $originalContent
+                    $this.IsEnabled = $true
+                }.GetNewClosure())
+                [System.Windows.Controls.Grid]::SetColumn($RaBtn, 1)
+                [void]$RaGrid.Children.Add($RaBtn)
+
+                $RaBox.Child = $RaGrid
+                [void]$Panel.Children.Add($RaBox)
+            }
         }
 
         if ($Cat -eq "Niveaux") {
@@ -9883,6 +9984,42 @@ function Invoke-ApplyAllChecked {
     if ($selected.Count -eq 0 -and $Global:SelectedSvcHostValue -eq "380000") {
         [System.Windows.MessageBox]::Show($L["NoOption"], "OPTI-DYLAN")
         return
+    }
+
+    # SECURITE : confirmation explicite si des tweaks a risque sont dans la
+    # selection. On ne bloque jamais silencieusement, mais on force a lire.
+    $riskyCount = ($selected | Where-Object { $_.Risk -eq "moderate" -or $_.Risk -eq "risky" }).Count
+    if ($riskyCount -gt 0) {
+        $riskMsg = if ($Global:CurrentLang -eq "FR") {
+            "$riskyCount tweak(s) sur $($selected.Count) sont marques a risque modere/eleve (services systeme, fichiers, tâches critiques touchees).`n`nUn point de restauration va etre cree automatiquement avant application. Continuer ?"
+        } else {
+            "$riskyCount of $($selected.Count) tweaks are flagged moderate/high risk (touch system services, files, or critical tasks).`n`nA restore point will be created automatically before applying. Continue?"
+        }
+        $confirm = [System.Windows.MessageBox]::Show($riskMsg, "OPTI-DYLAN", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
+        if ($confirm -ne "Yes") { return }
+    }
+
+    # SECURITE : point de restauration automatique, une seule fois par session,
+    # AVANT que le moindre tweak ne soit applique. Ne bloque pas l'application
+    # si la creation echoue (ex: protection systeme desactivee par l'utilisateur
+    # sur ce disque), mais previent clairement dans le log au lieu de continuer
+    # en silence.
+    if (-not $Global:RestorePointCreatedThisSession) {
+        $LogBox.AppendText(">> [SYSTEM] Création du point de restauration avant application...`n")
+        $LogBox.ScrollToEnd()
+        try {
+            Enable-ComputerRestore -Drive "$env:SystemDrive\" -ErrorAction SilentlyContinue
+            Checkpoint-Computer -Description "Avant OPTI-DYLAN" -RestorePointType "MODIFY_SETTINGS" -ErrorAction Stop
+            $Global:RestorePointCreatedThisSession = $true
+            $LogBox.AppendText(">> [OK] Point de restauration créé.`n")
+        } catch {
+            $LogBox.AppendText(">> [ATTENTION] Point de restauration NON créé ($($_.Exception.Message)). Tu peux continuer, mais sans filet en cas de souci.`n")
+            $proceedAnyway = [System.Windows.MessageBox]::Show(
+                $(if ($Global:CurrentLang -eq "FR") { "Le point de restauration a échoué. Continuer quand même sans filet de sécurité ?" } else { "Restore point creation failed. Continue anyway without a safety net?" }),
+                "OPTI-DYLAN", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Warning)
+            if ($proceedAnyway -ne "Yes") { return }
+        }
+        $LogBox.ScrollToEnd()
     }
 
     $BtnApply.IsEnabled = $false
