@@ -11,6 +11,25 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     exit
 }
 
+# FILET DE SECURITE : si une erreur fatale survient n'importe ou dans le
+# script, on l'ecrit dans un fichier ET on empeche la fenetre de se fermer
+# toute seule (sinon impossible de lire l'erreur, elle disparait avec la
+# console). C'est la toute premiere chose que le script fait apres l'elevation.
+trap {
+    $crashPath = "$env:USERPROFILE\Desktop\OPTI-DYLAN-crash-log.txt"
+    $errMsg = "=== $(Get-Date) ===`nERREUR FATALE : $($_.Exception.Message)`nA la ligne : $($_.InvocationInfo.ScriptLineNumber)`nCommande : $($_.InvocationInfo.Line.Trim())`n`nDetail complet :`n$($_ | Out-String)`n"
+    try { Add-Content -Path $crashPath -Value $errMsg -Encoding UTF8 -ErrorAction Stop } catch {}
+    Write-Host "`n`n===================== ERREUR FATALE =====================" -ForegroundColor Red
+    Write-Host $_.Exception.Message -ForegroundColor Red
+    Write-Host "A la ligne $($_.InvocationInfo.ScriptLineNumber) : $($_.InvocationInfo.Line.Trim())" -ForegroundColor Yellow
+    Write-Host "===========================================================" -ForegroundColor Red
+    Write-Host "`nUn rapport complet a ete enregistre ici :" -ForegroundColor Cyan
+    Write-Host $crashPath -ForegroundColor Cyan
+    Write-Host "`nEnvoie ce fichier pour que l'erreur puisse etre corrigee.`n" -ForegroundColor Cyan
+    Read-Host "Appuie sur Entree pour fermer cette fenetre"
+    exit 1
+}
+
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName System.Windows.Forms
 
